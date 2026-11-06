@@ -21,3 +21,9 @@ footer{border-top:3px ridge #626963;background:linear-gradient(#202a2a,#0c1319);
 #constructionMenu{grid-column:1/-1;margin-top:12px;border-top:1px solid #887b55;padding-top:9px;font:12px Arial}#constructionMenu summary{cursor:pointer;color:#efd49c;min-height:28px}#slotStatus{margin:5px 0 8px;color:#b7d778}#buildingChoices{display:flex;gap:6px;flex-wrap:wrap}#buildingChoices button{flex:1;min-height:44px;padding:8px}#constructionMenu small{display:block;margin-top:8px;color:#aab5aa}#recruitTray{max-height:calc(100dvh - 190px);overflow-y:auto}
 
 #buildingsTray{position:absolute;right:12px;bottom:135px;width:min(420px,calc(100vw - 24px));max-height:calc(100dvh - 190px);overflow:auto;padding:14px;background:#101e25f5;border:1px solid #ac9565;border-radius:9px;font:12px Arial;z-index:9}#buildingsTray label,#buildingsTray small{display:block;margin:9px 0;color:#bcc5b5}.panel-heading{display:flex;align-items:center;justify-content:space-between}.panel-heading button{padding:6px 12px}#buildingsTray select,#productionBuilding{width:100%;background:#17282c;color:#ead8b0;border:1px solid #6c725d;padding:9px;margin:8px 0;font:12px Arial;grid-column:1/-1}#buildingsTray #build{width:100%;min-height:42px}#buildingsTray hr{border:0;border-top:1px solid #726b50;margin:14px 0}#productionStatus{max-width:420px;line-height:1.5}#recruitTray>label{display:block;grid-column:1/-1}#recruitTray [data-unit]:disabled{opacity:.6}#buildingsTray #buildingChoices button{max-width:none}#recruitTray{min-width:min(380px,calc(100vw - 24px))}
+
+#netBadge[data-quality="good"]{color:#9ce8a6;border-color:#53ba68}
+#netBadge[data-quality="fair"]{color:#ffd18a;border-color:#e8a341}
+#netBadge[data-quality="poor"]{color:#ffaaaa;border-color:#e56666}
+#veil.invitation .factions,#veil.invitation label,#veil.invitation select,#veil.invitation #start,#veil.invitation #createRoom,#veil.invitation #roomInput,#veil.invitation .note{display:none}
+#veil.invitation #joinRoom{min-height:44px}

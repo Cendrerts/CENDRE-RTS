@@ -14,7 +14,7 @@ import { installMobileDisplay } from './mobile-display.js';
 import { initTouchUI } from './mobile.js';
 import { createControlGroups, groupUnits, assignGroup, initControlGroups } from './control-groups.js';
 import { NetworkMotion, pollDelay } from './network-motion.js';
-import { RealtimeClient, RealtimeMotion } from './realtime.js';
+import { RealtimeClient, RealtimeMotion, normalizeRoomCode, networkQuality } from './realtime.js';
 let realtime = null;
 import { ratSVG, ratSprites } from './rats.js';
 import { RatsGout } from './rats-config.js';
@@ -998,6 +998,7 @@ function persistRoom() {
   } catch {}
 }
 function lobbyControls(connected) {
+  if (connected) $('#veil').classList.remove('invitation');
   $('#lobby').hidden = !connected;
   for (const id of ['start', 'createRoom', 'joinRoom', 'chooseHuman', 'chooseGhost', 'roomInput'])
     $('#' + id).disabled = connected;
@@ -1038,6 +1039,7 @@ function showSnapshot(data) {
   $('#netBadge').textContent =
     (labels[data.status] || 'Connexion…') +
     (data.status === 'playing' ? ' · ' + Math.round(lastRtt) + ' ms' : '');
+  $('#netBadge').dataset.quality = networkQuality(lastRtt);
   $('#networkError').textContent = '';
   if (data.status === 'playing' && !net.begun) {
     net.begun = true;
@@ -1110,9 +1112,15 @@ async function pollRoom() {
 async function connectRealtime(parameters) {
   const client = new RealtimeClient({
     onSnapshot: showSnapshot,
-    onRtt: (rtt) => { lastRtt = rtt; },
+    onRtt: (rtt) => {
+      lastRtt = rtt;
+      $('#netBadge').dataset.quality = networkQuality(rtt);
+    },
     onStatus: (status) => {
-      if (status === 'reconnecting') $('#netBadge').textContent = 'Connexion perdue · Reconnexion…';
+      if (status === 'reconnecting') {
+        $('#netBadge').textContent = 'Reconnexion…';
+        $('#netBadge').dataset.quality = 'poor';
+      }
     },
   });
   realtime = client;
@@ -1156,6 +1164,7 @@ function sendCommand(command) {
 }
 
 async function enterRoom(action) {
+  $('#veil').classList.remove('invitation');
   $('#networkError').textContent = 'Connexion au salon…';
   $('#createRoom').disabled = true;
   $('#joinRoom').disabled = true;
@@ -1163,7 +1172,7 @@ async function enterRoom(action) {
     const parameters = {
       action,
       team: chosen,
-      code: $('#roomInput').value.trim().toUpperCase(),
+      code: normalizeRoomCode($('#roomInput').value),
     };
     let data;
     try {
@@ -1188,8 +1197,7 @@ $('#createRoom').onclick = () => enterRoom('create');
 $('#joinRoom').onclick = () => enterRoom('join');
 $('#copyRoom').onclick = async () => {
   if (!net) return;
-  const link = new URL(location.href);
-  link.search = '';
+  const link = new URL('/game/', location.origin);
   link.searchParams.set('room', net.code);
   try {
     await navigator.clipboard.writeText(link.href);
@@ -1219,11 +1227,18 @@ $('#cancelRoom').onclick = leaveRoom;
 $('#leaveMatch').onclick = () => {
   if (!running || confirm('Quitter le duel ? Cela compte comme un abandon.')) leaveRoom();
 };
-const invite = new URL(location.href).searchParams.get('room');
-if (invite) $('#roomInput').value = invite.toUpperCase().slice(0, 7);
+const invite = normalizeRoomCode(new URL(location.href).searchParams.get('room'));
+if (invite) {
+  $('#roomInput').value = invite;
+  $('#modalTitle').textContent = 'Rejoindre le duel ?';
+  $('#modalText').textContent = 'SALON ' + invite;
+  $('#veil').classList.add('invitation');
+  $('#joinRoom').textContent = 'Rejoindre le duel';
+}
+
 try {
   const saved = JSON.parse(sessionStorage.getItem(savedKey) || 'null');
-  if (saved?.token && (!invite || saved.code === invite.toUpperCase())) {
+  if (saved?.token && (!invite || saved.code === invite)) {
     net = { ...saved, begun: false, finished: false };
     seq = saved.seq || 0;
     lobbyControls(true);
