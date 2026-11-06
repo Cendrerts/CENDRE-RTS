@@ -2,7 +2,7 @@
 import { CuistotsAmbience } from './cuistots-ambience.js';
 import { UnitVoices, selectionVoice } from './unit-voices.js';
 import { createRadialMenu } from './radial.js';
-import { cameraBounds, unitsOfType, createPortraitTap, unitsInBox } from './selection.js';
+import { cameraBounds, unitsOfType, createPortraitTap, unitsInBox, boxSelection } from './selection.js';
 import { createGestures } from './gestures.js';
 import { resolveTap, isEmptyTap } from './tap.js';
 import { installMobileDisplay } from './mobile-display.js';
@@ -348,7 +348,7 @@ $('#start').onclick = () => {
   $('#recruitTray').hidden = true;
   $('#buildingsTray').hidden = true;
   updateUI();
-  notify('Explorez avec vos unités. Glissez pour déplacer la carte.');
+  notify('Explorez avec vos unités. Glissez : sélectionner · 2 doigts : caméra et zoom');
 };
 $('#all').onclick = () => {
   const units = state.units.filter((u) => u.team === player);
@@ -394,7 +394,7 @@ $('#pause').onclick = () => {
 };
 $('#help').onclick = () =>
   notify(
-    'Ouvrier + mine à vous : récolter · Bâtiment principal : recruter · Portrait : sélectionner / désélectionner · Appui long dans le vide : désélectionner · Glisser : caméra · Tour : 4 s sur place · Base secondaire : 120 or près d’une mine · Bois : −2 PV/s',
+    'Ouvrier + mine à vous : récolter · Bâtiment principal : recruter · Portrait : sélectionner / désélectionner · Appui long dans le vide : désélectionner · Glissez : sélectionner · 2 doigts : caméra et zoom · Tour : 4 s sur place · Base secondaire : 120 or près d’une mine · Bois : −2 PV/s',
   );
 $('#recruitToggle').onclick = () => {
   selectedProducer = null;
@@ -488,6 +488,7 @@ function handleFieldPointer(e, type) {
   const action = gestures.update({
     type,
     id: e.pointerId,
+    pointerType: e.pointerType,
     x: e.clientX - rect.left,
     y: e.clientY - rect.top,
     time: performance.now(),
@@ -513,7 +514,10 @@ function handleFieldPointer(e, type) {
       const start = { x: (action.start.x - ox) / scale, y: (action.start.y - oy) / scale };
       const end = { x: (action.end.x - ox) / scale, y: (action.end.y - oy) / scale };
       const units = unitsInBox(state.units, player, start, end);
-      selected = new Set(units.map((unit) => unit.id));
+      selectionBox = null;
+      const nextSelection = boxSelection(selected, units);
+      if (nextSelection === selected) return;
+      selected = nextSelection;
       selectedMine = null;
       portraitTap.reset();
       playSelectionVoice(units);
@@ -522,6 +526,7 @@ function handleFieldPointer(e, type) {
     }
     return;
   }
+  selectionBox = null;
   handleFieldTap(e, action.duration);
 }
 for (const [event, type] of Object.entries({
@@ -877,6 +882,19 @@ function draw() {
     ctx.lineWidth = 2;
     ctx.fillRect(start.x, start.y, end.x - start.x, end.y - start.y);
     ctx.strokeRect(start.x, start.y, end.x - start.x, end.y - start.y);
+    const worldStart = { x: (start.x - ox) / scale, y: (start.y - oy) / scale };
+    const worldEnd = { x: (end.x - ox) / scale, y: (end.y - oy) / scale };
+    const count = String(unitsInBox(state.units, player, worldStart, worldEnd).length);
+    ctx.font = 'bold 14px sans-serif';
+    const badgeWidth = ctx.measureText(count).width + 16;
+    const badgeX = Math.max(0, Math.min(viewWidth - badgeWidth, Math.max(start.x, end.x) - badgeWidth));
+    const badgeY = Math.max(0, Math.min(viewHeight - 24, Math.min(start.y, end.y)));
+    ctx.fillStyle = '#183c32';
+    ctx.fillRect(badgeX, badgeY, badgeWidth, 24);
+    ctx.fillStyle = '#8ef1ce';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(count, badgeX + badgeWidth / 2, badgeY + 12);
     ctx.restore();
   }
 }

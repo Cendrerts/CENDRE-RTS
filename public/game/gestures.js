@@ -22,11 +22,11 @@ export function createGestures() {
   }
 
   function update(event) {
-    const { type, id, x, y, time = 0 } = event;
+    const { type, id, x, y, time = 0, pointerType = 'mouse' } = event;
     if (type === 'down') {
       if (pointers.has(id)) return null;
       pointers.set(id, { x, y });
-      if (pointers.size === 1 && !multi) start = { x, y, time };
+      if (pointers.size === 1 && !multi) start = { x, y, time, pointerType };
       if (pointers.size > 1) {
         multi = true;
         return { kind: 'camera', from: pair(), to: pair() };
@@ -47,8 +47,13 @@ export function createGestures() {
     if (multi) {
       if (before && type === 'move') action = { kind: 'camera', from: before, to: pair() };
     } else {
-      if (Math.hypot(x - start.x, y - start.y) >= 8) selecting = true;
-      if (selecting) {
+      const distance = Math.hypot(x - start.x, y - start.y);
+      const threshold = start.pointerType === 'touch' ? 14 : 8;
+      const quickTouchTap = start.pointerType === 'touch' && time - start.time < 250 && distance < 24;
+      if (distance >= threshold) selecting = true;
+      if (type === 'up' && quickTouchTap) {
+        action = { kind: 'tap', x, y, duration: time - start.time };
+      } else if (selecting) {
         action = { kind: 'select-box', start: { x: start.x, y: start.y }, end: { x, y }, final: type === 'up' };
       } else if (type === 'up') {
         action = { kind: 'tap', x, y, duration: time - start.time };

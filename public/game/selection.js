@@ -37,3 +37,8 @@ export function unitsInBox(units, team, start, end) {
   const combat = inside.filter((unit) => unit.type !== 'commis');
   return combat.length ? combat : inside;
 }
+
+export function boxSelection(current, units) {
+  if (!units.length) return current;
+  return new Set(units.map((unit) => unit.id));
+}

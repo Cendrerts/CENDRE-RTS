@@ -36,3 +36,31 @@ send('down', 1, 0, 0);
 gestures.reset();
 assert.equal(send('up', 1, 0, 0), null);
 console.log('PASS: selection drag, 8px threshold, micro-movement tap, pinch, pan, partial release, cancellation and reset.');
+
+const touch = (type, x, time) => gestures.update({
+  type,
+  id: 1,
+  x,
+  y: 0,
+  time,
+  pointerType: 'touch',
+});
+touch('down', 0, 0);
+assert.equal(touch('move', 8, 100), null);
+assert.equal(touch('move', 13, 150), null);
+assert.equal(touch('move', 14, 200).kind, 'select-box');
+assert.equal(touch('up', 14, 300).kind, 'select-box');
+// A quick finger release overrides the preview and issues a tap.
+touch('down', 0, 0);
+assert.equal(touch('move', 20, 100).kind, 'select-box');
+assert.deepEqual(touch('up', 23, 249), { kind: 'tap', x: 23, y: 0, duration: 249 });
+// Both limits are strict.
+touch('down', 0, 0);
+assert.equal(touch('up', 20, 250).kind, 'select-box');
+touch('down', 0, 0);
+assert.equal(touch('up', 24, 100).kind, 'select-box');
+// A fast return near the start is also a tap on touch screens.
+touch('down', 0, 0);
+touch('move', 30, 100);
+assert.equal(touch('up', 5, 200).kind, 'tap');
+console.log('PASS: touch 14px threshold, quick tap after drag preview, strict 250ms/24px limits.');
