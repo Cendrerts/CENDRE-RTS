@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
 const source = readFileSync(new URL('../public/game/game.js', import.meta.url), 'utf8');
-const handlers = source.slice(source.indexOf('function closePauseMenu()'), source.indexOf("$('#help').onclick"));
+const handlers = source.slice(source.indexOf('function closePauseMenu()'), source.indexOf("$('#zoomIn').onclick"));
 for (const multiplayer of [false, true]) {
   const elements = new Map();
   const $ = (selector) => {
