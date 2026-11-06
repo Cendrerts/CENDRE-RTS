@@ -12,6 +12,8 @@ import { installMobileDisplay } from './mobile-display.js';
 import { initTouchUI } from './mobile.js';
 import { createControlGroups, groupUnits, assignGroup, initControlGroups } from './control-groups.js';
 import { NetworkMotion, pollDelay } from './network-motion.js';
+import { RealtimeClient, RealtimeMotion } from './realtime.js';
+let realtime = null;
 import { ratSVG, ratSprites } from './rats.js';
 import { RatsGout } from './rats-config.js';
 import { cookSVG, cookSprites } from './cooks.js';
@@ -1096,6 +1098,8 @@ function lobbyControls(connected) {
 }
 function resetNetwork() {
   clearTimeout(netTimer);
+  realtime?.close();
+  realtime = null;
   net = null;
   pending = [];
   seq = 0;
@@ -1111,7 +1115,7 @@ function showSnapshot(data) {
   player = data.team;
   seq = Math.max(seq, data.ack || 0);
   if (data.state) {
-    motion.receive(data.state.units, performance.now());
+    motion.receive(data.state.units, performance.now(), data.state.time);
     state = data.state;
   }
   if (data.error) notify(data.error);
@@ -1196,10 +1200,36 @@ async function pollRoom() {
     }
   }
 }
+async function connectRealtime(parameters) {
+  const client = new RealtimeClient({
+    onSnapshot: showSnapshot,
+    onRtt: (rtt) => { lastRtt = rtt; },
+    onStatus: (status) => {
+      if (status === 'reconnecting') $('#netBadge').textContent = 'Connexion perdue · Reconnexion…';
+    },
+  });
+  realtime = client;
+  motion = new RealtimeMotion();
+  try {
+    const data = await client.connect(parameters);
+    return data;
+  } catch (error) {
+    client.close();
+    realtime = null;
+    motion = new NetworkMotion();
+    throw error;
+  }
+}
 function sendCommand(command) {
   if (!net || paused || !running) {
     notify('Connexion en cours, patientez.');
     return;
+  }
+  if (realtime) {
+    realtime.command(command, ++seq);
+    motion.predict(command, state, player, performance.now());
+    persistRoom();
+    return true;
   }
   if (
     command.kind === 'steer' &&
@@ -1223,18 +1253,24 @@ async function enterRoom(action) {
   $('#createRoom').disabled = true;
   $('#joinRoom').disabled = true;
   try {
-    const data = await requestMatch({
+    const parameters = {
       action,
       team: chosen,
       code: $('#roomInput').value.trim().toUpperCase(),
-    });
+    };
+    let data;
+    try {
+      data = await connectRealtime(parameters);
+    } catch {
+      data = await requestMatch(parameters);
+    }
     net = { code: data.code, token: data.token, team: data.team, begun: false, finished: false };
     seq = 0;
     persistRoom();
     lobbyControls(true);
     $('#roomCode').textContent = 'SALON ' + data.code;
     showSnapshot(data);
-    pollRoom();
+    if (!realtime) pollRoom();
   } catch (e) {
     $('#networkError').textContent = e.message;
     $('#createRoom').disabled = false;
@@ -1258,6 +1294,8 @@ $('#copyRoom').onclick = async () => {
 async function leaveRoom() {
   if (!net) return;
   const old = net;
+  const wasRealtime = Boolean(realtime);
+  realtime?.send({ type: 'leave' });
   resetNetwork();
   running = false;
   paused = false;
@@ -1265,7 +1303,7 @@ async function leaveRoom() {
   $('#modalTitle').textContent = 'Explorez. Occupez. Conquérez.';
   $('#modalText').textContent = 'Créez un nouveau duel ou lancez une escarmouche solo.';
   try {
-    await requestMatch({ action: 'leave', code: old.code, token: old.token });
+    if (!wasRealtime) await requestMatch({ action: 'leave', code: old.code, token: old.token });
   } catch {
     notify('Salon quitté. Une déconnexion prolongée compte comme un abandon.');
   }
@@ -1283,7 +1321,7 @@ try {
     seq = saved.seq || 0;
     lobbyControls(true);
     $('#roomCode').textContent = 'SALON ' + net.code;
-    pollRoom();
+    connectRealtime({ code: net.code, token: net.token }).catch(() => pollRoom());
   }
 } catch {
   sessionStorage.removeItem(savedKey);
