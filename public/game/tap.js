@@ -30,21 +30,6 @@ export function resolveTap(state, player, selection, point) {
   const mine = state.mines.findIndex(
     (item) => Sim.visibleAt(state, player, item.x, item.y) && distance(point, item) < 55,
   );
-  if (selected.length) {
-    if (near) {
-      if (selected.length > 1 && selection.has(near.id)) {
-        return { kind: 'move' };
-      }
-      return { kind: 'select', id: near.id };
-    }
-    const target = enemyTarget(state, player, point);
-    if (target) return { kind: 'attack', target };
-    const workers = selected.filter((unit) => unit.type === 'commis');
-    if (workers.length && mine >= 0 && state.mines[mine].owner === player) {
-      return { kind: 'gather', ids: workers.map((unit) => unit.id), index: mine };
-    }
-    return { kind: 'move' };
-  }
   const emptySlot = (state.slots?.[player] || [])
     .filter((slot) => !slot.occupe && distance(point, slot) < 23)
     .sort((a, b) => distance(point, a) - distance(point, b))[0];
@@ -74,6 +59,15 @@ export function resolveTap(state, player, selection, point) {
   const base = state.bases[player];
   if (distance(point, { x: base.x, y: base.y - 35 }) < 72) {
     return { kind: 'radial', context: { baseId: 'main_' + player } };
+  }
+  if (selected.length) {
+    const target = enemyTarget(state, player, point);
+    if (target) return { kind: 'attack', target };
+    const workers = selected.filter((unit) => unit.type === 'commis');
+    if (workers.length && mine >= 0 && state.mines[mine].owner === player) {
+      return { kind: 'gather', ids: workers.map((unit) => unit.id), index: mine };
+    }
+    return { kind: 'move' };
   }
   if (mine >= 0) return { kind: 'mine', index: mine };
   return { kind: 'none' };

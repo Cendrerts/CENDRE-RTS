@@ -120,6 +120,7 @@ let touchUI = null;
 const gestures = createGestures();
 const fieldPointers = new Set();
 let selectionBox = null;
+let holdIndicator = null;
 let viewWidth = canvas.clientWidth,
   viewHeight = canvas.clientHeight;
 let unitNames = {};
@@ -226,6 +227,7 @@ installMobileDisplay({
   onCancel: () => {
     touchUI?.stop();
     gestures.reset();
+    holdIndicator = null;
     selectionBox = null;
     for (const id of fieldPointers) {
       if (canvas.hasPointerCapture(id)) canvas.releasePointerCapture(id);
@@ -442,7 +444,7 @@ $('#start').onclick = () => {
   $('#recruitTray').hidden = true;
   $('#buildingsTray').hidden = true;
   updateUI();
-  notify('Explorez avec vos unités. Glissez : sélectionner · 2 doigts : caméra et zoom');
+  notify('Explorez avec vos unités. Glisser : caméra · Maintenir + glisser : sélection · 2 doigts : caméra et zoom');
 };
 $('#all').onclick = () => {
   const units = state.units.filter((u) => u.team === player);
@@ -577,7 +579,7 @@ window.addEventListener('keydown', (event) => {
 }, true);
 $('#help').onclick = () =>
   notify(
-    'Ouvrier + mine à vous : récolter · Bâtiment principal : recruter · Portrait : sélectionner / désélectionner · Appui long dans le vide : désélectionner · Glissez : sélectionner · 2 doigts : caméra et zoom · Tour : 4 s sur place · Base secondaire : 120 rubis près d’une mine · Bois : −2 PV/s',
+    'Ouvrier + mine à vous : récolter · Bâtiment principal : recruter · Portrait : sélectionner / désélectionner · Appui long dans le vide : désélectionner · Glisser : caméra · Maintenir + glisser : sélection · 2 doigts : caméra et zoom · Tour : 4 s sur place · Base secondaire : 120 rubis près d’une mine · Bois : −2 PV/s',
   );
 $('#recruitToggle').onclick = () => {
   selectedProducer = null;
@@ -677,7 +679,17 @@ function handleFieldPointer(e, type) {
     time: performance.now(),
   });
   if (type === 'up' || type === 'cancel') fieldPointers.delete(e.pointerId);
+  applyFieldGesture(action);
+  if (action?.kind === 'tap') handleFieldTap(e, action.duration);
+}
+function applyFieldGesture(action) {
   if (!action) return;
+  if (action.kind === 'hold') {
+    holdIndicator = action;
+    if (action.ready) vibrateOrder(settings.vibration);
+    return;
+  }
+  holdIndicator = null;
   if (action.kind === 'camera') {
     selectionBox = null;
     if (!action.from) return;
@@ -710,7 +722,6 @@ function handleFieldPointer(e, type) {
     return;
   }
   selectionBox = null;
-  handleFieldTap(e, action.duration);
 }
 for (const [event, type] of Object.entries({
   pointerdown: 'down',
@@ -732,9 +743,10 @@ function handleFieldTap(e, duration) {
     clearSelection();
     return;
   }
-  const action = attackMoveArmed && selected.size
+  const resolved = resolveTap(state, player, selected, p);
+  const action = attackMoveArmed && selected.size && !['select', 'radial', 'production', 'enemyBase'].includes(resolved.kind)
     ? { kind: 'move' }
-    : resolveTap(state, player, selected, p);
+    : resolved;
   if (action.kind === 'radial') {
     if (action.context.mine !== undefined) selectedMine = action.context.mine;
     openRadial(e, action.context);
@@ -1087,6 +1099,17 @@ function draw() {
   }
   drawBuildGhost();
   drawMini();
+  if (holdIndicator) {
+    ctx.save();
+    ctx.setTransform(canvas.width / viewWidth, 0, 0, canvas.height / viewHeight, 0, 0);
+    ctx.beginPath();
+    ctx.moveTo(holdIndicator.x, holdIndicator.y);
+    ctx.arc(holdIndicator.x, holdIndicator.y, 18, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * holdIndicator.progress);
+    ctx.closePath();
+    ctx.fillStyle = '#8ef1ce88';
+    ctx.fill();
+    ctx.restore();
+  }
   if (selectionBox) {
     ctx.save();
     ctx.setTransform(canvas.width / viewWidth, 0, 0, canvas.height / viewHeight, 0, 0);
@@ -1107,6 +1130,7 @@ function frame(t) {
   let dt = Math.min((t - last) / 1000, 0.05);
   last = t;
   touchUI?.tick(dt);
+  if (running && !paused) applyFieldGesture(gestures.tick(t, dt));
   if (running && !paused) {
     if (!net) {
       soloAI.update(state);
@@ -1713,6 +1737,18 @@ touchUI = initTouchUI({
   notify,
 });
 
+const selectionToggle = document.createElement('button');
+selectionToggle.id = 'selectionToggle';
+selectionToggle.textContent = '⬚ Sélection';
+selectionToggle.setAttribute('aria-pressed', 'false');
+selectionToggle.onclick = () => {
+  const active = selectionToggle.getAttribute('aria-pressed') !== 'true';
+  selectionToggle.setAttribute('aria-pressed', String(active));
+  gestures.setSelectionMode(active);
+  selectionBox = null;
+  holdIndicator = null;
+};
+$('#touchControls').append(selectionToggle);
 controlGroupsUI = initControlGroups({
   enabled: () => running && !paused && !document.body.classList.contains('base-open'),
   units: (index) => groupUnits(controlGroups(), index, state.units, player),
