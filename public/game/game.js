@@ -3,6 +3,7 @@ import { CuistotsAmbience } from './cuistots-ambience.js';
 import { UnitVoices, selectionVoice } from './unit-voices.js';
 import { createRadialMenu } from './radial.js';
 import { cameraBounds, unitsOfType, createPortraitTap } from './selection.js';
+import { resolveTap, isEmptyTap } from './tap.js';
 import { installMobileDisplay } from './mobile-display.js';
 import { initTouchUI } from './mobile.js';
 import { NetworkMotion, pollDelay } from './network-motion.js';
@@ -134,14 +135,21 @@ function setupPortraits() {
   $('#recruitTitle').textContent = 'PRODUCTION DES UNITÉS';
   document.querySelectorAll('[data-select]').forEach((b) => {
     let t = b.dataset.select;
-    b.title = unitNames[t];
+    b.title = unitNames[t] + ' · Retoucher pour désélectionner';
     b.innerHTML =
       '<div class="portrait">' +
       portraitFor(t) +
       '</div><b>[0 / 0]</b><span>' +
       unitNames[t] +
       '</span><div class="hp-track"><i></i></div>';
-    b.onclick = () => selectType(t, portraitTap.tap(t, performance.now()));
+    b.onclick = () => {
+      const units = state.units.filter((unit) => selected.has(unit.id) && unit.hp > 0);
+      if (units.length && units.every((unit) => unit.team === player && unit.type === t)) {
+        clearSelection();
+        return;
+      }
+      selectType(t, portraitTap.tap(t, performance.now()));
+    };
   });
   $('#focusPortrait').innerHTML = portraitFor('knight');
 }
@@ -183,6 +191,13 @@ function notify(text) {
 function viewportUnits(t) {
   return unitsOfType(state.units, player, t, cameraBounds(ox, oy, scale, viewWidth, viewHeight));
 }
+function clearSelection() {
+  selected.clear();
+  selectedMine = null;
+  portraitTap.reset();
+  updateUI();
+  notify('Sélection vidée');
+}
 function selectType(t, scope = 'all') {
   const groups = viewportUnits(t),
     units = scope === 'all' ? groups.total : groups.visible;
@@ -220,7 +235,7 @@ function updateUI() {
         counts.visible.length +
         ' visibles sur ' +
         us.length +
-        ' au total. Un tap : vue actuelle. Double-tap : toute la carte.',
+        ' au total. Un tap : vue actuelle. Retoucher le type sélectionné : vider la sélection.',
     );
     b.querySelector('.hp-track i').style.width = (max ? (hp / max) * 100 : 0) + '%';
     b.disabled = !us.length;
@@ -374,7 +389,7 @@ $('#pause').onclick = () => {
 };
 $('#help').onclick = () =>
   notify(
-    'Ouvrier + mine à vous : récolter · Bâtiment principal : recruter · Portrait : sélectionner · Glisser : caméra · Tour : 4 s sur place · Base secondaire : 120 or près d’une mine · Bois : −2 PV/s',
+    'Ouvrier + mine à vous : récolter · Bâtiment principal : recruter · Portrait : sélectionner / désélectionner · Appui long dans le vide : désélectionner · Glisser : caméra · Tour : 4 s sur place · Base secondaire : 120 or près d’une mine · Bois : −2 PV/s',
   );
 $('#recruitToggle').onclick = () => {
   selectedProducer = null;
@@ -457,7 +472,14 @@ function world(e) {
 canvas.addEventListener('pointerdown', (e) => {
   if (!running || paused || pointer) return;
   canvas.setPointerCapture(e.pointerId);
-  pointer = { id: e.pointerId, x: e.clientX, y: e.clientY, cx: cameraX, cy: cameraY };
+  pointer = {
+    id: e.pointerId,
+    x: e.clientX,
+    y: e.clientY,
+    cx: cameraX,
+    cy: cameraY,
+    time: performance.now(),
+  };
   drag = false;
 });
 canvas.addEventListener('pointermove', (e) => {
@@ -474,94 +496,61 @@ canvas.addEventListener('pointermove', (e) => {
 canvas.addEventListener('pointercancel', () => (pointer = null));
 canvas.addEventListener('pointerup', (e) => {
   if (!pointer || pointer.id !== e.pointerId) return;
+  const duration = performance.now() - pointer.time;
   pointer = null;
   if (drag) return;
   let p = world(e);
+  p.unitRadius = Math.max(22, 16 / scale);
   if (radial?.isGhost) {
     pickGhostSlot(p);
     return;
   }
-  const emptySlot = (state.slots?.[player] || [])
-    .filter((s) => !s.occupe && Math.hypot(s.x - p.x, s.y - p.y) < 23)
-    .sort((a, b) => Math.hypot(a.x - p.x, a.y - p.y) - Math.hypot(b.x - p.x, b.y - p.y))[0];
-  if (emptySlot) {
-    openRadial(e, { baseId: emptySlot.baseId, slotId: emptySlot.id });
+  if (duration >= 550 && isEmptyTap(state, player, p)) {
+    clearSelection();
     return;
   }
-  const site = state.mines.findIndex(
-    (m, i) =>
-      i >= 2 &&
-      m.site &&
-      Sim.visibleAt(state, player, m.x, m.y) &&
-      Math.hypot(p.x - m.site.x, p.y - m.site.y) < 30,
-  );
-  if (site >= 0) {
-    selectedMine = site;
-    if (state.mines[site].owner !== player && state.mines[site].depot) {
-      notify('Base adverse');
-      return;
-    }
-    openRadial(e, { baseId: state.mines[site].depot ? 'mine_' + site : null, mine: site });
+  const action = resolveTap(state, player, selected, p);
+  if (action.kind === 'radial') {
+    if (action.context.mine !== undefined) selectedMine = action.context.mine;
+    openRadial(e, action.context);
     return;
   }
-  const productionSlot = (state.slots?.[player] || []).find(
-    (s) => s.occupe && Math.hypot(s.x - p.x, s.y - p.y) < 26,
-  );
-  if (productionSlot) {
-    selectedProducer = productionSlot.id;
+  if (action.kind === 'enemyBase') {
+    selectedMine = action.index;
+    notify('Base adverse');
+    return;
+  }
+  if (action.kind === 'production') {
+    selectedProducer = action.id;
     $('#recruitTray').hidden = false;
     $('#buildingsTray').hidden = true;
     updateUI();
     return;
   }
-  let us = state.units
-      .filter((u) => u.team === player)
-      .sort((a, b) => Math.hypot(a.x - p.x, a.y - p.y) - Math.hypot(b.x - p.x, b.y - p.y)),
-    near = us[0];
-  if (near && Math.hypot(near.x - p.x, near.y - p.y) < Math.max(22, 16 / scale)) {
-    selected = new Set([near.id]);
-    playSelectionVoice([near]);
+  if (action.kind === 'select') {
+    selected = new Set([action.id]);
+    playSelectionVoice(state.units.filter((unit) => unit.id === action.id));
     updateUI();
     return;
   }
-  let base = state.bases[player];
-  if (Math.hypot(p.x - base.x, p.y - (base.y - 35)) < 72) {
-    openRadial(e, { baseId: 'main_' + player });
+  if (action.kind === 'gather') {
+    if (net) sendCommand(action);
+    else Sim.gather(state, player, action.ids, action.index);
+    notify('Récolte automatique · Retour à la base pour déposer');
+    updateUI();
     return;
   }
-  let mine = state.mines.findIndex(
-    (m) => Sim.visibleAt(state, player, m.x, m.y) && Math.hypot(m.x - p.x, m.y - p.y) < 55,
-  );
-  if (mine >= 0) {
-    const workers = state.units.filter(
-      (u) => u.team === player && u.type === 'commis' && selected.has(u.id),
-    );
-    if (workers.length && state.mines[mine].owner === player) {
-      if (net) sendCommand({ kind: 'gather', ids: workers.map((u) => u.id), index: mine });
-      else
-        Sim.gather(
-          state,
-          player,
-          workers.map((u) => u.id),
-          mine,
-        );
-      notify('Récolte automatique · Retour à la base pour déposer');
-      updateUI();
-      return;
-    }
-    selectedMine = mine;
+  if (action.kind === 'mine') {
+    selectedMine = action.index;
+    const mine = state.mines[action.index];
     notify(
-      state.mines[mine].name +
-        ' · ' +
-        (state.mines[mine].boost ? 'Rendement ×2 · ' : '') +
-        'Base secondaire : 120 or',
+      mine.name + ' · ' + (mine.boost ? 'Rendement ×2 · ' : '') + 'Base secondaire : 120 or',
     );
+    return;
   }
-  if (selected.size) {
-    let target = [...state.units.filter((u) => u.team !== player), state.bases[1 - player]].find(
-      (u) => Sim.canSee(state, player, u) && Math.hypot(u.x - p.x, u.y - p.y) < (u.base ? 70 : 25),
-    );
-    if (net)
+  if (action.kind === 'move' || action.kind === 'attack') {
+    const target = action.target || null;
+    if (net) {
       sendCommand({
         kind: 'move',
         ids: [...selected],
@@ -569,9 +558,13 @@ canvas.addEventListener('pointerup', (e) => {
         y: p.y,
         target: target ? (target.base ? { base: true } : { id: target.id }) : null,
       });
-    else Sim.order(state, [...selected], p.x, p.y, target || null);
-    let n = Sim.nearest(p.x, p.y);
-    marker = { x: (n % COLS) * CELL + 10, y: Math.floor(n / COLS) * CELL + 10, life: 1 };
+    } else Sim.order(state, [...selected], p.x, p.y, target);
+    const nearest = Sim.nearest(p.x, p.y);
+    marker = {
+      x: (nearest % COLS) * CELL + 10,
+      y: Math.floor(nearest / COLS) * CELL + 10,
+      life: 1,
+    };
   } else notify('Sélectionnez vos unités avec les portraits en bas.');
 });
 mini.addEventListener('pointerdown', (e) => {
