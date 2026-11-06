@@ -43,3 +43,19 @@ assert.equal(tap.tap('commis', 310), 'visible');
 console.log(
   'PASS: camera bounds, edge inclusion, team/type/living filters, pan/zoom counts, 349/350ms taps, alternating portraits, triple tap and reset.',
 );
+
+const { unitsInBox } = await import('../public/game/selection.js');
+assert.deepEqual(unitsInBox(units, 0, { x: 50, y: 100 }, { x: 250, y: 200 }).map((unit) => unit.id), [6]);
+assert.deepEqual(unitsInBox(units.filter((unit) => unit.id !== 6), 0, { x: 250, y: 200 }, { x: 50, y: 100 }).map((unit) => unit.id), [1, 2]);
+assert.deepEqual(unitsInBox(units, 0, { x: 1000, y: 1000 }, { x: 1100, y: 1100 }), []);
+console.log('PASS: box selection prioritizes combat, excludes enemies and dead units, includes edges and supports reversed corners.');
+
+const { boxSelection } = await import('../public/game/selection.js');
+const currentSelection = new Set([1, 6]);
+const emptyBox = unitsInBox(units, 0, { x: 1000, y: 1000 }, { x: 1100, y: 1100 });
+assert.equal(boxSelection(currentSelection, emptyBox), currentSelection);
+assert.deepEqual([...currentSelection], [1, 6]);
+const enemyOnlyBox = unitsInBox(units.filter((unit) => unit.team === 1), 0, { x: 50, y: 100 }, { x: 250, y: 200 });
+assert.equal(boxSelection(currentSelection, enemyOnlyBox), currentSelection);
+assert.deepEqual([...boxSelection(currentSelection, [units[0]])], [1]);
+console.log('PASS: empty and enemy-only boxes preserve selection; nonempty boxes replace it.');

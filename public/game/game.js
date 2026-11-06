@@ -2,7 +2,8 @@
 import { CuistotsAmbience } from './cuistots-ambience.js';
 import { UnitVoices, selectionVoice } from './unit-voices.js';
 import { createRadialMenu } from './radial.js';
-import { cameraBounds, unitsOfType, createPortraitTap } from './selection.js';
+import { cameraBounds, unitsOfType, createPortraitTap, unitsInBox, boxSelection } from './selection.js';
+import { createGestures } from './gestures.js';
 import { resolveTap, isEmptyTap } from './tap.js';
 import { installMobileDisplay } from './mobile-display.js';
 import { initTouchUI } from './mobile.js';
@@ -72,8 +73,9 @@ function playSelectionVoice(units) {
 let radial = null,
   buildGhost = null;
 let touchUI = null;
-let pointer = null,
-  drag = false;
+const gestures = createGestures();
+const fieldPointers = new Set();
+let selectionBox = null;
 let viewWidth = canvas.clientWidth,
   viewHeight = canvas.clientHeight;
 let unitNames = {};
@@ -178,9 +180,12 @@ installMobileDisplay({
   onResize: resize,
   onCancel: () => {
     touchUI?.stop();
-    if (pointer && canvas.hasPointerCapture(pointer.id)) canvas.releasePointerCapture(pointer.id);
-    pointer = null;
-    drag = false;
+    gestures.reset();
+    selectionBox = null;
+    for (const id of fieldPointers) {
+      if (canvas.hasPointerCapture(id)) canvas.releasePointerCapture(id);
+    }
+    fieldPointers.clear();
     portraitTap.reset();
   },
 });
@@ -343,7 +348,7 @@ $('#start').onclick = () => {
   $('#recruitTray').hidden = true;
   $('#buildingsTray').hidden = true;
   updateUI();
-  notify('Explorez avec vos unités. Glissez pour déplacer la carte.');
+  notify('Explorez avec vos unités. Glissez : sélectionner · 2 doigts : caméra et zoom');
 };
 $('#all').onclick = () => {
   const units = state.units.filter((u) => u.team === player);
@@ -389,7 +394,7 @@ $('#pause').onclick = () => {
 };
 $('#help').onclick = () =>
   notify(
-    'Ouvrier + mine à vous : récolter · Bâtiment principal : recruter · Portrait : sélectionner / désélectionner · Appui long dans le vide : désélectionner · Glisser : caméra · Tour : 4 s sur place · Base secondaire : 120 or près d’une mine · Bois : −2 PV/s',
+    'Ouvrier + mine à vous : récolter · Bâtiment principal : recruter · Portrait : sélectionner / désélectionner · Appui long dans le vide : désélectionner · Glissez : sélectionner · 2 doigts : caméra et zoom · Tour : 4 s sur place · Base secondaire : 120 or près d’une mine · Bois : −2 PV/s',
   );
 $('#recruitToggle').onclick = () => {
   selectedProducer = null;
@@ -467,38 +472,73 @@ $('#fullscreen').onclick = async () => {
   }
 };
 function world(e) {
-  return { x: (e.clientX - ox) / scale, y: (e.clientY - oy) / scale };
-}
-canvas.addEventListener('pointerdown', (e) => {
-  if (!running || paused || pointer) return;
-  canvas.setPointerCapture(e.pointerId);
-  pointer = {
-    id: e.pointerId,
-    x: e.clientX,
-    y: e.clientY,
-    cx: cameraX,
-    cy: cameraY,
-    time: performance.now(),
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: (e.clientX - rect.left - ox) / scale,
+    y: (e.clientY - rect.top - oy) / scale,
   };
-  drag = false;
-});
-canvas.addEventListener('pointermove', (e) => {
-  if (!pointer || pointer.id !== e.pointerId) return;
-  let dx = e.clientX - pointer.x,
-    dy = e.clientY - pointer.y;
-  if (Math.hypot(dx, dy) > 7) {
-    drag = true;
-    cameraX = pointer.cx - dx / scale;
-    cameraY = pointer.cy - dy / scale;
+}
+function handleFieldPointer(e, type) {
+  if (type === 'down') {
+    if (!running || paused) return;
+    fieldPointers.add(e.pointerId);
+    canvas.setPointerCapture(e.pointerId);
+  } else if (!fieldPointers.has(e.pointerId)) return;
+  const rect = canvas.getBoundingClientRect();
+  const action = gestures.update({
+    type,
+    id: e.pointerId,
+    pointerType: e.pointerType,
+    x: e.clientX - rect.left,
+    y: e.clientY - rect.top,
+    time: performance.now(),
+  });
+  if (type === 'up' || type === 'cancel') fieldPointers.delete(e.pointerId);
+  if (!action) return;
+  if (action.kind === 'camera') {
+    selectionBox = null;
+    if (!action.from) return;
+    const anchorX = (action.from.x - ox) / scale;
+    const anchorY = (action.from.y - oy) / scale;
+    const ratio = action.from.distance > 0 ? action.to.distance / action.from.distance : 1;
+    zoom = Math.max(1, Math.min(3.5, zoom * ratio));
     layout();
+    cameraX = anchorX - (action.to.x - viewWidth / 2) / scale;
+    cameraY = anchorY - (action.to.y - viewHeight / 2) / scale;
+    layout();
+    return;
   }
-});
-canvas.addEventListener('pointercancel', () => (pointer = null));
-canvas.addEventListener('pointerup', (e) => {
-  if (!pointer || pointer.id !== e.pointerId) return;
-  const duration = performance.now() - pointer.time;
-  pointer = null;
-  if (drag) return;
+  if (action.kind === 'select-box') {
+    selectionBox = action;
+    if (action.final) {
+      const start = { x: (action.start.x - ox) / scale, y: (action.start.y - oy) / scale };
+      const end = { x: (action.end.x - ox) / scale, y: (action.end.y - oy) / scale };
+      const units = unitsInBox(state.units, player, start, end);
+      selectionBox = null;
+      const nextSelection = boxSelection(selected, units);
+      if (nextSelection === selected) return;
+      selected = nextSelection;
+      selectedMine = null;
+      portraitTap.reset();
+      playSelectionVoice(units);
+      selectionBox = null;
+      updateUI();
+    }
+    return;
+  }
+  selectionBox = null;
+  handleFieldTap(e, action.duration);
+}
+for (const [event, type] of Object.entries({
+  pointerdown: 'down',
+  pointermove: 'move',
+  pointerup: 'up',
+  pointercancel: 'cancel',
+  lostpointercapture: 'cancel',
+})) {
+  canvas.addEventListener(event, (e) => handleFieldPointer(e, type));
+}
+function handleFieldTap(e, duration) {
   let p = world(e);
   p.unitRadius = Math.max(22, 16 / scale);
   if (radial?.isGhost) {
@@ -566,7 +606,7 @@ canvas.addEventListener('pointerup', (e) => {
       life: 1,
     };
   } else notify('Sélectionnez vos unités avec les portraits en bas.');
-});
+}
 mini.addEventListener('pointerdown', (e) => {
   let r = mini.getBoundingClientRect();
   cameraX = ((e.clientX - r.left) / r.width) * W;
@@ -833,6 +873,30 @@ function draw() {
   drawFog();
   drawBuildGhost();
   drawMini();
+  if (selectionBox) {
+    ctx.save();
+    ctx.setTransform(canvas.width / viewWidth, 0, 0, canvas.height / viewHeight, 0, 0);
+    const { start, end } = selectionBox;
+    ctx.fillStyle = '#8ef1ce22';
+    ctx.strokeStyle = '#8ef1ce';
+    ctx.lineWidth = 2;
+    ctx.fillRect(start.x, start.y, end.x - start.x, end.y - start.y);
+    ctx.strokeRect(start.x, start.y, end.x - start.x, end.y - start.y);
+    const worldStart = { x: (start.x - ox) / scale, y: (start.y - oy) / scale };
+    const worldEnd = { x: (end.x - ox) / scale, y: (end.y - oy) / scale };
+    const count = String(unitsInBox(state.units, player, worldStart, worldEnd).length);
+    ctx.font = 'bold 14px sans-serif';
+    const badgeWidth = ctx.measureText(count).width + 16;
+    const badgeX = Math.max(0, Math.min(viewWidth - badgeWidth, Math.max(start.x, end.x) - badgeWidth));
+    const badgeY = Math.max(0, Math.min(viewHeight - 24, Math.min(start.y, end.y)));
+    ctx.fillStyle = '#183c32';
+    ctx.fillRect(badgeX, badgeY, badgeWidth, 24);
+    ctx.fillStyle = '#8ef1ce';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(count, badgeX + badgeWidth / 2, badgeY + 12);
+    ctx.restore();
+  }
 }
 setupPortraits();
 updateUI();
