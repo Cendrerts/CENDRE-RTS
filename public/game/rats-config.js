@@ -1,0 +1,7 @@
+// User stats: speed and range converted to world pixels at 20 px per unit.
+export const RatsGout={nomFaction:'Rats-Goût',styleDeJeu:'Horde, nombre, vitesse de production accrue',themeVisuel:'Déchets, rouille, ferraille et vert toxique',unites:{
+commis:{id:'rat_essuyeur',tier:1,name:'Rat-Essuyeur',hp:45,speed:90,damage:2,range:24,production:5,cost:40,rate:1.3,vision:150},
+knight:{id:'rat_eboueur',tier:2,name:'Rat-Éboueur',hp:110,speed:64,damage:9,range:32,production:10,cost:60,rate:1,vision:155},
+archer:{id:'rat_balance_dechets',tier:3,name:'Rat-Balance-Déchets',hp:60,speed:72,damage:11,range:120,production:12,cost:75,rate:1.1,vision:180},
+mage:{id:'chaman_poubelle',tier:4,name:'Chaman de la Poubelle',hp:80,speed:56,damage:18,range:100,production:22,cost:100,rate:1.7,vision:170,splash:45}},
+batiments:[{tier:1,id:'grande_decharge',nom:'Grande Décharge',description:'Bâtiment principal, tour de bidons toxiques.'},{tier:2,id:'niche_ordures',nom:'Niche à Ordures',description:'Caserne des Rat-Éboueurs.'},{tier:3,id:'atelier_ferraille',nom:'Atelier de Ferraille',description:'Production des Rat-Balance-Déchets.'},{tier:4,id:'autel_peste',nom:'Autel de la Peste',description:'Invocation des Chamans de la Poubelle.'}]};

@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import { matchup, scenarios } from '../scripts/balance.mjs';
+import { CendreSim as S } from '../public/game/sim.js';
+assert.equal(S.stats('knight', 1).damage, 9);
+const a = {hp: 200, damage: 12, intervalSeconds: 1}, b = {hp: 110, damage: 9, intervalSeconds: 1};
+const forward = matchup(a, 1, b, 2), reverse = matchup(b, 2, a, 1);
+assert.deepEqual(forward.A, reverse.B); assert.deepEqual(forward.B, reverse.A); assert.equal(forward.time, reverse.time);
+const lethal = {hp: 10, damage: 10, intervalSeconds: .37};
+assert.equal(matchup(lethal, 1, lethal, 1).outcome, 'mutual');
+const fast = {hp: 10, damage: 1, intervalSeconds: .37}, slow = {hp: 3, damage: 0, intervalSeconds: 1};
+assert.equal(matchup(fast, 1, slow, 1).time, 1.11);
+assert.equal(matchup({...fast,damage:0}, 1, slow, 1).outcome, 'timeout');
+assert.equal(scenarios()[0].A.hp, 110);
+console.log('PASS: simultaneous lethal attacks, swap symmetry, non-grid cadence, timeout and faction config.');

@@ -1,0 +1,2 @@
+export const metadata={title:"CENDRE — RTS multijoueur",description:"Affrontez un ami sur les Terres Brûlées."};
+export default function RootLayout({children}:{children:React.ReactNode}){return <html lang="fr"><body>{children}</body></html>}

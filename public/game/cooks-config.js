@@ -1,0 +1,7 @@
+// Speeds and ranges converted to world pixels at 20 px per unit.
+export const BrigadeCuisine={nomFaction:'Brigade de Cuisine',styleDeJeu:'Unités d’élite, résistance élevée, dégâts lourds',unites:{
+commis:{id:'commis',tier:1,name:'Commis',hp:50,speed:90,damage:2,range:24,production:5,cost:40,rate:1.3,vision:150},
+knight:{id:'garde_manger',tier:2,name:'Garde-Manger',hp:200,speed:60,damage:12,range:32,production:20,cost:60,rate:1,vision:155},
+archer:{id:'boucher_tireur',tier:3,name:'Boucher-Tireur',hp:90,speed:64,damage:22,range:120,production:24,cost:75,rate:1.1,vision:180},
+mage:{id:'chef_de_brigade',tier:4,name:'Chef de Brigade',hp:150,speed:50,damage:35,range:100,production:45,cost:100,rate:1.7,vision:170,splash:45}
+}};
