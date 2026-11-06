@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { CendreSim as Sim } from '../public/game/sim.js';
-import { resolveTap, isEmptyTap } from '../public/game/tap.js';
+import { resolveTap, isEmptyTap, unitHitbox, mineHitbox } from '../public/game/tap.js';
 
 for (const player of [0, 1]) {
   const state = Sim.create();
@@ -68,7 +68,8 @@ for (const player of [0, 1]) {
 }
 console.log('PASS: tap priorities, both teams, fog, construction without selection, empty long-press targets and purity.');
 
-for (const scale of [1, 2, 3.5]) {
+const baseScale = Math.max(844 / 1680, 390 / 940);
+for (const scale of [1, 2, 3.5, ...[1, 2.6, 3.5].map((zoom) => baseScale * zoom)]) {
   const state = Sim.create();
   state.visible[0].fill(1);
   const worker = { id: 100, team: 0, type: 'commis', hp: 50, x: 600, y: 500 };
@@ -79,27 +80,42 @@ for (const scale of [1, 2, 3.5]) {
   const workers = new Set([worker.id]);
   const army = new Set([soldier.id]);
   const mine = state.mines[0];
-  mine.x = 400;
-  mine.y = 700;
+  mine.x = 600;
+  mine.y = 800;
+  // Keep the radius and building-edge checks independent of neighboring slots.
+  state.slots[0] = [];
+  const workerBox = unitHitbox(worker);
+  const workerCenterY = workerBox.y + workerBox.height / 2;
+  const mineBox = mineHitbox(mine);
+  const mineCenterY = mineBox.y + mineBox.height / 2;
+  assert.deepEqual(resolveTap(state, 0, new Set(), { x: soldier.x, y: soldier.y - 36 }, scale),
+    { kind: 'select', id: soldier.id });
+  assert.deepEqual(resolveTap(state, 0, workers, { x: mine.x, y: mine.y - 28 }, scale),
+    { kind: 'gather', ids: [worker.id], index: 0 });
   let feedback = null;
-  assert.equal(resolveTap(state, 0, workers, { x: mine.x + 30 / scale, y: mine.y }, scale,
+  assert.equal(resolveTap(state, 0, workers, { x: mine.x + 30 / scale, y: mineCenterY }, scale,
     (target) => { feedback = target; }).kind, 'gather');
   assert.equal(feedback.target, mine, 'feedback follows the resolved target');
-  assert.equal(resolveTap(state, 0, new Set(), { x: worker.x, y: worker.y + 24 / scale }, scale).id, worker.id);
+  assert.equal(resolveTap(state, 0, new Set(), { x: worker.x, y: workerCenterY + 24 / scale }, scale).id, worker.id);
   assert.equal(resolveTap(state, 0, new Set(), { x: soldier.x + 17 / scale, y: soldier.y }, scale).id, neighbor.id);
   const base = state.bases[0];
   assert.deepEqual(resolveTap(state, 0, new Set(), { x: base.x, y: base.y - 117 }, scale),
     { kind: 'radial', context: { baseId: 'main_0' } });
-  assert.equal(resolveTap(state, 0, army, { x: enemy.x + 25 / scale, y: enemy.y }, scale).kind, 'attack');
+  assert.equal(resolveTap(state, 0, army, { x: enemy.x + 25 / scale, y: unitHitbox(enemy).y + unitHitbox(enemy).height / 2 }, scale).kind, 'attack');
   assert.equal(resolveTap(state, 0, army, { x: 1200, y: 600 }, scale).kind, 'move');
-  assert.equal(isEmptyTap(state, 0, { x: worker.x, y: worker.y + 24 / scale }, scale), false);
+  assert.equal(isEmptyTap(state, 0, { x: worker.x, y: workerCenterY + 24 / scale }, scale), false);
   // A distance advantage greater than 6 px beats the workers' mine priority.
   worker.x = mine.x + 20 / scale;
-  worker.y = mine.y;
-  assert.equal(resolveTap(state, 0, workers, worker, scale).kind, 'select');
+  worker.y = mineCenterY - (workerCenterY - 500);
+  const workerPoint = { x: worker.x, y: mineCenterY };
+  assert.equal(resolveTap(state, 0, workers, workerPoint, scale).kind, 'select');
   worker.x = mine.x + 5 / scale;
-  assert.equal(resolveTap(state, 0, workers, worker, scale).kind, 'gather');
+  workerPoint.x = worker.x;
+  assert.equal(resolveTap(state, 0, workers, workerPoint, scale).kind, 'gather');
+  mine.boost = true;
+  assert.deepEqual(resolveTap(state, 0, workers, { x: mine.x, y: mine.y - 42 }, scale),
+    { kind: 'gather', ids: [worker.id], index: 0 });
   state.visible[0].fill(0);
   assert.equal(resolveTap(state, 0, army, enemy, scale).kind, 'move');
 }
-console.log('PASS: screen pixel hit zones, nearest target, 6 px priorities and snapping at scales 1, 2 and 3.5.');
+console.log('PASS: screen pixel hit zones, nearest target, 6 px priorities and snapping at game zooms 1, 2.6 and 3.5.');

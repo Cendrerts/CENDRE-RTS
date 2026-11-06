@@ -7,6 +7,17 @@ export function buildingBounds(target, size = 1, main = false, team = target.tea
   return { x: target.x - 34 * size, y: target.y - top * size, width: 68 * size, height: (top + 18) * size };
 }
 
+// Bounds match the sprite dimensions in drawCook and the crystals in drawMine.
+export function unitHitbox(unit) {
+  const size = unit.type === 'commis' ? 34 : unit.type === 'archer' ? 52 : unit.type === 'mage' ? 49 : 46;
+  return { x: unit.x - size / 2, y: unit.y - size + 5, width: size, height: size * 1.125 };
+}
+
+export function mineHitbox(mine) {
+  const size = mine.boost ? 2.8 : 2;
+  return { x: mine.x - 6.5 * size, y: mine.y - 15 * size, width: 13 * size, height: 17 * size };
+}
+
 // Resolves input intent only; commands and UI effects remain with the caller.
 export function resolveTap(state, player, selection, point, scale = 1, onTarget = null) {
   const selected = state.units.filter(
@@ -18,19 +29,23 @@ export function resolveTap(state, player, selection, point, scale = 1, onTarget 
   const priorities = workers.length
     ? ['mine', 'unit', 'enemy', 'building', 'slot']
     : combat ? ['enemy', 'unit', 'building', 'mine', 'slot'] : ['unit', 'enemy', 'building', 'slot', 'mine'];
-  function add(target, category, radius, action, bounds = null) {
-    const distance = Math.hypot(point.x - target.x, point.y - target.y) * scale;
-    const margin = 10 / scale;
-    const hit = bounds
+  function add(target, category, radius, action, bounds = null, sprite = false) {
+    const center = sprite
+      ? { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 }
+      : target;
+    const distance = Math.hypot(point.x - center.x, point.y - center.y) * scale;
+    const margin = sprite ? 0 : 10 / scale;
+    const insideBounds = bounds
       ? point.x >= bounds.x - margin && point.x <= bounds.x + bounds.width + margin &&
         point.y >= bounds.y - margin && point.y <= bounds.y + bounds.height + margin
       : distance <= radius;
-    if (hit) candidates.push({ target, category, distance, action, bounds, radius });
+    const hit = insideBounds || (sprite && distance <= radius);
+    if (hit) candidates.push({ target, category, distance, action, bounds, radius, center, sprite });
   }
   for (const unit of state.units) {
     if (unit.hp <= 0 || (unit.team !== player && !Sim.canSee(state, player, unit))) continue;
-    if (unit.team === player) add(unit, 'unit', 26, { kind: 'select', id: unit.id });
-    else add(unit, combat && !workers.length ? 'enemy' : 'unit', 26, selected.length ? { kind: 'attack', target: unit } : { kind: 'none' });
+    if (unit.team === player) add(unit, 'unit', 26, { kind: 'select', id: unit.id }, unitHitbox(unit), true);
+    else add(unit, combat && !workers.length ? 'enemy' : 'unit', 26, selected.length ? { kind: 'attack', target: unit } : { kind: 'none' }, unitHitbox(unit), true);
   }
   for (const base of state.bases) {
     if (base.hp <= 0 || !Sim.canSee(state, player, base)) continue;
@@ -52,7 +67,7 @@ export function resolveTap(state, player, selection, point, scale = 1, onTarget 
     const action = workers.length && mine.owner === player
       ? { kind: 'gather', ids: workers.map((unit) => unit.id), index }
       : { kind: selected.length ? 'move' : 'mine', index };
-    add(mine, 'mine', 34, action);
+    add(mine, 'mine', 34, action, mineHitbox(mine), true);
     if (index < 2 || !mine.site) return;
     const siteAction = mine.owner !== player && mine.depot
       ? { kind: 'enemyBase', index }

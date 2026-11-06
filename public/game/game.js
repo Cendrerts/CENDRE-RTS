@@ -919,8 +919,12 @@ function draw() {
       ctx.strokeStyle = '#fff0a6';
       ctx.globalAlpha = Math.sin(Math.PI * elapsed / 280);
       ctx.lineWidth = 3 / scale;
-      const { target, bounds, radius } = tapFlash;
-      if (bounds) ctx.strokeRect(bounds.x, bounds.y, bounds.width, bounds.height);
+      const { target, bounds, radius, center, sprite } = tapFlash;
+      if (sprite) {
+        const halfWidth = Math.max(bounds.width / 2, radius / scale);
+        const halfHeight = Math.max(bounds.height / 2, radius / scale);
+        ctx.strokeRect(center.x - halfWidth, center.y - halfHeight, halfWidth * 2, halfHeight * 2);
+      } else if (bounds) ctx.strokeRect(bounds.x, bounds.y, bounds.width, bounds.height);
       else {
         ctx.beginPath();
         ctx.arc(target.x, target.y, radius / scale, 0, Math.PI * 2);
