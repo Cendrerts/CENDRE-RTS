@@ -31,7 +31,12 @@ export function resolveTap(state, player, selection, point) {
     (item) => Sim.visibleAt(state, player, item.x, item.y) && distance(point, item) < 55,
   );
   if (selected.length) {
-    if (near) return { kind: 'select', id: near.id };
+    if (near) {
+      if (selected.length > 1 && selection.has(near.id)) {
+        return { kind: 'move' };
+      }
+      return { kind: 'select', id: near.id };
+    }
     const target = enemyTarget(state, player, point);
     if (target) return { kind: 'attack', target };
     const workers = selected.filter((unit) => unit.type === 'commis');
