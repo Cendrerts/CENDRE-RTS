@@ -51,17 +51,55 @@ for (const player of [0, 1]) {
   assert.equal(resolveTap(state, player, army, site).kind, 'radial');
   assert.equal(resolveTap(state, player, empty, site).kind, 'radial');
 
-  // Friendly selection and enemy attacks beat harvesting when their hit areas overlap.
+  // Workers prioritize their mine when distances are equal.
   worker.x = mine.x;
   worker.y = mine.y;
-  assert.equal(resolveTap(state, player, workers, mine).kind, 'select');
+  assert.equal(resolveTap(state, player, workers, mine).kind, 'gather');
   worker.x = 640;
   worker.y = 500;
   enemy.x = mine.x;
   enemy.y = mine.y;
-  assert.equal(resolveTap(state, player, workers, mine).kind, 'attack');
+  assert.equal(resolveTap(state, player, workers, mine).kind, 'gather');
+  enemy.x = 1000;
+  enemy.y = 500;
   state.visible[player].fill(0);
   assert.equal(resolveTap(state, player, army, enemy).kind, 'move');
   assert.equal(resolveTap(state, player, army, state.bases[1 - player]).kind, 'move');
 }
 console.log('PASS: tap priorities, both teams, fog, construction without selection, empty long-press targets and purity.');
+
+for (const scale of [1, 2, 3.5]) {
+  const state = Sim.create();
+  state.visible[0].fill(1);
+  const worker = { id: 100, team: 0, type: 'commis', hp: 50, x: 600, y: 500 };
+  const soldier = { id: 101, team: 0, type: 'knight', hp: 100, x: 800, y: 500 };
+  const neighbor = { ...soldier, id: 102, x: soldier.x + 20 / scale };
+  const enemy = { ...soldier, id: 103, team: 1, x: 1000 };
+  state.units = [worker, soldier, neighbor, enemy];
+  const workers = new Set([worker.id]);
+  const army = new Set([soldier.id]);
+  const mine = state.mines[0];
+  mine.x = 400;
+  mine.y = 700;
+  let feedback = null;
+  assert.equal(resolveTap(state, 0, workers, { x: mine.x + 30 / scale, y: mine.y }, scale,
+    (target) => { feedback = target; }).kind, 'gather');
+  assert.equal(feedback.target, mine, 'feedback follows the resolved target');
+  assert.equal(resolveTap(state, 0, new Set(), { x: worker.x, y: worker.y + 24 / scale }, scale).id, worker.id);
+  assert.equal(resolveTap(state, 0, new Set(), { x: soldier.x + 17 / scale, y: soldier.y }, scale).id, neighbor.id);
+  const base = state.bases[0];
+  assert.deepEqual(resolveTap(state, 0, new Set(), { x: base.x, y: base.y - 117 }, scale),
+    { kind: 'radial', context: { baseId: 'main_0' } });
+  assert.equal(resolveTap(state, 0, army, { x: enemy.x + 25 / scale, y: enemy.y }, scale).kind, 'attack');
+  assert.equal(resolveTap(state, 0, army, { x: 1200, y: 600 }, scale).kind, 'move');
+  assert.equal(isEmptyTap(state, 0, { x: worker.x, y: worker.y + 24 / scale }, scale), false);
+  // A distance advantage greater than 6 px beats the workers' mine priority.
+  worker.x = mine.x + 20 / scale;
+  worker.y = mine.y;
+  assert.equal(resolveTap(state, 0, workers, worker, scale).kind, 'select');
+  worker.x = mine.x + 5 / scale;
+  assert.equal(resolveTap(state, 0, workers, worker, scale).kind, 'gather');
+  state.visible[0].fill(0);
+  assert.equal(resolveTap(state, 0, army, enemy, scale).kind, 'move');
+}
+console.log('PASS: screen pixel hit zones, nearest target, 6 px priorities and snapping at scales 1, 2 and 3.5.');
