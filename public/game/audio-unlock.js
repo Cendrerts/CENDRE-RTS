@@ -20,6 +20,11 @@ export class SharedAudio {
   }
 
   resume(gesture = false) {
+    if (gesture) {
+      try {
+        if (this.environment.navigator?.audioSession) this.environment.navigator.audioSession.type = 'playback';
+      } catch {}
+    }
     try {
       const context = gesture ? this.getContext() : this.context;
       if (!context || context.state === 'closed') return Promise.resolve(false);

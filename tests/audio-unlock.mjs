@@ -45,14 +45,18 @@ class FakeAudioContext extends Events {
 const document = new Events();
 const window = new Events();
 const button = new Events();
-const audio = new SharedAudio({ webkitAudioContext: FakeAudioContext });
+const audioSession = { type: 'auto' };
+const audio = new SharedAudio({ webkitAudioContext: FakeAudioContext, navigator: { audioSession } });
 bindAudioUnlock({ audio, document, window, button });
 assert.equal(button.hidden, false);
 window.dispatchEvent(new Event('pageshow'));
 assert.equal(created, 0, 'restoring before a gesture must not create audio');
+assert.equal(audioSession.type, 'auto');
 for (const type of ['touchend', 'pointerup']) {
+  audioSession.type = 'auto';
   inGesture = true;
   document.dispatchEvent(new Event(type));
+  assert.equal(audioSession.type, 'playback');
   inGesture = false;
   await new Promise(setImmediate);
 }
