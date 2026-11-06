@@ -1,3 +1,4 @@
+import { bindAudioUnlock } from './audio-unlock.js';
 import { minimapToWorld, clampCamera, attackDirection, groupAttackAlerts } from './camera.js';
 'use strict';
 import { CuistotsAmbience } from './cuistots-ambience.js';
@@ -85,8 +86,14 @@ function unlockAmbience() {
     console.error(error);
   }
 }
-document.addEventListener('pointerdown', unlockAmbience);
-document.addEventListener('keydown', unlockAmbience);
+const audioButton = document.createElement('button');
+audioButton.id = 'audioUnlock';
+audioButton.textContent = '🔇';
+audioButton.setAttribute('aria-label', 'Activer le son');
+audioButton.style.minWidth = '44px';
+audioButton.style.minHeight = '44px';
+document.querySelector('header').append(audioButton);
+bindAudioUnlock({ document, window, button: audioButton, onActive: unlockAmbience });
 document.addEventListener('visibilitychange', updateAmbience);
 addEventListener('pagehide', () => ambience?.updateCamera({ x: cameraX, y: cameraY }, false));
 function playSelectionVoice(units) {

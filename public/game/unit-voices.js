@@ -1,5 +1,5 @@
 // These are HTTP asset URLs, not paths to the player's desktop.
-// Convert commis_1.aif to MP3 before placing the files in assets/voices/.
+import { sharedAudio } from './audio-unlock.js';
 export const UNIT_VOICE_FILES = Object.freeze({
   commis_unit: '/game/assets/voices/commis_1.mp3',
   chef_de_brigade: '/game/assets/voices/chef_de_brigade1.mp3',
@@ -30,9 +30,8 @@ export class UnitVoices {
   initialize() {
     if (this.disposed) throw new Error('Audio disposed.');
     if (this.context) return;
-    const Context = globalThis.AudioContext || globalThis.webkitAudioContext;
-    if (!Context) throw new Error('Web Audio indisponible.');
-    this.context = new Context();
+    this.context = sharedAudio.getContext();
+    if (!this.context) throw new Error('Web Audio indisponible.');
     this.output = this.context.createGain();
     this.output.gain.value = this.volume;
     this.output.connect(this.context.destination);
@@ -120,7 +119,7 @@ export class UnitVoices {
     this.disposed = true;
     this.reset();
     this.buffers.clear();
-    if (this.context && this.context.state !== 'closed') await this.context.close();
+    this.output?.disconnect?.();
   }
 }
 
