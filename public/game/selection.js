@@ -27,3 +27,13 @@ export function createPortraitTap() {
     },
   };
 }
+
+export function unitsInBox(units, team, start, end) {
+  const inside = units.filter((unit) =>
+    unit.team === team && unit.hp > 0 &&
+    unit.x >= Math.min(start.x, end.x) && unit.x <= Math.max(start.x, end.x) &&
+    unit.y >= Math.min(start.y, end.y) && unit.y <= Math.max(start.y, end.y),
+  );
+  const combat = inside.filter((unit) => unit.type !== 'commis');
+  return combat.length ? combat : inside;
+}
