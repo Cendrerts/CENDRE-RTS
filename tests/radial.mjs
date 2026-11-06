@@ -14,14 +14,14 @@ for (const team of [0, 1]) {
     target = slots[5],
     type = S.BUILDINGS[team][0].id;
   // Merely choosing the intended slot has no mutation or economic effect.
-  const gold = s.gold[team],
+  const rubies = s.rubies[team],
     before = pack(s);
   const ghost = { type, slotId: target.id, baseId: target.baseId };
   assert.equal(pack(s), before);
   command(s, team, { kind: 'construct', ...ghost });
   assert(slots[5].occupe);
   assert(!slots[0].occupe);
-  assert.equal(s.gold[team], gold - S.BUILDINGS[team][0].cost);
+  assert.equal(s.rubies[team], rubies - S.BUILDINGS[team][0].cost);
   assert.throws(() => command(s, team, { kind: 'construct', ...ghost }));
   assert(!slots[0].occupe);
   assert.throws(() =>

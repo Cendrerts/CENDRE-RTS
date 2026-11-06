@@ -6,7 +6,7 @@ const advance = (s, t) => {
 };
 for (let team = 0; team < 2; team++) {
   const s = S.create();
-  s.gold[team] = 9999;
+  s.rubies[team] = 9999;
   assert.equal(s.slots[team].length, 8);
   for (const type of ['knight', 'archer', 'mage']) {
     assert(!S.recruit(s, type, team));
@@ -40,7 +40,7 @@ for (let team = 0; team < 2; team++) {
 }
 {
   const s = S.create();
-  s.gold[0] = 9999;
+  s.rubies[0] = 9999;
   const u = s.units[0],
     m = s.mines[2];
   u.x = m.x;
@@ -58,19 +58,19 @@ for (let team = 0; team < 2; team++) {
   assert(Math.hypot(worker.x - m.site.x, worker.y - m.site.y) < 60);
   assert.equal(worker.harvest.mine, 2);
   // Capturing removes the old owner's structures and cancels/refunds their jobs.
-  const before = s.gold[0];
+  const before = s.rubies[0];
   m.owner = 1;
   S.tick(s, 0.01);
   assert.equal(S.producers(s, 0, 'archer').length, 0);
   assert.equal(s.queues[0].length, 0);
-  assert.equal(s.gold[0], before + S.stats('archer', 0).cost);
+  assert.equal(s.rubies[0], before + S.stats('archer', 0).cost);
   assert.equal(s.slots[1].filter((p) => p.baseId === 'mine_2').length, 8);
   assert(s.slots[1].filter((p) => p.baseId === 'mine_2').every((p) => !p.occupe));
   assert(!S.construct(s, 0, S.BUILDINGS[0][0].id, 'mine_2'));
 }
 {
   const s = S.create();
-  s.gold[0] = 99999;
+  s.rubies[0] = 99999;
   S.construct(s, 0, S.BUILDINGS[0][0].id);
   const p = S.producers(s, 0, 'knight')[0];
   for (let i = 0; i < 8; i++) assert(S.recruit(s, 'knight', 0, p.id));

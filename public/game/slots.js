@@ -63,13 +63,13 @@ export function ensureSlots(s, place = (x, y) => ({ x, y })) {
 }
 export function construct(s, team, type, baseId, slotId = null) {
   const cfg = BUILDINGS[team]?.find((b) => b.id === type);
-  if (s.winner !== null || !cfg || !Number.isFinite(s.gold?.[team]) || s.gold[team] < cfg.cost)
+  if (s.winner !== null || !cfg || !Number.isFinite(s.rubies?.[team]) || s.rubies[team] < cfg.cost)
     return false;
   const slot = s.slots[team].find(
     (p) => !p.occupe && (!baseId || p.baseId === baseId) && (!slotId || p.id === slotId),
   );
   if (!slot) return false;
-  s.gold[team] -= cfg.cost;
+  s.rubies[team] -= cfg.cost;
   slot.occupe = true;
   slot.batiment = { type, x: slot.x, y: slot.y, niveau: 1 };
   return true;
