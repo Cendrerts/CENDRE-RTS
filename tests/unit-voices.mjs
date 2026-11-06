@@ -71,3 +71,11 @@ assert.equal(await v.select(a), false);
 console.log(
   'PASS: cooldown, caching, pitch, faction mapping, pending spam, reset during load, failed download and disposal.',
 );
+
+const orders = new UnitVoices();
+globalThis.fetch = async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(0) });
+assert(await orders.acknowledge({ instanceId: 1, unitType: 'commis_unit' }));
+assert.equal(await orders.acknowledge({ instanceId: 2, unitType: 'commis_unit' }), false);
+assert(await orders.acknowledge({ instanceId: 3, unitType: 'chef_de_brigade' }));
+orders.lastPlayed.set('order:commis_unit', performance.now() - 1501);
+assert(await orders.acknowledge({ unitType: 'commis_unit' }));
