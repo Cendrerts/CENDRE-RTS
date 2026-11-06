@@ -104,7 +104,13 @@ export class Match {
     if (!this.room) return;
     const now = this.now();
     if (now - this.room.created > 7200000) this.room.cancelled = true;
-    // A live accepted socket keeps its participant present, without requiring commands.
+    for (const socket of this.sockets()) {
+      const attachment = socket.deserializeAttachment();
+      const player = this.room.players.find((entry) => entry.team === attachment.team);
+      if (now - (attachment.lastMessageAt ?? player.seen) >= 6000) {
+        this.webSocketClose(socket);
+      }
+    }
     for (const player of this.room.players) {
       if (this.sockets(player.team).length) {
         player.seen = now;
@@ -217,7 +223,9 @@ export class Match {
   }
 
   webSocketMessage(socket, raw) {
-    if (socket.deserializeAttachment().closed) return;
+    const receivedAttachment = socket.deserializeAttachment();
+    if (receivedAttachment.closed) return;
+    socket.serializeAttachment({ ...receivedAttachment, lastMessageAt: this.now() });
     try {
       if (typeof raw !== 'string' || raw.length > 12000) throw new MatchError('Message incorrect.');
       const message = JSON.parse(raw);
@@ -230,7 +238,7 @@ export class Match {
             }
             const session = await this.authenticate(new URL(attachment.url), message.token);
             if (socket.deserializeAttachment().closed) return;
-            socket.serializeAttachment({ team: session.team, closed: false });
+            socket.serializeAttachment({ team: session.team, closed: false, lastMessageAt: this.now() });
             for (const previous of this.sockets(session.team)) {
               if (previous !== socket) {
                 previous.serializeAttachment({ team: session.team, closed: true });
@@ -289,8 +297,8 @@ export class Match {
     socket.close(1000, 'Déconnexion');
     if (attachment.team === undefined) return;
     const player = this.room.players.find((entry) => entry.team === attachment.team);
-    player.seen = this.now();
-    player.disconnectedAt = this.now();
+    player.seen = attachment.lastMessageAt ?? this.now();
+    player.disconnectedAt = player.seen;
     for (const peer of this.sockets()) this.snapshot(peer);
     this.startTimer();
     this.ctx.waitUntil(this.save());

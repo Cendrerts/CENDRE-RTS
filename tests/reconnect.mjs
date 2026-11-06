@@ -93,12 +93,18 @@ async function setup() {
   const second = await match.authenticate(url('action=join'));
   const attach = (team) => {
     const socket = new Socket();
-    socket.serializeAttachment({ team, closed: false });
+    socket.serializeAttachment({ team, closed: false, lastMessageAt: clock.time });
     ctx.acceptWebSocket(socket);
     return socket;
   };
   const a = attach(first.team);
   const b = attach(second.team);
+  clock.setInterval(() => {
+    if (clock.time % 2000 !== 0) return;
+    for (const socket of match.sockets()) {
+      if (!socket.silent) match.webSocketMessage(socket, JSON.stringify({ type: 'ping' }));
+    }
+  });
   match.startTimer();
   await clock.advance(4000);
   return { match, clock, ctx, a, b, second };
@@ -161,3 +167,33 @@ const before = both.match.sim.time;
 await both.clock.advance(1000);
 assert(both.match.sim.time > before, 'simulation also runs with both sockets closed');
 console.log('PASS: reconnect snapshot, continued orders and ticks, countdown, unknown token and exact 30 second defeat.');
+
+const silent = await setup();
+const lastMessageAt = silent.b.deserializeAttachment().lastMessageAt;
+silent.b.silent = true;
+await silent.clock.advance(5950);
+assert(!silent.b.closed, 'silent socket remains open before six seconds');
+await silent.clock.advance(50);
+assert(silent.b.closed, 'silent socket closes at six seconds');
+assert.equal(silent.a.messages.at(-1).status, 'disconnected');
+assert(silent.a.messages.at(-1).disconnectCountdown <= 24);
+assert.equal(silent.match.room.players[1].disconnectedAt, lastMessageAt);
+await silent.clock.advance(23950);
+assert.equal(silent.match.sim.winner, null);
+await silent.clock.advance(50);
+assert.equal(silent.clock.time - lastMessageAt, 30000);
+assert.equal(silent.match.sim.winner, 0, 'silent player loses thirty seconds after last message');
+assert.equal(silent.a.messages.at(-1).status, 'ended');
+
+const replaced = await setup();
+replaced.b.silent = true;
+await replaced.clock.advance(4000);
+const replacement = new Socket();
+replacement.serializeAttachment({ url: url().href, deadline: replaced.clock.time + 5000, closed: false });
+replaced.ctx.acceptWebSocket(replacement);
+await replaced.match.webSocketMessage(replacement, JSON.stringify({ type: 'hello', token: replaced.second.token }));
+assert(replaced.b.closed, 'reconnection closes the old socket even before silence detection');
+assert.deepEqual(replaced.match.sockets(replaced.second.team), [replacement]);
+assert.equal(replacement.messages[1].status, 'playing');
+assert.equal(replacement.deserializeAttachment().lastMessageAt, replaced.clock.time);
+console.log('PASS: silent disconnect detection, exact grace deadline and unique replacement socket.');

@@ -84,10 +84,19 @@ function context(saved) {
     },
   };
 }
+function heartbeat(match, clock) {
+  clock.setInterval(() => {
+    if (clock.time % 2000 !== 0) return;
+    for (const socket of match.sockets()) {
+      match.webSocketMessage(socket, JSON.stringify({ type: 'ping' }));
+    }
+  });
+}
 const clock = new Clock();
 const ctx = context();
 const match = new Match(ctx, {}, clock);
 await match.ready;
+heartbeat(match, clock);
 const url = (query) => new URL(`https://cendre.test/api/ws?code=ABCDEFG&${query}`);
 const a = await match.authenticate(url('action=create&team=0'));
 const connect = (team) => {
@@ -169,7 +178,7 @@ assert.equal(restored.sim.winner, 0);
 assert.equal(restored.status(), 'ended');
 restored.webSocketMessage(sa, JSON.stringify({ type: 'leave' }));
 assert.equal(restored.sim.winner, 0);
-assert.equal(clock.timers.size, 0);
+assert.equal(clock.timers.size, 1, 'only the mock heartbeat remains');
 await Promise.all(ctx.pending);
 assert.equal(ctx.storage.alarm, null);
 
@@ -194,6 +203,7 @@ for (const team of [0, 1]) {
   socket.serializeAttachment({ team, closed: false });
   survivorCtx.acceptWebSocket(socket);
 }
+heartbeat(survivor, survivorClock);
 survivor.startTimer();
 survivor.webSocketClose(survivorCtx.sockets[1]);
 await survivorClock.advance(30000);

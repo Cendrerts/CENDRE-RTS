@@ -104,7 +104,11 @@ export class RealtimeClient {
   }
   command(command, seq) {
     if (!this.connected || this.socket?.readyState !== 1 || !this.socket.authenticated) {
-      this.onStatus('Ordre refusé : reconnexion en cours.');
+      const now = this.now();
+      if (this.lastRefusalAt == null || now - this.lastRefusalAt >= 1000) {
+        this.lastRefusalAt = now;
+        this.onStatus('Ordre refusé : reconnexion en cours.');
+      }
       return false;
     }
     const message = { type: 'cmd', cmd: command, seq };
