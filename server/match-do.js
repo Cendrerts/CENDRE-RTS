@@ -40,7 +40,7 @@ export class Match {
     if (this.sim.winner !== null) return 'ended';
     if (!this.room.started) return 'waiting';
     if (now < this.room.startAt) return 'countdown';
-    return this.room.players.every((player) => now - player.seen < 10000)
+    return this.room.players.every((player) => player.disconnectedAt == null && now - player.seen < 10000)
       ? 'playing'
       : 'disconnected';
   }
@@ -63,14 +63,21 @@ export class Match {
       status: this.status(),
       ack: player.seq,
       countdown: Math.max(0, Math.ceil((this.room.startAt - this.now()) / 1000)) || 0,
+      disconnectCountdown: this.disconnectCountdown(),
+      reason: this.room.reason || null,
       state: view(this.sim, team),
     });
+  }
+
+  disconnectCountdown() {
+    const absent = this.room.players.find((player) => player.disconnectedAt != null);
+    return absent ? Math.max(0, Math.ceil((absent.disconnectedAt + 30000 - this.now()) / 1000)) : 0;
   }
 
   startTimer() {
     if (
       this.timer !== null ||
-      !this.sockets().length ||
+      (!this.room.started && !this.sockets().length) ||
       ['ended', 'closed'].includes(this.status())
     )
       return;
@@ -99,15 +106,21 @@ export class Match {
     if (now - this.room.created > 7200000) this.room.cancelled = true;
     // A live accepted socket keeps its participant present, without requiring commands.
     for (const player of this.room.players) {
-      if (this.sockets(player.team).length) player.seen = now;
+      if (this.sockets(player.team).length) {
+        player.seen = now;
+        player.disconnectedAt = null;
+      }
     }
     if (this.room.started && this.sim.winner === null) {
-      const absent = this.room.players.find((player) => now - player.seen > 120000);
-      if (absent) this.sim.winner = 1 - absent.team;
+      const absent = this.room.players.find((player) => now - (player.disconnectedAt ?? player.seen) >= 30000);
+      if (absent) {
+        this.sim.winner = 1 - absent.team;
+        this.room.reason = 'déconnexion';
+      }
     }
     let broadcast = false;
     while (this.nextTick <= now) {
-      if (this.status(this.nextTick) === 'playing' && this.nextTick > this.room.startAt) {
+      if (['playing', 'disconnected'].includes(this.status(this.nextTick)) && this.nextTick > this.room.startAt) {
         S.tick(this.sim, 0.05);
       }
       if (this.nextTick >= this.nextSnapshot) {
@@ -198,6 +211,7 @@ export class Match {
     // Resolve an expired disconnect before marking the participant present again.
     this.advance();
     player.seen = now;
+    player.disconnectedAt = null;
     await this.save();
     return { code, token, team: player.team, status: this.status() };
   }
@@ -244,7 +258,7 @@ export class Match {
         player.seq = message.seq;
         if (!message.cmd || typeof message.cmd !== 'object' || Array.isArray(message.cmd))
           throw new MatchError('Commande incorrecte.');
-        if (this.status() !== 'playing')
+        if (!['playing', 'disconnected'].includes(this.status()))
           throw new MatchError('Attendez que les deux joueurs soient connectés.');
         command(this.sim, team, message.cmd);
       } else if (message?.type === 'leave') {
@@ -276,7 +290,9 @@ export class Match {
     if (attachment.team === undefined) return;
     const player = this.room.players.find((entry) => entry.team === attachment.team);
     player.seen = this.now();
-    if (!this.sockets().length) this.stopTimer();
+    player.disconnectedAt = this.now();
+    for (const peer of this.sockets()) this.snapshot(peer);
+    this.startTimer();
     this.ctx.waitUntil(this.save());
   }
 

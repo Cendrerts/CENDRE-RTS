@@ -144,7 +144,7 @@ await clock.advance(10000);
 assert.equal(match.status(), 'disconnected');
 const paused = match.sim.time;
 await clock.advance(1000);
-assert.equal(match.sim.time, paused);
+assert(match.sim.time > paused, 'simulation continues during disconnect');
 const rejoined = await match.authenticate(url(''), b.token);
 assert.equal(rejoined.team, b.team);
 const sb2 = connect(b.team);
@@ -179,9 +179,9 @@ const timeout = new Match(timeoutCtx, {}, timeoutClock);
 await timeout.ready;
 await timeout.authenticate(url('action=create'));
 await timeout.authenticate(url('action=join'));
-timeoutClock.time += 120050;
+timeoutClock.time += 30000;
 await timeout.alarm();
-assert.equal(timeout.sim.winner, 1, '2 minute absence ends game without HTTP or sockets');
+assert.equal(timeout.sim.winner, 1, '30 second absence ends game without HTTP or sockets');
 // The surviving participant wins autonomously after a disconnect.
 const survivorClock = new Clock();
 const survivorCtx = context();
@@ -196,7 +196,7 @@ for (const team of [0, 1]) {
 }
 survivor.startTimer();
 survivor.webSocketClose(survivorCtx.sockets[1]);
-await survivorClock.advance(120050);
+await survivorClock.advance(30000);
 assert.equal(survivor.sim.winner, 0);
 assert.equal(survivorCtx.sockets[0].messages.at(-1).status, 'ended');
 

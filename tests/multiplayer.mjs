@@ -84,7 +84,7 @@ r = await sync(a, {}, now + 16000);
 assert.equal(r.status, 'disconnected');
 const time = r.state.time;
 r = await sync(a, {}, now + 17000);
-assert.equal(r.state.time, time);
+assert(r.state.time > time, 'HTTP fallback also continues during disconnect');
 await sync(b, {}, now + 17000);
 r = await sync(a, {}, now + 17500);
 assert.equal(r.status, 'playing');

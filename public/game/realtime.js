@@ -13,7 +13,7 @@ export class RealtimeClient {
     now = () => performance.now(), onSnapshot = () => {}, onStatus = () => {}, onRtt = () => {} } = {}) {
     Object.assign(this, { url, Socket, clock, now, onSnapshot, onStatus, onRtt });
     this.pending = new Map();
-    this.backoff = 250;
+    this.backoff = 500;
   }
   connect(parameters) {
     this.parameters = { ...parameters };
@@ -58,12 +58,18 @@ export class RealtimeClient {
         socket.authenticated = true;
         this.session = data;
         this.parameters = { code: data.code, token: data.token };
-        this.backoff = 250;
-        this.onStatus('connected');
-        for (const message of this.pending.values()) this.send(message);
+        this.backoff = 500;
         this.awaitingPong = false;
         this.ping();
       } else if (data.type === 'snapshot') {
+        if (!this.connected) {
+          this.connected = true;
+          this.clock.clearTimeout(this.graceTimer);
+          this.reconnectDeadline = null;
+          this.onStatus('connected');
+          this.ack(data.ack);
+          for (const message of this.pending.values()) this.send(message);
+        }
         this.resolve?.({ ...this.session, ...data });
         this.ack(data.ack);
         this.onSnapshot(data);
@@ -97,9 +103,14 @@ export class RealtimeClient {
     }
   }
   command(command, seq) {
+    if (!this.connected || this.socket?.readyState !== 1 || !this.socket.authenticated) {
+      this.onStatus('Ordre refusé : reconnexion en cours.');
+      return false;
+    }
     const message = { type: 'cmd', cmd: command, seq };
     this.pending.set(seq, message);
     this.send(message);
+    return true;
   }
   ping() {
     if (this.awaitingPong) {
@@ -120,13 +131,24 @@ export class RealtimeClient {
       this.reject?.(error);
       return;
     }
+    this.connected = false;
+    this.clock.clearTimeout(this.retry);
+    if (this.reconnectDeadline == null) {
+      this.reconnectDeadline = this.now() + 30000;
+      this.graceTimer = this.clock.setTimeout(() => {
+        this.close();
+        this.onStatus('Connexion perdue : délai de reconnexion dépassé.');
+      }, 30000);
+    }
+    if (this.now() >= this.reconnectDeadline) return;
     this.onStatus('reconnecting');
     this.retry = this.clock.setTimeout(() => this.open(), this.backoff);
-    this.backoff = Math.min(4000, this.backoff * 2);
+    this.backoff = Math.min(2000, this.backoff * 2);
   }
   close() {
     this.closed = true;
-    for (const timer of [this.timeout, this.pingTimer, this.retry]) this.clock.clearTimeout(timer);
+    this.connected = false;
+    for (const timer of [this.timeout, this.pingTimer, this.retry, this.graceTimer]) this.clock.clearTimeout(timer);
     this.socket?.close();
   }
 }
