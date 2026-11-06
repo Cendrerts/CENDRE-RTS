@@ -213,6 +213,7 @@ function create() {
     rubies: [100, 100],
     units: [],
     shots: [],
+    damageEvents: [],
     winner: null,
     aiClock: 0,
     fogClock: 0,
@@ -528,11 +529,21 @@ function visibility(s) {
     }
   }
 }
+function recordDamageEvent(s, entity) {
+  if (s.time - (entity.lastDamageEventAt ?? -Infinity) < 1) return;
+  // Persist the cooldown because server requests reload entities from storage.
+  entity.lastDamageEventAt = s.time;
+  s.damageEvents.push({ x: entity.x, y: entity.y, team: entity.team, time: s.time });
+  if (s.damageEvents.length > 24) {
+    s.damageEvents.splice(0, s.damageEvents.length - 24);
+  }
+}
 function tick(s, dt) {
   migrateState(s);
   if (s.winner !== null) return;
   productionTick(s, dt);
   s.time += dt;
+  s.damageEvents = (s.damageEvents || []).filter((event) => s.time - event.time < 5).slice(-24);
   s.fogClock += dt;
   s.aiClock += dt;
   let near = s.units.filter(
@@ -557,7 +568,10 @@ function tick(s, dt) {
     if (u.hp <= 0) continue;
     u.cool -= dt;
     u.repath -= dt;
-    if (forest(u)) u.hp -= RULES.forestDamage * dt;
+    if (forest(u)) {
+      u.hp -= RULES.forestDamage * dt;
+      recordDamageEvent(s, u);
+    }
     if (u.hp <= 0) continue;
     if (u.manual) {
       manualTick(u, dt);
@@ -592,6 +606,7 @@ function tick(s, dt) {
       if (u.cool <= 0) {
         u.cool = cfg.rate;
         target.hp -= cfg.damage;
+        recordDamageEvent(s, target);
         if (cfg.splash) {
           for (const v of s.units)
             if (
@@ -599,8 +614,10 @@ function tick(s, dt) {
               v.team !== u.team &&
               v.hp > 0 &&
               Math.hypot(v.x - target.x, v.y - target.y) <= cfg.splash
-            )
+            ) {
               v.hp -= cfg.damage;
+              recordDamageEvent(s, v);
+            }
         }
         s.shots.push({
           x: u.x,

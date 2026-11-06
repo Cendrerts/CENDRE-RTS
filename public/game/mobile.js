@@ -68,14 +68,22 @@ export function initTouchUI(api) {
       collapsed ? 'Afficher les groupes' : 'Replier les groupes',
     );
   };
+  let lastBaseTap = -Infinity;
   $('#baseAction').onclick = () => {
+    const now = performance.now();
+    if (now - lastBaseTap <= 300) {
+      lastBaseTap = -Infinity;
+      close();
+      $('#home').click();
+      return;
+    }
+    lastBaseTap = now;
     stop();
     if (panelsOpen()) {
       close();
       return;
     }
     $('#recruitToggle').click();
-    $('#home').click();
     refresh();
   };
   $('#productionTab').onclick = () => {

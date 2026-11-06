@@ -1,3 +1,4 @@
+import { minimapToWorld, clampCamera, attackDirection, groupAttackAlerts } from './camera.js';
 'use strict';
 import { CuistotsAmbience } from './cuistots-ambience.js';
 import { orderFeedback, drawOrderFeedback, vibrateOrder } from './order-feedback.js';
@@ -209,8 +210,9 @@ function setupPortraits() {
 }
 function layout() {
   scale = Math.max(viewWidth / W, viewHeight / H) * zoom;
-  cameraX = Math.max(viewWidth / scale / 2, Math.min(W - viewWidth / scale / 2, cameraX));
-  cameraY = Math.max(viewHeight / scale / 2, Math.min(H - viewHeight / scale / 2, cameraY));
+  const center = clampCamera(cameraX, cameraY, viewWidth, viewHeight, scale, W, H);
+  cameraX = center.x;
+  cameraY = center.y;
   ox = viewWidth / 2 - cameraX * scale;
   oy = viewHeight / 2 - cameraY * scale;
 }
@@ -709,12 +711,109 @@ function handleFieldTap(e, duration) {
     $('#attackAction').setAttribute('aria-pressed', 'false');
   } else notify('Sélectionnez vos unités avec les portraits en bas.');
 }
-mini.addEventListener('pointerdown', (e) => {
-  let r = mini.getBoundingClientRect();
-  cameraX = ((e.clientX - r.left) / r.width) * W;
-  cameraY = ((e.clientY - r.top) / r.height) * H;
+let minimapGesture = null;
+function minimapPosition(e) {
+  const rect = mini.getBoundingClientRect();
+  return minimapToWorld(e.clientX - rect.left, e.clientY - rect.top, rect.width, rect.height, W, H);
+}
+function focusMinimap(point) {
+  cameraX = point.x;
+  cameraY = point.y;
   layout();
+}
+function cancelMinimap() {
+  clearTimeout(minimapGesture?.timer);
+  minimapGesture = null;
+}
+mini.addEventListener('pointerdown', (e) => {
+  if (minimapGesture) return;
+  e.preventDefault();
+  mini.setPointerCapture(e.pointerId);
+  const gesture = { id: e.pointerId, x: e.clientX, y: e.clientY, point: minimapPosition(e), dragged: false, ordered: false };
+  minimapGesture = gesture;
+  // Delay the initial jump only when a long press could issue an order.
+  if (!selected.size) focusMinimap(gesture.point);
+  gesture.timer = setTimeout(() => {
+    if (!running || paused || !selected.size || gesture.dragged) return;
+    const ids = state.units.filter((unit) => selected.has(unit.id) && unit.team === player && unit.hp > 0).map((unit) => unit.id);
+    if (!ids.length) return;
+    const action = { kind: 'move', ids, ...gesture.point };
+    showOrderFeedback(action, gesture.point, ids);
+    marker.minimap = true;
+    if (net) sendCommand(action);
+    else Sim.order(state, ids, action.x, action.y, null, true);
+    gesture.ordered = true;
+  }, 550);
 });
+mini.addEventListener('pointermove', (e) => {
+  const gesture = minimapGesture;
+  if (!gesture || gesture.id !== e.pointerId || gesture.ordered) return;
+  gesture.point = minimapPosition(e);
+  if (Math.hypot(e.clientX - gesture.x, e.clientY - gesture.y) >= 8) {
+    gesture.dragged = true;
+    clearTimeout(gesture.timer);
+  }
+  if (gesture.dragged) focusMinimap(gesture.point);
+});
+mini.addEventListener('pointerup', (e) => {
+  if (minimapGesture?.id !== e.pointerId) return;
+  if (!minimapGesture.ordered) focusMinimap(minimapPosition(e));
+  cancelMinimap();
+});
+for (const event of ['pointercancel', 'lostpointercapture']) {
+  mini.addEventListener(event, (e) => {
+    if (minimapGesture?.id === e.pointerId) cancelMinimap();
+  });
+}
+addEventListener('blur', cancelMinimap);
+
+let attackAlerts = [];
+let lastDamageTime = -Infinity;
+let previousAlertTime = 0;
+const alertButtons = new Map();
+function updateAttackAlerts() {
+  if (state.time < previousAlertTime || !running) {
+    attackAlerts = [];
+    lastDamageTime = -Infinity;
+  }
+  previousAlertTime = state.time;
+  const camera = { x: cameraX, y: cameraY };
+  if (running && !paused) {
+    for (const event of state.damageEvents || []) {
+      if (event.team !== player || event.time <= lastDamageTime) continue;
+      if (attackDirection(event, camera, viewWidth, viewHeight, scale)) {
+        attackAlerts = groupAttackAlerts(attackAlerts, event, event.time);
+      }
+    }
+    lastDamageTime = state.time;
+  }
+  attackAlerts = attackAlerts.filter((alert) => state.time - alert.time < 5);
+  const active = new Set();
+  const rect = canvas.getBoundingClientRect();
+  for (const alert of attackAlerts) {
+    const direction = attackDirection(alert, camera, viewWidth, viewHeight, scale);
+    if (!direction || !running || paused) continue;
+    active.add(alert.zone);
+    let button = alertButtons.get(alert.zone);
+    if (!button) {
+      button = document.createElement('button');
+      button.className = 'attack-alert';
+      button.textContent = '➤';
+      button.setAttribute('aria-label', 'Attaque hors écran : centrer la caméra');
+      document.body.append(button);
+      alertButtons.set(alert.zone, button);
+    }
+    button.onclick = () => focusMinimap(alert);
+    button.style.left = `${rect.left + direction.x}px`;
+    button.style.top = `${rect.top + direction.y}px`;
+    button.style.transform = `translate(-50%, -50%) rotate(${direction.angle}rad)`;
+  }
+  for (const [zone, button] of alertButtons) {
+    if (active.has(zone)) continue;
+    button.remove();
+    alertButtons.delete(zone);
+  }
+}
 addEventListener('keydown', (e) => {
   if (e.target instanceof HTMLInputElement) return;
   if (e.code === 'Space') {
@@ -845,6 +944,15 @@ function drawMini() {
     worldWidth: W,
     worldHeight: H,
   });
+  if (marker?.minimap) {
+    mc.save();
+    mc.strokeStyle = marker.color;
+    mc.lineWidth = 2;
+    mc.beginPath();
+    mc.arc(marker.x / W * mini.width, marker.y / H * mini.height, 6, 0, Math.PI * 2);
+    mc.stroke();
+    mc.restore();
+  }
 }
 function draw() {
   ctx.setTransform(canvas.width / viewWidth, 0, 0, canvas.height / viewHeight, 0, 0);
@@ -932,6 +1040,7 @@ function frame(t) {
     lastUI = 0;
   }
   updateAmbience();
+  updateAttackAlerts();
   preparedUnits = prepareDrawList(state, player, Sim.canSee);
   draw();
   if (debugDisplay) {
