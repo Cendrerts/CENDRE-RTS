@@ -86,7 +86,9 @@ for (const owner of [-1, 0, 1]) {
     assert.deepEqual(strokes[0], ['stroke', TEAM_COLORS[owner] ?? '#969ca5', 0.75]);
     const points = mine.calls.filter((call) => call[0] === 'moveTo' || call[0] === 'lineTo');
     const width = Math.max(...points.map((call) => call[1])) - Math.min(...points.map((call) => call[1]));
-    assert.equal(width * 2, boost ? 54 : 36);
+    const height = Math.max(...points.map((call) => call[2])) - Math.min(...points.map((call) => call[2]));
+    assert.ok(Math.abs(width - 26 * (boost ? 1.4 : 1)) < 1e-8);
+    assert.ok(Math.abs(height - 34 * (boost ? 1.4 : 1)) < 1e-8);
     assert.equal(mine.calls.filter((call) => call[0] === 'fill' && call[1] === '#f12d61').length, 3);
     assert.equal(strokes.filter((call) => call[1] === '#ffc1d2').length, 3);
     if (boost) {

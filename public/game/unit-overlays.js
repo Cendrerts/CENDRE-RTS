@@ -57,14 +57,14 @@ export function drawCargoRuby(ctx, x, headY, scale, unit) {
   ctx.restore();
 }
 
-// Crystal geometry is in world units: a normal cluster spans 36 CSS px at zoom 2.
+// Crystal geometry is in world units: a normal cluster spans 26 × 34.
 export function drawMine(ctx, mine, scale, time = 0) {
-  const size = mine.boost ? 1.5 : 1;
+  const size = mine.boost ? 2.8 : 2;
   ctx.save();
   if (mine.boost) {
     ctx.fillStyle = `rgba(241,45,97,${0.12 + 0.04 * Math.sin(time * 2)})`;
     ctx.beginPath();
-    ctx.ellipse(mine.x, mine.y - 4, 16, 12, 0, 0, Math.PI * 2);
+    ctx.ellipse(mine.x, mine.y - 4 * size, 16 * size, 12 * size, 0, 0, Math.PI * 2);
     ctx.fill();
   }
   ctx.strokeStyle = TEAM_COLORS[mine.owner] ?? '#969ca5';
@@ -73,8 +73,8 @@ export function drawMine(ctx, mine, scale, time = 0) {
   ctx.ellipse(mine.x, mine.y + 2 * size, 11 * size, 4 * size, 0, 0, Math.PI * 2);
   ctx.stroke();
   const crystals = [
-    { x: -6, y: 0, width: 3, height: 9 },
-    { x: 6, y: 0, width: 3, height: 11 },
+    { x: -4, y: 0, width: 2.5, height: 9 },
+    { x: 4, y: 0, width: 2.5, height: 11 },
     { x: 0, y: 2, width: 4, height: 17 },
   ];
   ctx.lineWidth = 1 / scale;

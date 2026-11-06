@@ -719,6 +719,18 @@ function returnToDepot(s, u) {
   u.harvest.depot = best.index;
   harvestPath(u, best.x, best.y);
 }
+function approachMine(s, u) {
+  const mine = s.mines[u.harvest.mine];
+  const depot = s.mines[u.harvest.depot]?.site || s.bases[u.team];
+  const spread = ((u.id * 0.618033988749895) % 1 - 0.5) * Math.PI * 2 / 3;
+  const angle = Math.atan2(depot.y - mine.y, depot.x - mine.x) + spread;
+  const destination = {
+    x: mine.x + Math.cos(angle) * 20,
+    y: mine.y + Math.sin(angle) * 20,
+  };
+  harvestPath(u, destination.x, destination.y);
+  u.path.push(destination);
+}
 function assignHarvest(s, u, index) {
   u.manual = null;
   u.harvest = { mine: index, phase: u.cargo > 0 ? 'VERS_BASE' : 'VERS_GISEMENT', elapsed: 0 };
@@ -727,8 +739,7 @@ function assignHarvest(s, u, index) {
   u.retreat = false;
   if (u.cargo > 0) returnToDepot(s, u);
   else {
-    const dest = s.mines[index];
-    harvestPath(u, dest.x, dest.y);
+    approachMine(s, u);
   }
 }
 function gather(s, team, ids, index) {
@@ -795,7 +806,7 @@ function harvestTick(s, u, dt) {
         break;
       }
       h.phase = 'VERS_GISEMENT';
-      harvestPath(u, m.x, m.y);
+      approachMine(s, u);
     }
   }
 }

@@ -9,7 +9,8 @@ for (let team = 0; team < 2; team++) {
     u = s.units.find((u) => u.team === team);
   assert.equal(u.harvest.phase, 'VERS_GISEMENT');
   while (u.harvest.phase !== 'MINAGE') S.tick(s, 0.01);
-  assert.equal(s.rubies[team], 100);
+  const mine = s.mines[u.harvest.mine];
+  assert.ok(Math.hypot(u.x - mine.x, u.y - mine.y) > 16);
   advance(s, 2.9);
   assert.equal(u.cargo, 0);
   assert.equal(s.rubies[team], 100);
@@ -39,6 +40,8 @@ for (let team = 0; team < 2; team++) {
   u.x = (cell % S.COLS) * 20 + 10;
   u.y = Math.floor(cell / S.COLS) * 20 + 10;
   assert(S.gather(s, 0, [u.id], 4));
+  while (u.harvest.phase !== 'MINAGE') S.tick(s, 0.01);
+  assert.ok(Math.hypot(u.x - m.x, u.y - m.y) > 16);
   advance(s, 3.05);
   assert.equal(u.cargo, 20);
   assert.equal(s.rubies[0], 100);
@@ -81,6 +84,33 @@ for (let team = 0; team < 2; team++) {
 console.log(
   'PASS: worker trips, mining delay, delivery only, both factions, ruby, capture, interruption, ownership, death, no passive income, persistence and end state.',
 );
+
+// Every mine supports distinct, deterministic mining positions on the depot side.
+for (let mineIndex = 0; mineIndex < S.create().mines.length; mineIndex++) {
+  const state = S.create();
+  state.units = [];
+  const mine = state.mines[mineIndex];
+  mine.owner = 0;
+  const positions = new Set();
+  for (let index = 0; index < 10; index++) {
+    S.spawn(state, 'commis', 0);
+    const worker = state.units.at(-1);
+    S.gather(state, 0, [worker.id], mineIndex);
+    const destination = { ...worker.path.at(-1) };
+    S.gather(state, 0, [worker.id], mineIndex);
+    assert.deepEqual(worker.path.at(-1), destination);
+    worker.x = destination.x;
+    worker.y = destination.y;
+    worker.path = [destination];
+    S.tick(state, 0.01);
+    assert.equal(worker.harvest.phase, 'MINAGE');
+    assert.ok(Math.abs(Math.hypot(worker.x - mine.x, worker.y - mine.y) - 20) < 1e-8);
+    const base = state.bases[0];
+    assert.ok((worker.x - mine.x) * (base.x - mine.x) + (worker.y - mine.y) * (base.y - mine.y) > 0);
+    positions.add(`${worker.x},${worker.y}`);
+  }
+  assert.equal(positions.size, 10);
+}
 
 // One isolated worker is the reference yield with no possible separation.
 function mineYield(count, withAllies) {
