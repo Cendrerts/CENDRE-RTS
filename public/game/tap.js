@@ -76,8 +76,10 @@ export function resolveTap(state, player, selection, point, scale = 1, onTarget 
       mine.depot ? buildingBounds(mine.site, 0.95, false, mine.owner) : null);
   });
   if (!candidates.length) return { kind: selected.length ? 'move' : 'none' };
-  const nearest = Math.min(...candidates.map((candidate) => candidate.distance));
-  const tied = candidates.filter((candidate) => candidate.distance <= nearest + 6);
+  const ownUnits = selected.length ? [] : candidates.filter((candidate) => candidate.action.kind === 'select');
+  const eligible = ownUnits.length ? ownUnits : candidates;
+  const nearest = Math.min(...eligible.map((candidate) => candidate.distance));
+  const tied = eligible.filter((candidate) => candidate.distance <= nearest + 6);
   tied.sort((a, b) => priorities.indexOf(a.category) - priorities.indexOf(b.category) || a.distance - b.distance);
   const winner = tied[0];
   if (winner.action.kind !== 'move') onTarget?.(winner);

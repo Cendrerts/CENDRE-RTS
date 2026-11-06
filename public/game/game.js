@@ -295,7 +295,7 @@ $('#start').onclick = () => {
   $('#veil').style.display = 'none';
   $('#pause').textContent = 'Ⅱ';
   updateUI();
-  notify('Explorez avec vos unités. Glisser : caméra · Maintenir + glisser : sélection · 2 doigts : caméra et zoom');
+  notify('Explorez avec vos unités. Glisser : caméra · Maintenir + glisser : sélection · 2 doigts : zoom');
 };
 $('#all').onclick = () => {
   panelContext = {};
@@ -1969,7 +1969,7 @@ function renderContextPanel() {
       close.onclick = clearSelection;
       actions.append(close);
     }
-    if (model.producerId) {
+    if (model.producerId && model.queue.length) {
       const queueLabel = document.createElement('small');
       queueLabel.className = 'queue-label';
       queueLabel.textContent = `File ${model.queue.length}/8`;
