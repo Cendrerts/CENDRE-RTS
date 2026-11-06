@@ -119,4 +119,37 @@ function advance(state, seconds) {
   assert.equal(unit.chasing, false);
 }
 
-console.log('Micro: move, attack move and resumption, disengage, selection filtering and forced target passed');
+console.log(
+  'Micro: move, attack move and resumption, disengage, selection filtering and forced target passed',
+);
+
+{
+  const { state, unit, enemy } = combat();
+  enemy.x = 1300;
+  enemy.y = 330;
+  const origin = { x: unit.x, y: unit.y };
+  command(state, 0, { kind: 'patrol', ids: [unit.id, enemy.id], x: 950, y: 570 });
+  assert.equal(enemy.patrol, null, 'Une patrouille ne commande pas un ennemi');
+  assert.deepEqual(unit.patrol.points[0], origin);
+  let changes = 0;
+  let previous = unit.patrol.index;
+  for (let step = 0; step < 500 && changes < 3; step++) {
+    S.tick(state, 0.05);
+    if (unit.patrol.index !== previous) {
+      changes++;
+      previous = unit.patrol.index;
+    }
+  }
+  assert(changes >= 3, 'La patrouille alterne plusieurs fois entre les deux points');
+  command(state, 0, { kind: 'move', ids: [unit.id], x: 790, y: 570 });
+  assert.equal(unit.patrol, null, 'Un nouvel ordre annule la patrouille');
+  assert.throws(() => command(state, 0, { kind: 'patrol', ids: [unit.id], x: NaN, y: 570 }));
+}
+{
+  const { state, unit, enemy } = combat();
+  command(state, 0, { kind: 'patrol', ids: [unit.id], x: 950, y: 570 });
+  advance(state, 0.1);
+  assert(enemy.hp < 10000, 'La patrouille engage les ennemis en chemin');
+  const restored = unpack(pack(state));
+  assert.deepEqual(restored.units[0].patrol, unit.patrol);
+}

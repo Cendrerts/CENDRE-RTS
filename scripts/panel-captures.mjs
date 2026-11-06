@@ -83,12 +83,20 @@ try {
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto(`http://127.0.0.1:${server.address().port}/game/`);
   await page.locator('#start').click();
-  await mkdir('artifacts/issue-34', { recursive: true });
+  await mkdir('artifacts/issue-40', { recursive: true });
   for (const team of [0, 1])
-    for (const mode of ['empty', 'units', 'production', 'base', 'bases']) {
+    for (const mode of ['empty', 'units', 'collapsed', 'production', 'base', 'slot', 'bases']) {
       await page.evaluate(([mode, team]) => window.panelFixture(mode, team), [mode, team]);
+      if (mode === 'collapsed') {
+        await page.evaluate(([team]) => window.panelFixture('units', team), [team]);
+        await page.locator('#panelChevron').click();
+        await page.evaluate(([team]) => window.panelFixture('units', team), [team]);
+        assert.equal(await page.locator('#contextPanel').getAttribute('data-collapsed'), 'true');
+      } else if ((await page.locator('#contextPanel').getAttribute('data-collapsed')) === 'true') {
+        await page.locator('#panelTab').click();
+      }
       await page.waitForTimeout(100);
-      await page.screenshot({ path: `artifacts/issue-34/${team}-${mode}.png` });
+      await page.screenshot({ path: `artifacts/issue-40/${team}-${mode}.png` });
       const geometry = await page.locator('#contextPanel').evaluate((panel) => ({
         mode: panel.dataset.mode,
         rect: panel.getBoundingClientRect().toJSON(),
@@ -114,10 +122,17 @@ try {
             height: el.getBoundingClientRect().height,
           })),
       }));
-      assert.equal(geometry.mode, mode === 'bases' ? 'base' : mode);
-      assert.equal(geometry.rect.height, mode === 'empty' ? 52 : 130);
+      assert.equal(
+        geometry.mode,
+        mode === 'bases' || mode === 'slot' ? 'base' : mode === 'collapsed' ? 'units' : mode,
+      );
+      assert.equal(geometry.rect.height, mode === 'collapsed' || mode === 'empty' ? 24 : 112);
       assert.deepEqual(geometry.overflow, []);
-      assert(geometry.buttons.every((button) => button.width >= 44 && button.height >= 44));
+      assert(
+        geometry.buttons.every(
+          (button) => button.width >= 44 && (button.height >= 44 || mode === 'collapsed'),
+        ),
+      );
       console.log(`PASS faction ${team}, ${mode}: no overflow, targets >= 44px`);
     }
   // Real pointer actions exercise recruitment, cancellation and direct slot construction.
@@ -129,9 +144,10 @@ try {
   await page.waitForTimeout(250);
   await page.locator('#contextActions button').first().click();
   await page.waitForTimeout(250);
-  assert.equal(await page.locator('#contextActions button:not(:disabled)').count(), 0);
+  assert.equal(await page.locator('#contextActions .queue-cell').count(), 0);
   for (const mode of ['slot', 'base']) {
     await page.evaluate((mode) => window.panelFixture(mode), mode);
+    if (mode === 'base') await page.getByRole('button', { name: 'Bâtiments', exact: true }).click();
     await page.locator('#contextGrid button').first().click();
     if (mode === 'base') {
       const { point } = await page.evaluate(() => window.panelProbe());
@@ -150,28 +166,30 @@ try {
   await page.waitForTimeout(650);
   await page.mouse.up();
   assert.equal((await page.evaluate(() => window.panelProbe())).selected, 1);
+  await page.evaluate(() => window.panelFixture('units'));
+  const panelRect = await page.locator('#contextPanel').boundingBox();
+  await page.mouse.move(panelRect.x + 80, panelRect.y + 10);
+  await page.mouse.down();
+  await page.mouse.move(panelRect.x + 80, panelRect.y + 60);
+  await page.mouse.up();
+  assert.equal(await page.locator('#contextPanel').getAttribute('data-collapsed'), 'true');
+  await page.locator('#panelTab').click();
+  assert.equal(await page.locator('#contextPanel').getAttribute('data-collapsed'), 'false');
+  const attack = await page.locator('#attackAction').boundingBox();
+  const selection = await page.locator('#selectionToggle').boundingBox();
+  const base = await page.locator('#baseAction').boundingBox();
+  assert.equal(attack.width, 84);
+  assert.equal(selection.width, 56);
+  assert(selection.y + selection.height <= attack.y);
+  assert(base.y + base.height <= selection.y);
   if (errors.length) throw new Error(errors.join('\n'));
   await writeFile(
-    'artifacts/issue-34/PR.md',
-    `Remplace les tiroirs et le deck par un panneau contextuel pleine largeur : barre de 52 px sans sélection, panneau de 130 px sinon. Les quatre groupes restent accessibles, avec filtrage des unités, construction directe ou fantôme, bases découvertes et production avec annulation remboursée. Les annulations utilisent un identifiant stable pour éviter de toucher le travail suivant après un délai réseau.
+    'artifacts/issue-40/PR.md',
+    `Panneau compact avec portrait et vie, quatre actions, sélection au-dessus d’Attaquer et Base côté droit. Repli par chevron ou glissement, persistant lors des sélections, groupes visibles et onglet de réouverture. Les files affichent seulement les commandes en cours et leur compteur. Patrouille partagée solo/serveur avec validation des destinations et des unités autorisées.
 
-Vérifications : tests/panel.mjs couvre les quatre contextes et les deux factions, la capacité et la pureté du modèle, les mines découvertes sous brouillard, les files et le remboursement. scripts/panel-captures.mjs vérifie dans Chromium à 844×390 l’absence de débordement, les cibles de 44 px minimum et les clics de recrutement, annulation, construction directe et fantôme, filtrage par tap et appui long.
+Vérifié : tests Node, syntaxe JavaScript, captures Chromium 844×390 des unités, panneau rabattu, base, emplacement et production pour les deux factions ; recrutement, annulation, construction, filtrage par tap et appui long.
 
-À vérifier sur téléphone : lisibilité des icônes, confort des pouces, appuis longs, zones sûres iOS/Android et duel réel avec latence.
-
-Captures 844×390 (fichiers locaux non commités, à joindre à la PR) :
-
-![Aucune sélection](0-empty.png)
-![Unités](0-units.png)
-![Production](0-production.png)
-![Base et construction](0-base.png)
-![Bases découvertes](0-bases.png)
-
-![Rats sans sélection](1-empty.png)
-![Unités Rats](1-units.png)
-![Production Rats](1-production.png)
-![Construction Rats](1-base.png)
-![Bases Rats](1-bases.png)
+À tester sur téléphone : confort des pouces, glissement de repli, lisibilité, appuis longs et patrouille en duel avec latence.
 `,
   );
 } finally {

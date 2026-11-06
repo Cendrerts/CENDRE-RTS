@@ -5,6 +5,12 @@ export function panelCapacity(width = 844) {
   return { columns, rows: 2, capacity: columns * 2 };
 }
 
+export function panelVisibility(previous = {}, event = 'selection') {
+  if (event === 'collapse') return { collapsed: true, manual: true };
+  if (event === 'expand') return { collapsed: false, manual: false };
+  return previous.manual ? previous : { collapsed: false, manual: false };
+}
+
 export function panelModel(state, player, selection, context = {}) {
   const units = state.units.filter(
     (unit) => unit.team === player && unit.hp > 0 && selection.has(unit.id),
@@ -38,16 +44,22 @@ export function panelModel(state, player, selection, context = {}) {
   const left = {
     name:
       mode === 'units'
-        ? Sim.stats(main, player).name
+        ? counts.length > 1 ? 'unités' : Sim.stats(main, player).name
         : producer?.name ||
           Sim.baseSites(state, player).find((base) => base.id === context.baseId)?.name ||
           'Votre armée',
     type: main || producer?.unit || 'commis',
     count: units.length,
+    max:
+      mode === 'units' ? units.reduce((sum, unit) => sum + unit.max, 0) : state.bases[player].max,
     hp: mode === 'units' ? units.reduce((sum, unit) => sum + unit.hp, 0) : state.bases[player].hp,
     status:
       mode === 'units'
-        ? units.some((unit) => unit.harvest)
+        ? units.length === 1 && main === 'commis'
+          ? `Sac ${units[0].cargo || 0}`
+          : units.some((unit) => unit.patrol)
+            ? 'Patrouille'
+            : units.some((unit) => unit.harvest)
           ? 'Récolte'
           : units.some((unit) => unit.hold)
             ? 'Tenir'
@@ -145,13 +157,14 @@ export function panelModel(state, player, selection, context = {}) {
     grid.push(items.slice(index, index + capacity));
   return {
     mode,
+    collapsed: !!context.visibility?.collapsed,
     left,
     grid,
     tabs: mode === 'base' ? ['production', 'buildings', 'bases'] : [],
     activeTab,
     slotId: context.slotId,
     producerId: recruitmentProducer?.id,
-    actions: mode === 'units' ? ['Attaquer', 'Capacité', 'Décrocher', 'Tenir'] : [],
+    actions: mode === 'units' ? ['hold', 'patrol', 'ability', 'disengage'] : [],
     queue,
   };
 }

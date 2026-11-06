@@ -3,6 +3,7 @@ export function orderFeedback(action) {
   switch (action.kind) {
     case 'move':
       return { shape: 'circle', color: '#65e88b', duration: 0.4 };
+    case 'patrol':
     case 'attackMove':
       return { shape: 'chevron', color: '#ffa347', duration: 0.4 };
     case 'attack':
