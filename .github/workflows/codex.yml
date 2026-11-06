@@ -157,4 +157,5 @@ jobs:
 
       - name: Signaler un échec
         if: failure()
-        run: gh issue comment "$NUMBER" --body "❌ L'exécution de Codex a échoué. Journal : ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        run: |
+          gh issue comment "$NUMBER" --body "❌ L'exécution de Codex a échoué. Journal : ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
