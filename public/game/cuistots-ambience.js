@@ -56,6 +56,7 @@ export class CuistotsAmbience {
     this.gain = context.createGain();
     this.gain.gain.value = 0;
     this.gain.connect(destination);
+    this.volume = 1;
     this.targetVolume = 0;
     this.source = null;
     this.bufferPromise = null;
@@ -66,7 +67,7 @@ export class CuistotsAmbience {
   updateCamera(camera, active = true) {
     if (this.disposed) return;
     const target = active
-      ? ambienceVolume(camera, this.basePosition, this.innerRadius, this.falloffRadius)
+      ? this.volume * ambienceVolume(camera, this.basePosition, this.innerRadius, this.falloffRadius)
       : 0;
     // Do not restart an unchanged ramp every animation frame.
     if (target === this.targetVolume) return;

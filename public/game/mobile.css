@@ -162,3 +162,14 @@ input,select,textarea{font-size:16px!important}
 .joystick-setting { display:flex; align-items:center; justify-content:center; min-height:44px; gap:8px; }
 .joystick-setting input { width:24px; height:24px; }
 .attack-alert{position:fixed;z-index:30;width:48px;height:48px;min-width:48px;padding:0;border:2px solid #ff8a8a;border-radius:50%;background:#740c20e8;color:#ff6464;font-size:26px;touch-action:manipulation;box-shadow:0 0 12px #ff304d88}
+
+/* Pause and settings remain reachable with a thumb in landscape. */
+header .stats{margin-left:0}header #pause{margin-left:auto}header #netBadge{position:static;max-width:32vw;font:11px Arial;overflow-wrap:anywhere}
+#pauseMenu[hidden],#settingsPanel[hidden],#pauseActions[hidden]{display:none}
+#pauseMenu{position:fixed;inset:0;z-index:80;background:#071414b8;display:flex;align-items:center;justify-content:center;padding:12px}
+.pause-panel{position:relative;width:min(440px,100%);max-height:calc(100dvh - 24px);overflow:auto;background:#152628;border:1px solid #9d855c;border-radius:12px;padding:16px;font:16px Arial;box-shadow:0 12px 50px #0009}
+.pause-panel h2{margin:0 52px 8px 0;font-size:22px}.pause-panel p{margin:8px 0 12px;color:#e1c58f}
+.pause-panel button,.pause-panel select{min-height:44px;min-width:44px;font:inherit}.pause-panel button{padding:10px}
+#closePause{position:absolute;right:8px;top:8px;font-size:24px}
+#pauseActions,#settingsPanel{display:grid;gap:8px}#settingsPanel label{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px}#settingsPanel input[type=checkbox]{width:44px;height:44px;margin:0;accent-color:#d2b278}#settingsPanel input[type=range]{min-height:44px;width:45%;accent-color:#d2b278}#settingsPanel select{background:#172324;color:inherit}
+body.large-interface{--control:100px;--deck-height:102px;--deck-width:430px}body.large-interface .stats{font-size:15px}body.large-interface #commandDeck button{min-width:48px;min-height:54px}body.large-interface #commandDeck button span{font-size:12px}body.large-interface #baseTabs button,body.large-interface .camera button{min-width:48px;min-height:48px}body.large-interface .pause-panel{font-size:18px}
