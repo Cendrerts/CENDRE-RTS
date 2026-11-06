@@ -17,6 +17,8 @@ import { drawMinimap } from './minimap.js';
 import { drawHealthBar, selectionRing, unitFeet, drawCargoRuby, drawMine } from './unit-overlays.js';
 import { createRenderCache, prepareDrawList } from './render-cache.js';
 import { CendreSim as Sim } from './sim.js';
+import { createAI } from './ai.js';
+let soloAI = createAI(1);
 const { W, H, CELL, COLS, ROWS, TYPES, RULES } = Sim;
 const canvas = document.querySelector('#field'),
   ctx = canvas.getContext('2d'),
@@ -435,6 +437,7 @@ $('#start').onclick = () => {
   selected.clear();
   selectedProducer = null;
   player = chosen;
+  soloAI = createAI(1 - player, $('#aiDifficulty').value);
   running = true;
   paused = false;
   zoom = 2.6;
@@ -724,37 +727,6 @@ addEventListener('keydown', (e) => {
   if (e.key === '4') selectType('commis');
   if (['1', '2', '3'].includes(e.key)) selectType(['knight', 'archer', 'mage'][+e.key - 1]);
 });
-function ai(dt) {
-  let t = 1 - player;
-  if (state.aiClock < 6) return;
-  state.aiClock = 0;
-  let army = state.units.filter((u) => u.team === t);
-  const type = ['knight', 'archer', 'mage'][Math.floor(state.time / 6) % 3];
-  if (!Sim.producers(state, t, type).length)
-    Sim.construct(state, t, Sim.BUILDINGS[t].find((b) => b.unit === type).id);
-  if (army.length < 16) Sim.recruit(state, type, t);
-  let mine = state.mines.findIndex(
-    (m) =>
-      (m.owner !== t || (!m.depot && state.mines.indexOf(m) >= 2)) &&
-      army.some((u) => Math.hypot(u.x - m.x, u.y - m.y) < 95),
-  );
-  if (mine >= 0) Sim.build(state, t, mine);
-  let destination =
-    state.time > 95
-      ? state.bases[player]
-      : state.mines.find(
-          (m) => m.owner !== t && m.name !== (t ? 'Mine de la Braise' : 'Mine du Voile'),
-        ) || state.tower;
-  let idle = army.filter((u) => u.type !== 'commis' && !u.path.length && !u.target);
-  Sim.order(
-    state,
-    idle.map((u) => u.id),
-    destination.x,
-    destination.y,
-    destination.base && Sim.canSee(state, t, destination) ? destination : null,
-    false,
-  );
-}
 function finish() {
   running = false;
   if (net)
@@ -948,7 +920,7 @@ function frame(t) {
   touchUI?.tick(dt);
   if (running && !paused) {
     if (!net) {
-      ai(dt);
+      soloAI.update(state);
       Sim.tick(state, dt);
     }
     if (state.winner !== null) finish();
