@@ -116,3 +116,48 @@ input,select,textarea{font-size:16px!important}
 @media(orientation:portrait) {
   #controlGroups { bottom:calc(262px + env(safe-area-inset-bottom)); }
 }
+
+#selectionTypes {
+  position:absolute;
+  bottom:calc(100% + 40px);
+  left:50%;
+  transform:translateX(-50%);
+  display:flex;
+  gap:4px;
+  pointer-events:auto;
+}
+#selectionTypes[hidden] { display:none; }
+#selectionTypes button {
+  width:48px;
+  height:48px;
+  padding:3px;
+  touch-action:none;
+  background:#142229;
+}
+#selectionTypes svg { width:100%; height:100%; }
+#attackAction svg {
+  display:block;
+  width:48px;
+  height:40px;
+  margin:0 auto;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:3;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+#attackAction[aria-pressed=true] {
+  border-color:#ffdf80;
+  background:#70512c;
+  box-shadow:0 0 0 3px #fff0b5, 0 0 22px 7px #ffcf67;
+}
+#retreat {
+  padding:0;
+}
+#retreat span {
+  font:9px Arial;
+  white-space:nowrap;
+  margin-top:2px;
+}
+.joystick-setting { display:flex; align-items:center; justify-content:center; min-height:44px; gap:8px; }
+.joystick-setting input { width:24px; height:24px; }

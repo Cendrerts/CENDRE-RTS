@@ -2,7 +2,7 @@
 import { CuistotsAmbience } from './cuistots-ambience.js';
 import { UnitVoices, selectionVoice } from './unit-voices.js';
 import { createRadialMenu } from './radial.js';
-import { cameraBounds, unitsOfType, createPortraitTap, unitsInBox, boxSelection } from './selection.js';
+import { filterSelection, cameraBounds, unitsOfType, createPortraitTap, unitsInBox, boxSelection } from './selection.js';
 import { createGestures } from './gestures.js';
 import { resolveTap, isEmptyTap } from './tap.js';
 import { installMobileDisplay } from './mobile-display.js';
@@ -41,6 +41,7 @@ let state = Sim.create(),
   ox = 0,
   oy = 0,
   marker = null,
+  attackMoveArmed = false,
   selectedMine = null,
   selectedProducer = null;
 const portraitTap = createPortraitTap();
@@ -231,10 +232,57 @@ function selectType(t, scope = 'all') {
   );
 }
 
+let selectionTypesSignature = '';
+function refreshSelectionTypes(group) {
+  const panel = $('#selectionTypes');
+  const types = [...new Set(group.map((unit) => unit.type))];
+  panel.hidden = types.length < 2;
+  const signature = types.join(',');
+  if (signature === selectionTypesSignature) return;
+  selectionTypesSignature = signature;
+  panel.replaceChildren();
+  for (const type of types) {
+    const button = document.createElement('button');
+    button.innerHTML = portraitFor(type);
+    button.setAttribute('aria-label', TYPES[type].name || type);
+    button.title = type + ' : toucher pour isoler, appui long pour retirer';
+    let timer = null;
+    let removed = false;
+    const cancel = () => {
+      clearTimeout(timer);
+      timer = null;
+    };
+    button.onpointerdown = (event) => {
+      if (event.button !== 0) return;
+      removed = false;
+      button.setPointerCapture(event.pointerId);
+      timer = setTimeout(() => {
+        removed = true;
+        selected = filterSelection(selected, state.units, type, true);
+        updateUI();
+      }, 550);
+    };
+    button.onpointerup = cancel;
+    button.onpointercancel = () => {
+      removed = true;
+      cancel();
+    };
+    button.onlostpointercapture = cancel;
+    button.oncontextmenu = (event) => event.preventDefault();
+    button.onclick = () => {
+      cancel();
+      if (removed) return;
+      selected = filterSelection(selected, state.units, type);
+      updateUI();
+    };
+    panel.append(button);
+  }
+}
 function updateUI() {
   let army = state.units.filter((u) => u.team === player);
   selected = new Set([...selected].filter((id) => army.some((u) => u.id === id)));
   let group = army.filter((u) => selected.has(u.id));
+  refreshSelectionTypes(group);
   document.querySelectorAll('[data-select]').forEach((b) => {
     let counts = viewportUnits(b.dataset.select),
       us = counts.total,
@@ -367,13 +415,12 @@ $('#all').onclick = () => {
   updateUI();
 };
 $('#retreat').onclick = () => {
-  let ids = selected.size
-      ? [...selected]
-      : state.units.filter((u) => u.team === player).map((u) => u.id),
-    b = state.bases[player];
+  const ids = [...selected];
+  attackMoveArmed = false;
+  $('#attackAction').setAttribute('aria-pressed', 'false');
   if (net) sendCommand({ kind: 'retreat', ids });
-  else Sim.order(state, ids, b.x + (player ? -50 : 70), b.y + 45, null, true);
-  notify('Repli vers la base');
+  else Sim.disengage(state, ids);
+  notify('Décrocher · Déplacement sans riposte');
 };
 $('#hold').onclick = () => {
   if (net) {
@@ -559,7 +606,9 @@ function handleFieldTap(e, duration) {
     clearSelection();
     return;
   }
-  const action = resolveTap(state, player, selected, p);
+  const action = attackMoveArmed && selected.size
+    ? { kind: 'move' }
+    : resolveTap(state, player, selected, p);
   if (action.kind === 'radial') {
     if (action.context.mine !== undefined) selectedMine = action.context.mine;
     openRadial(e, action.context);
@@ -602,13 +651,15 @@ function handleFieldTap(e, duration) {
     const target = action.target || null;
     if (net) {
       sendCommand({
-        kind: 'move',
+        kind: attackMoveArmed ? 'attackMove' : 'move',
         ids: [...selected],
         x: p.x,
         y: p.y,
         target: target ? (target.base ? { base: true } : { id: target.id }) : null,
       });
-    } else Sim.order(state, [...selected], p.x, p.y, target);
+    } else Sim.order(state, [...selected], p.x, p.y, target, !target && !attackMoveArmed);
+    attackMoveArmed = false;
+    $('#attackAction').setAttribute('aria-pressed', 'false');
     const nearest = Sim.nearest(p.x, p.y);
     marker = {
       x: (nearest % COLS) * CELL + 10,
@@ -630,6 +681,7 @@ addEventListener('keydown', (e) => {
     $('#all').click();
   }
   if (e.key === 'Escape') $('#pause').click();
+  if (e.key.toLowerCase() === 'a') $('#attackAction').click();
   if (e.key === 'r') $('#retreat').click();
   if (e.key === '4') selectType('commis');
   if (['1', '2', '3'].includes(e.key)) selectType(['knight', 'archer', 'mage'][+e.key - 1]);
@@ -662,6 +714,7 @@ function ai(dt) {
     destination.x,
     destination.y,
     destination.base && Sim.canSee(state, t, destination) ? destination : null,
+    false,
   );
 }
 function finish() {
@@ -1494,29 +1547,9 @@ touchUI = initTouchUI({
     else Sim.steer(state, ids, dx, dy);
   },
   attack: () => {
-    const group = state.units.filter((u) => u.team === player && selected.has(u.id));
-    if (!group.length) return;
-    const cx = group.reduce((a, u) => a + u.x, 0) / group.length,
-      cy = group.reduce((a, u) => a + u.y, 0) / group.length;
-    const target = [...state.units.filter((u) => u.team !== player), state.bases[1 - player]]
-      .filter((u) => Sim.canSee(state, player, u))
-      .sort((a, b) => Math.hypot(a.x - cx, a.y - cy) - Math.hypot(b.x - cx, b.y - cy))[0];
-    if (!target) {
-      notify('Aucun ennemi visible · Touchez une destination pour avancer.');
-      return;
-    }
-    const ids = group.map((u) => u.id);
-    if (net)
-      sendCommand({
-        kind: 'move',
-        ids,
-        x: target.x,
-        y: target.y,
-        target: target.base ? { base: true } : { id: target.id },
-      });
-    else Sim.order(state, ids, target.x, target.y, target);
-    marker = { x: target.x, y: target.y, life: 1 };
-    notify('Attaque · Touchez un ennemi pour changer de cible');
+    attackMoveArmed = !attackMoveArmed;
+    $('#attackAction').setAttribute('aria-pressed', String(attackMoveArmed));
+    notify(attackMoveArmed ? 'Attaque-déplacement · Touchez le sol' : 'Attaque-déplacement annulée');
   },
   focusGroup: () => {
     const us = state.units.filter((u) => selected.has(u.id));

@@ -49,12 +49,16 @@ export function initTouchUI(api) {
     document.body.classList.toggle('base-open', playing && panelsOpen());
     document.body.classList.toggle('playing', playing);
     squad.hidden = !playing || g.paused || panelsOpen();
-    stick.hidden = !playing || g.paused || !g.selected.size || panelsOpen();
+    stick.hidden = !$('#joystickEnabled').checked || !playing || g.paused || !g.selected.size || panelsOpen();
     $('#attackAction').disabled = g.paused || !g.selected.size;
     $('#baseAction').disabled = g.paused;
     $('#productionTab').setAttribute('aria-pressed', String(!$('#recruitTray').hidden));
     $('#constructionTab').setAttribute('aria-pressed', String(!$('#buildingsTray').hidden));
   }
+  $('#joystickEnabled').onchange = () => {
+    stop();
+    refresh();
+  };
   $('#deckToggle').onclick = () => {
     const collapsed = deck.classList.toggle('collapsed');
     $('#deckToggle').textContent = collapsed ? '⌃' : '⌄';
