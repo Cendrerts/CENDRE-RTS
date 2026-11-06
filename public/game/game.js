@@ -1,3 +1,4 @@
+import { readSettings, writeSettings } from './settings.js';
 import { bindAudioUnlock } from './audio-unlock.js';
 import { minimapToWorld, clampCamera, attackDirection, groupAttackAlerts } from './camera.js';
 'use strict';
@@ -70,7 +71,8 @@ function controlGroups() {
   state.controlGroups ??= createControlGroups();
   return state.controlGroups;
 }
-const voices = new UnitVoices();
+let settings = readSettings();
+const voices = new UnitVoices({ volume: settings.voiceVolume });
 let ambience = null;
 function updateAmbience() {
   ambience?.updateCamera(
@@ -82,6 +84,7 @@ function unlockAmbience() {
   try {
     voices.initialize();
     ambience ??= new CuistotsAmbience({ context: voices.context, basePosition: state.bases[0] });
+    ambience.volume = settings.ambienceVolume;
     updateAmbience();
     void ambience.start().catch(console.error);
   } catch (error) {
@@ -94,7 +97,7 @@ audioButton.textContent = '🔇';
 audioButton.setAttribute('aria-label', 'Activer le son');
 audioButton.style.minWidth = '44px';
 audioButton.style.minHeight = '44px';
-document.querySelector('header').append(audioButton);
+$('#soundSetting').append(audioButton);
 bindAudioUnlock({ document, window, button: audioButton, onActive: unlockAmbience });
 document.addEventListener('visibilitychange', updateAmbience);
 addEventListener('pagehide', () => ambience?.updateCamera({ x: cameraX, y: cameraY }, false));
@@ -103,34 +106,13 @@ function playSelectionVoice(units) {
   const voice = selectionVoice(units, player);
   if (voice) void voices.select(voice);
 }
-let hapticsEnabled = true;
-try {
-  hapticsEnabled = localStorage.getItem('cendre-haptics') !== 'off';
-} catch {}
-const hapticsButton = document.createElement('button');
-hapticsButton.id = 'haptics';
-hapticsButton.style.minWidth = '44px';
-hapticsButton.style.minHeight = '44px';
-function updateHapticsButton() {
-  hapticsButton.textContent = hapticsEnabled ? 'Vibration : oui' : 'Vibration : non';
-  hapticsButton.setAttribute('aria-pressed', String(hapticsEnabled));
-}
-hapticsButton.addEventListener('click', () => {
-  hapticsEnabled = !hapticsEnabled;
-  updateHapticsButton();
-  try {
-    localStorage.setItem('cendre-haptics', hapticsEnabled ? 'on' : 'off');
-  } catch {}
-});
-updateHapticsButton();
-$('#pause').before(hapticsButton);
 function showOrderFeedback(action, point, ids) {
   const feedback = orderFeedback(action);
   if (!feedback || !ids.length) return;
   marker = { ...feedback, ...point, started: performance.now(), targetId: action.target?.id, base: action.target?.base };
   const voice = selectionVoice(state.units.filter((unit) => ids.includes(unit.id)), player);
   if (voice) void voices.acknowledge(voice);
-  vibrateOrder(hapticsEnabled);
+  vibrateOrder(settings.vibration);
 }
 let radial = null,
   buildGhost = null;
@@ -358,7 +340,6 @@ function updateUI() {
   });
   $('#rubies').textContent = Math.floor(state.rubies[player]);
   $('#population').textContent = army.length + ' / 30';
-  $('#income').textContent = army.filter((u) => u.harvest).length + ' en récolte';
   $('#clock').textContent =
     String(Math.floor(state.time / 60)).padStart(2, '0') +
     ':' +
@@ -494,16 +475,106 @@ $('#hold').onclick = () => {
     });
   notify('Position tenue · Attaque des ennemis à portée');
 };
+function applySettings() {
+  voices.volume = settings.voiceVolume;
+  if (voices.output) voices.output.gain.value = settings.voiceVolume;
+  if (ambience) ambience.volume = settings.ambienceVolume;
+  document.body.classList.toggle('large-interface', settings.interfaceSize === 'large');
+  updateAmbience();
+}
+$('#vibrationEnabled').checked = settings.vibration;
+$('#joystickEnabled').checked = settings.joystick;
+$('#voiceVolume').value = settings.voiceVolume * 100;
+$('#ambienceVolume').value = settings.ambienceVolume * 100;
+$('#interfaceSize').value = settings.interfaceSize;
+for (const id of ['vibrationEnabled', 'joystickEnabled', 'voiceVolume', 'ambienceVolume', 'interfaceSize']) {
+  $('#' + id).addEventListener('input', () => {
+    settings = writeSettings({
+      vibration: $('#vibrationEnabled').checked,
+      joystick: $('#joystickEnabled').checked,
+      voiceVolume: Number($('#voiceVolume').value) / 100,
+      ambienceVolume: Number($('#ambienceVolume').value) / 100,
+      interfaceSize: $('#interfaceSize').value,
+    });
+    applySettings();
+  });
+}
+applySettings();
+function closePauseMenu() {
+  if ($('#pauseMenu').hidden) return;
+  $('#pauseMenu').hidden = true;
+  if (!net) paused = false;
+  updateAmbience();
+  $('#pause').focus();
+}
 $('#pause').onclick = () => {
-  if (!running) return;
-  if (net) {
-    notify('Le duel ne peut pas être mis en pause.');
+  if (!$('#pauseMenu').hidden) {
+    closePauseMenu();
     return;
   }
-  paused = !paused;
-  $('#pause').textContent = paused ? '▶' : 'Ⅱ';
-  notify(paused ? 'En pause' : 'Combat repris');
+  if (!running) return;
+  touchUI?.stop();
+  radial?.close();
+  $('#pauseMenu').hidden = false;
+  $('#settingsPanel').hidden = true;
+  $('#pauseActions').hidden = false;
+  $('#pauseTitle').textContent = 'Pause';
+  $('#pauseStatus').textContent = net ? 'Partie en cours' : 'Partie en pause';
+  $('#quitGame').textContent = net ? 'Quitter le duel' : 'Quitter la partie';
+  if (!net) paused = true;
+  updateAmbience();
+  $('#resumeGame').focus();
 };
+$('#closePause').onclick = closePauseMenu;
+$('#resumeGame').onclick = closePauseMenu;
+$('#pauseMenu').onclick = (event) => {
+  if (event.target === $('#pauseMenu')) closePauseMenu();
+};
+$('#openSettings').onclick = () => {
+  $('#pauseActions').hidden = true;
+  $('#settingsPanel').hidden = false;
+  $('#pauseTitle').textContent = 'Réglages';
+  $('#vibrationEnabled').focus();
+};
+$('#backPause').onclick = () => {
+  $('#settingsPanel').hidden = true;
+  $('#pauseActions').hidden = false;
+  $('#pauseTitle').textContent = 'Pause';
+  $('#openSettings').focus();
+};
+$('#quitGame').onclick = () => {
+  if (net) {
+    if (confirm('Quitter le duel ? Cela compte comme un abandon.')) {
+      closePauseMenu();
+      void leaveRoom();
+    }
+    return;
+  }
+  closePauseMenu();
+  running = false;
+  selected.clear();
+  $('#veil').style.display = 'flex';
+  updateAmbience();
+  updateUI();
+};
+window.addEventListener('keydown', (event) => {
+  if ($('#pauseMenu').hidden) return;
+  event.stopImmediatePropagation();
+  if (event.key === 'Escape') closePauseMenu();
+  if (event.key === 'Tab') {
+    const controls = [...$('#pauseMenu').querySelectorAll('button, input, select')]
+      .filter((element) => element.getClientRects().length && !element.disabled);
+    const first = controls[0];
+    const last = controls[controls.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
+}, true);
 $('#help').onclick = () =>
   notify(
     'Ouvrier + mine à vous : récolter · Bâtiment principal : recruter · Portrait : sélectionner / désélectionner · Appui long dans le vide : désélectionner · Glissez : sélectionner · 2 doigts : caméra et zoom · Tour : 4 s sur place · Base secondaire : 120 rubis près d’une mine · Bois : −2 PV/s',
@@ -836,6 +907,7 @@ addEventListener('keydown', (e) => {
   if (['1', '2', '3'].includes(e.key)) selectType(['knight', 'archer', 'mage'][+e.key - 1]);
 });
 function finish() {
+  closePauseMenu();
   running = false;
   if (net)
     $('#roomStatus').textContent = 'Duel terminé. Quittez le salon pour en créer un nouveau.';
@@ -1093,7 +1165,7 @@ function lobbyControls(connected) {
   $('#lobby').hidden = !connected;
   for (const id of ['start', 'createRoom', 'joinRoom', 'chooseHuman', 'chooseGhost', 'roomInput'])
     $('#' + id).disabled = connected;
-  $('#leaveMatch').hidden = !connected;
+  $('#leaveMatch').hidden = true;
   $('#netBadge').hidden = !connected;
 }
 function resetNetwork() {
@@ -1145,7 +1217,7 @@ function showSnapshot(data) {
     setupPortraits();
     $('#veil').style.display = 'none';
     $('#recruitTray').hidden = true;
-    $('#pause').disabled = true;
+    $('#pause').disabled = false;
     notify('Duel commencé · Détruisez la base adverse.');
   }
   if (data.status === 'ended' && state.winner !== null && !net.finished) {

@@ -36,7 +36,7 @@ for (const kind of ['move', 'attackMove', 'attack', 'gather']) {
     attackMoveArmed: kind === 'attackMove', selected: new Set([1]),
     resolveTap: () => ({ kind, target: kind === 'attack' ? target : undefined, ids: [1], index: 0 }),
     state: { units: [], mines: [point] }, player: 0, marker: null,
-    selectionVoice: () => null, vibrateOrder, hapticsEnabled: false,
+    selectionVoice: () => null, vibrateOrder, settings: { vibration: false },
     net: true, sendCommand: () => {
       assert(context.marker, 'marker exists before dispatch');
       return response.then(() => { serverReplied = true; });
