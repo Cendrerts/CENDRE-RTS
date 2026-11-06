@@ -42,3 +42,9 @@ export function boxSelection(current, units) {
   if (!units.length) return current;
   return new Set(units.map((unit) => unit.id));
 }
+
+export function filterSelection(selection, units, type, remove = false) {
+  return new Set(units.filter((unit) =>
+    selection.has(unit.id) && unit.hp > 0 && (remove ? unit.type !== type : unit.type === type),
+  ).map((unit) => unit.id));
+}

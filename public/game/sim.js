@@ -386,7 +386,7 @@ function productionTick(s, dt) {
   }
 }
 
-function order(s, ids, x, y, target = null, retreat = false) {
+function order(s, ids, x, y, target = null, retreat = !target) {
   const units = s.units.filter((u) => ids.includes(u.id));
   if (!units.length) return;
   const centerX = units.reduce((sum, unit) => sum + unit.x, 0) / units.length;
@@ -429,6 +429,8 @@ function order(s, ids, x, y, target = null, retreat = false) {
     u.harvest = null;
     u.path = route(u.x, u.y, destination.x, destination.y);
     if (!u.path.length) u.path = [{ x: destination.x, y: destination.y }];
+    u.attackDestination = !retreat && !target ? destination : null;
+    u.chasing = false;
     u.target = target;
     u.hold = false;
     u.retreat = retreat;
@@ -551,6 +553,10 @@ function tick(s, dt) {
         (a, b) => Math.hypot(a.x - u.x, a.y - u.y) - Math.hypot(b.x - u.x, b.y - u.y),
       )[0];
     }
+    if (!target && !u.hold && u.chasing && u.attackDestination) {
+      u.path = route(u.x, u.y, u.attackDestination.x, u.attackDestination.y);
+      u.chasing = false;
+    }
     let d = target ? Math.hypot(target.x - u.x, target.y - u.y) : Infinity;
     if (target && d <= cfg.range + (target.base ? 45 : 0) && !u.retreat) {
       fighting.add(u.id);
@@ -582,6 +588,7 @@ function tick(s, dt) {
       }
     } else {
       if (target && !u.hold && !u.retreat && u.repath <= 0) {
+        u.chasing = true;
         u.path = route(u.x, u.y, target.x, target.y);
         u.repath = 0.9;
       }
@@ -782,6 +789,7 @@ function harvestTick(s, u, dt) {
 
 export const CendreSim = {
   steer,
+  disengage,
   baseSites,
   producers,
   gather,
@@ -819,6 +827,8 @@ function steer(s, ids, dx, dy) {
   for (const u of s.units)
     if (ids.includes(u.id)) {
       u.harvest = null;
+      u.attackDestination = null;
+      u.chasing = false;
       u.target = null;
       u.path = [];
       u.retreat = false;
@@ -838,4 +848,29 @@ function manualTick(u, dt) {
   if (valid(u.x, u.y + dy)) u.y += dy;
   m.left -= dt;
   if (m.left <= 0) u.manual = null;
+}
+
+// Retreat from the visible enemy centroid; without contact, fall back toward home.
+function disengage(s, ids) {
+  const units = s.units.filter((unit) => ids.includes(unit.id) && unit.hp > 0);
+  if (!units.length) return;
+  const team = units[0].team;
+  const x = units.reduce((sum, unit) => sum + unit.x, 0) / units.length;
+  const y = units.reduce((sum, unit) => sum + unit.y, 0) / units.length;
+  const enemies = [...s.units, s.bases[1 - team]].filter(
+    (unit) => unit.team !== team && unit.hp > 0 && canSee(s, team, unit),
+  );
+  let dx = s.bases[team].x - x;
+  let dy = s.bases[team].y - y;
+  if (enemies.length) {
+    dx = x - enemies.reduce((sum, unit) => sum + unit.x, 0) / enemies.length;
+    dy = y - enemies.reduce((sum, unit) => sum + unit.y, 0) / enemies.length;
+  }
+  const length = Math.hypot(dx, dy);
+  if (!length) {
+    dx = team ? 1 : -1;
+    dy = 0;
+  }
+  const divisor = length || 1;
+  order(s, ids, x + dx / divisor * 150, y + dy / divisor * 150, null, true);
 }

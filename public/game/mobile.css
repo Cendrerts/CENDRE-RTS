@@ -116,3 +116,25 @@ input,select,textarea{font-size:16px!important}
 @media(orientation:portrait) {
   #controlGroups { bottom:calc(262px + env(safe-area-inset-bottom)); }
 }
+
+#selectionTypes {
+  position:absolute;
+  bottom:calc(100% + 40px);
+  left:50%;
+  transform:translateX(-50%);
+  display:flex;
+  gap:4px;
+  pointer-events:auto;
+}
+#selectionTypes[hidden] { display:none; }
+#selectionTypes button {
+  width:48px;
+  height:48px;
+  padding:3px;
+  touch-action:none;
+  background:#142229;
+}
+#selectionTypes svg { width:100%; height:100%; }
+#attackAction[aria-pressed=true] { border-color:#ffdf80; background:#70512c; }
+.joystick-setting { display:flex; align-items:center; justify-content:center; min-height:44px; gap:8px; }
+.joystick-setting input { width:24px; height:24px; }
