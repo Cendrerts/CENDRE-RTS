@@ -213,6 +213,7 @@ function create() {
     rubies: [100, 100],
     units: [],
     shots: [],
+    damageEvents: [],
     winner: null,
     aiClock: 0,
     fogClock: 0,
@@ -533,6 +534,7 @@ function tick(s, dt) {
   if (s.winner !== null) return;
   productionTick(s, dt);
   s.time += dt;
+  s.damageEvents = (s.damageEvents || []).filter((event) => s.time - event.time < 5);
   s.fogClock += dt;
   s.aiClock += dt;
   let near = s.units.filter(
@@ -557,7 +559,10 @@ function tick(s, dt) {
     if (u.hp <= 0) continue;
     u.cool -= dt;
     u.repath -= dt;
-    if (forest(u)) u.hp -= RULES.forestDamage * dt;
+    if (forest(u)) {
+      u.hp -= RULES.forestDamage * dt;
+      s.damageEvents.push({ x: u.x, y: u.y, team: u.team, time: s.time });
+    }
     if (u.hp <= 0) continue;
     if (u.manual) {
       manualTick(u, dt);
@@ -592,6 +597,7 @@ function tick(s, dt) {
       if (u.cool <= 0) {
         u.cool = cfg.rate;
         target.hp -= cfg.damage;
+        s.damageEvents.push({ x: target.x, y: target.y, team: target.team, time: s.time });
         if (cfg.splash) {
           for (const v of s.units)
             if (
@@ -599,8 +605,10 @@ function tick(s, dt) {
               v.team !== u.team &&
               v.hp > 0 &&
               Math.hypot(v.x - target.x, v.y - target.y) <= cfg.splash
-            )
+            ) {
               v.hp -= cfg.damage;
+              s.damageEvents.push({ x: v.x, y: v.y, team: v.team, time: s.time });
+            }
         }
         s.shots.push({
           x: u.x,

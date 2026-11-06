@@ -161,3 +161,4 @@ input,select,textarea{font-size:16px!important}
 }
 .joystick-setting { display:flex; align-items:center; justify-content:center; min-height:44px; gap:8px; }
 .joystick-setting input { width:24px; height:24px; }
+.attack-alert{position:fixed;z-index:30;width:48px;height:48px;min-width:48px;padding:0;border:2px solid #ff8a8a;border-radius:50%;background:#740c20e8;color:#ff6464;font-size:26px;touch-action:manipulation;box-shadow:0 0 12px #ff304d88}
