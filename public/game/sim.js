@@ -847,7 +847,36 @@ function harvestTick(s, u, dt) {
   }
 }
 
+// Presentation prediction uses the same routing, speed and terrain collision as simulation.
+function predictMotion(state, unit, command, dt) {
+  if (command.kind === 'steer') {
+    const length = Math.hypot(command.dx, command.dy);
+    if (length) {
+      const distance = stats(unit.type, unit.team).speed * dt;
+      moveSafely(unit, command.dx / length * distance, command.dy / length * distance);
+    }
+    return;
+  }
+  if (!unit.path?.length) return;
+  let distance = stats(unit.type, unit.team).speed * dt;
+  while (distance > 0 && unit.path.length) {
+    const point = unit.path[0];
+    const dx = point.x - unit.x;
+    const dy = point.y - unit.y;
+    const length = Math.hypot(dx, dy);
+    if (length < 0.01) {
+      unit.path.shift();
+      continue;
+    }
+    const step = Math.min(distance, length);
+    moveSafely(unit, dx / length * step, dy / length * step);
+    distance -= step;
+    if (step === length) unit.path.shift();
+  }
+}
+
 export const CendreSim = {
+  predictMotion,
   steer,
   disengage,
   baseSites,
