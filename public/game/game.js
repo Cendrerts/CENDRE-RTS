@@ -139,7 +139,7 @@ function setupPortraits() {
       (unitNames[t] || 'Commis') +
       '<small>' +
       Sim.stats(t, player).cost +
-      ' ✦ · ' +
+      ' rubis · ' +
       Sim.stats(t, player).production +
       ' s</small>';
   });
@@ -302,7 +302,7 @@ function updateUI() {
     b.disabled = !us.length;
     b.setAttribute('aria-pressed', String(us.some((u) => selected.has(u.id))));
   });
-  $('#gold').textContent = Math.floor(state.gold[player]);
+  $('#rubies').textContent = Math.floor(state.rubies[player]);
   $('#population').textContent = army.length + ' / 30';
   $('#income').textContent = army.filter((u) => u.harvest).length + ' en récolte';
   $('#clock').textContent =
@@ -337,7 +337,7 @@ function updateUI() {
       !running ||
       paused ||
       !free ||
-      state.gold[player] < Sim.stats(type, player).cost ||
+      state.rubies[player] < Sim.stats(type, player).cost ||
       army.length + q.length >= 30;
     const html =
       unitNames[type] +
@@ -347,7 +347,7 @@ function updateUI() {
         : !ps.length
           ? 'Autre bâtiment requis'
           : Sim.stats(type, player).cost +
-            ' ✦ · ' +
+            ' rubis · ' +
             Sim.stats(type, player).production +
             ' s · ' +
             ps.length +
@@ -361,7 +361,7 @@ function updateUI() {
       : state.tower.owner === 1 - player
         ? '◉ Tour : occupée par l’adversaire'
         : '◉ Tour : non contrôlée';
-  $('#build').disabled = !running || state.gold[player] < 120;
+  $('#build').disabled = !running || state.rubies[player] < 120;
   updateConstruction();
   touchUI?.refresh();
   controlGroupsUI?.refresh();
@@ -451,7 +451,7 @@ $('#pause').onclick = () => {
 };
 $('#help').onclick = () =>
   notify(
-    'Ouvrier + mine à vous : récolter · Bâtiment principal : recruter · Portrait : sélectionner / désélectionner · Appui long dans le vide : désélectionner · Glissez : sélectionner · 2 doigts : caméra et zoom · Tour : 4 s sur place · Base secondaire : 120 or près d’une mine · Bois : −2 PV/s',
+    'Ouvrier + mine à vous : récolter · Bâtiment principal : recruter · Portrait : sélectionner / désélectionner · Appui long dans le vide : désélectionner · Glissez : sélectionner · 2 doigts : caméra et zoom · Tour : 4 s sur place · Base secondaire : 120 rubis près d’une mine · Bois : −2 PV/s',
   );
 $('#recruitToggle').onclick = () => {
   selectedProducer = null;
@@ -498,7 +498,7 @@ $('#build').onclick = () => {
   if (Sim.build(state, player, m.i)) {
     notify('Base secondaire construite · Dépôt local disponible');
     updateUI();
-  } else notify('Construction impossible : zone contestée ou or insuffisant.');
+  } else notify('Construction impossible : zone contestée ou rubis insuffisants.');
 };
 $('#zoomIn').onclick = () => {
   zoom = Math.min(3.5, zoom + 0.3);
@@ -643,7 +643,7 @@ function handleFieldTap(e, duration) {
     selectedMine = action.index;
     const mine = state.mines[action.index];
     notify(
-      mine.name + ' · ' + (mine.boost ? 'Rendement ×2 · ' : '') + 'Base secondaire : 120 or',
+      mine.name + ' · ' + (mine.boost ? 'Rendement ×2 · ' : '') + 'Base secondaire : 120 rubis',
     );
     return;
   }
@@ -878,10 +878,10 @@ function draw() {
     ctx.fillText(
       m.owner === player
         ? m.boost
-          ? '20 / LIVRAISON · RUBIS'
+          ? '20 / LIVRAISON · VEINE RICHE'
           : '10 / LIVRAISON'
         : m.boost
-          ? 'RUBIS · RENDEMENT ×2'
+          ? 'VEINE RICHE · RENDEMENT ×2'
           : 'EMPLACEMENT DE BASE',
       m.x,
       m.y + 38,
@@ -1258,7 +1258,7 @@ function setupConstruction() {
   box.replaceChildren();
   for (const b of Sim.BUILDINGS[player]) {
     const button = document.createElement('button');
-    button.textContent = b.name + ' · ' + b.cost + ' ✦';
+    button.textContent = b.name + ' · ' + b.cost + ' rubis';
     button.dataset.cost = b.cost;
     button.onclick = () => {
       if (!running || paused) return;
@@ -1309,14 +1309,14 @@ function updateConstruction() {
       paused ||
       !slots.length ||
       used === slots.length ||
-      state.gold[player] < Number(b.dataset.cost);
+      state.rubies[player] < Number(b.dataset.cost);
   const mines = state.mines.flatMap((m, i) =>
     i >= 2 && (!m.depot || m.owner !== player) && Sim.visibleAt(state, player, m.x, m.y)
       ? [[String(i), m.name]]
       : [],
   );
   refreshOptions($('#expansionMine'), mines.length ? mines : [['', 'Explorez une nouvelle mine']]);
-  $('#build').disabled = !running || paused || state.gold[player] < 120 || !mines.length;
+  $('#build').disabled = !running || paused || state.rubies[player] < 120 || !mines.length;
 }
 function updateProductionChoices() {
   const ps = Object.keys(TYPES).flatMap((t) => Sim.producers(state, player, t));
@@ -1606,19 +1606,19 @@ function ghostStatus() {
         m && state.units.some((u) => u.team === player && Math.hypot(u.x - m.x, u.y - m.y) < 95),
       enemy =
         m && state.units.some((u) => u.team !== player && Math.hypot(u.x - m.x, u.y - m.y) < 95);
-    const valid = !!m && !m.depot && state.gold[player] >= 120 && near && !enemy;
+    const valid = !!m && !m.depot && state.rubies[player] >= 120 && near && !enemy;
     return {
       valid,
       message:
         !m || m.depot
           ? 'Emplacement indisponible.'
-          : state.gold[player] < 120
-            ? '120 or nécessaires.'
+          : state.rubies[player] < 120
+            ? '120 rubis nécessaires.'
             : !near
               ? 'Approchez une unité de la mine.'
               : enemy
                 ? 'Mine contestée.'
-                : 'Base secondaire · 120 or · Confirmez cet emplacement.',
+                : 'Base secondaire · 120 rubis · Confirmez cet emplacement.',
     };
   }
   const slot = (state.slots[player] || []).find(
@@ -1626,14 +1626,14 @@ function ghostStatus() {
   );
   const cost = Sim.BUILDINGS[player].find((b) => b.id === option.id)?.cost;
   return {
-    valid: !!slot && !slot.occupe && state.gold[player] >= cost,
+    valid: !!slot && !slot.occupe && state.rubies[player] >= cost,
     message: !slot
       ? 'Aucun emplacement libre autour de cette base.'
       : slot.occupe
         ? 'Emplacement occupé · Touchez un autre terrain.'
-        : state.gold[player] < cost
-          ? cost + ' ✦ nécessaires · Ressources insuffisantes.'
-          : 'Fantôme · ' + cost + ' ✦ · Confirmez pour construire.',
+        : state.rubies[player] < cost
+          ? cost + ' rubis nécessaires · Ressources insuffisantes.'
+          : 'Fantôme · ' + cost + ' rubis · Confirmez pour construire.',
   };
 }
 function drawBuildGhost() {
@@ -1688,7 +1688,7 @@ radial = createRadialMenu({
         : [
             {
               name: player ? 'Grande Décharge' : 'Cuisine Centrale',
-              detail: '120 or',
+              detail: '120 rubis',
               kind: 'depot',
             },
           ];
@@ -1701,7 +1701,7 @@ radial = createRadialMenu({
             ? b.unit === 'mage'
             : false,
       )
-      .map((b) => ({ ...b, detail: b.cost + ' ✦', kind: 'building' }));
+      .map((b) => ({ ...b, detail: b.cost + ' rubis', kind: 'building' }));
   },
   action: (c) => {
     selectedProducer = null;

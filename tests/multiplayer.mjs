@@ -25,7 +25,7 @@ const db = {
 const fund = (code, amount) => {
   const row = JSON.parse(sql.prepare('SELECT data FROM matches WHERE code=?').get(code).data);
   const state = unpack(row.state);
-  state.gold[0] += amount;
+  state.rubies[0] += amount;
   row.state = pack(state);
   sql.prepare('UPDATE matches SET data=? WHERE code=?').run(JSON.stringify(row), code);
 };
@@ -46,7 +46,7 @@ assert.equal(r.status, 'playing');
 assert.equal(r.state.units.length, 1);
 assert.equal(r.state.units[0].type, 'commis');
 assert(r.state.units.every((u) => u.team === 0));
-assert.equal(r.state.gold[1], 0);
+assert.equal(r.state.rubies[1], 0);
 assert(r.state.visible[1].every((v) => v === 0));
 await sync(a, { seq: 1, command: { kind: 'recruit', type: 'commis' } });
 r = await sync(a, { seq: 1, command: { kind: 'recruit', type: 'commis' } });
@@ -157,10 +157,10 @@ const batchInput = { action: 'sync', code: ba.code, token: ba.token, commands: b
 const first = await handle(db, batchInput, now + 4000);
 assert(!first.error);
 assert.equal(first.ack, 3);
-assert.equal(first.state.gold[0], 0);
+assert.equal(first.state.rubies[0], 0);
 assert.equal(first.state.queues[0].length, 2);
 const again = await handle(db, batchInput, now + 4000);
-assert.equal(again.state.gold[0], 0);
+assert.equal(again.state.rubies[0], 0);
 assert.equal(again.state.queues[0].length, 2);
 const rejected = await handle(
   db,

@@ -210,7 +210,7 @@ function create() {
     controlGroups: [[], [], [], []],
     time: 0,
     id: 0,
-    gold: [100, 100],
+    rubies: [100, 100],
     units: [],
     shots: [],
     winner: null,
@@ -240,7 +240,7 @@ function create() {
         boost: false,
         site: { x: 730, y: 890 },
       },
-      { x: 1275, y: 682, owner: -1, name: 'Mine de rubis', boost: true, site: { x: 1200, y: 710 } },
+      { x: 1275, y: 682, owner: -1, name: 'Veine riche', boost: true, site: { x: 1200, y: 710 } },
       {
         x: 970,
         y: 130,
@@ -301,7 +301,19 @@ function spawn(s, type, team, origin = null) {
     if (mine >= 0) assignHarvest(s, s.units.at(-1), mine);
   }
 }
+// Shared migration for saved solo states and persisted server matches.
+function migrateState(s) {
+  if (Object.hasOwn(s, 'gold')) {
+    if (!Object.hasOwn(s, 'rubies')) s.rubies = s.gold;
+    delete s.gold;
+  }
+  for (const mine of s.mines || []) {
+    if (mine.boost) mine.name = 'Veine riche';
+  }
+  return s;
+}
 function ensureSlots(s) {
+  migrateState(s);
   return syncSlots(s, (x, y, occupied, base) => {
     let best = null,
       d = Infinity;
@@ -340,14 +352,14 @@ function recruit(s, type, team, producerId = null) {
     );
   if (
     !options.length ||
-    s.gold[team] < cfg.cost ||
+    s.rubies[team] < cfg.cost ||
     s.units.filter((u) => u.team === team).length + q.length >= 30
   )
     return false;
   const workload = (p) =>
     q.filter((j) => j.producerId === p.id).reduce((n, j) => n + j.remaining, 0);
   options.sort((a, b) => workload(a) - workload(b));
-  s.gold[team] -= cfg.cost;
+  s.rubies[team] -= cfg.cost;
   q.push({ type, remaining: cfg.production, total: cfg.production, producerId: options[0].id });
   return true;
 }
@@ -364,7 +376,7 @@ function productionTick(s, dt) {
         if (p) job.producerId = p.id;
       }
       if (!available.some((p) => p.id === job.producerId && p.unit === job.type)) {
-        s.gold[t] += stats(job.type, t).cost;
+        s.rubies[t] += stats(job.type, t).cost;
         q.splice(i, 1);
       }
     }
@@ -444,12 +456,12 @@ function build(s, team, index) {
     s.winner !== null ||
     !m ||
     (m.owner === team && (index < 2 || m.depot)) ||
-    s.gold[team] < RULES.mineCost ||
+    s.rubies[team] < RULES.mineCost ||
     !s.units.some((u) => u.team === team && Math.hypot(u.x - m.x, u.y - m.y) < 95) ||
     s.units.some((u) => u.team !== team && Math.hypot(u.x - m.x, u.y - m.y) < 95)
   )
     return false;
-  s.gold[team] -= RULES.mineCost;
+  s.rubies[team] -= RULES.mineCost;
   m.owner = team;
   if (index >= 2) {
     m.site ??= { x: m.x - 60, y: m.y + 30 };
@@ -501,6 +513,7 @@ function visibility(s) {
   }
 }
 function tick(s, dt) {
+  migrateState(s);
   if (s.winner !== null) return;
   productionTick(s, dt);
   s.time += dt;
@@ -775,7 +788,7 @@ function harvestTick(s, u, dt) {
       h.phase = 'MINAGE';
       h.elapsed = 0;
     } else {
-      s.gold[u.team] += u.cargo || 0;
+      s.rubies[u.team] += u.cargo || 0;
       u.cargo = 0;
       if (!m || m.owner !== u.team) {
         u.harvest = null;
@@ -794,6 +807,7 @@ export const CendreSim = {
   producers,
   gather,
   BUILDINGS,
+  migrateState,
   ensureSlots,
   construct,
   W,

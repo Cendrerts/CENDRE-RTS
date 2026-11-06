@@ -3,7 +3,7 @@ import { CendreSim as S } from '../public/game/sim.js';
 function idle() {
   const s = S.create();
   for (let t = 0; t < 2; t++) {
-    s.gold[t] += 450;
+    s.rubies[t] += 450;
     for (const b of S.BUILDINGS[t]) S.construct(s, t, b.id);
   }
   for (const u of s.units) {
@@ -14,10 +14,10 @@ function idle() {
 }
 let s = idle();
 assert.equal(s.units.length, 2);
-assert.equal(s.gold[0], 100);
+assert.equal(s.rubies[0], 100);
 assert(S.recruit(s, 'knight', 0));
-assert.equal(s.gold[0], 40);
-s.gold[0] = 0;
+assert.equal(s.rubies[0], 40);
+s.rubies[0] = 0;
 assert(!S.recruit(s, 'mage', 0));
 // Every objective must be reachable from BOTH spawn areas, without crossing lava.
 for (let b of s.bases)
@@ -60,14 +60,14 @@ let hp = s.units[0].hp;
 S.tick(s, 1);
 assert.equal(s.units[0].hp, hp - 2);
 s = idle();
-s.gold[0] = 500;
+s.rubies[0] = 500;
 s.units[0].x = 1275;
 s.units[0].y = 682;
 assert(S.build(s, 0, 4));
-assert.equal(s.gold[0], 380);
-let g = s.gold[0];
+assert.equal(s.rubies[0], 380);
+let g = s.rubies[0];
 S.tick(s, 1);
-assert.equal(s.gold[0] - g, 0);
+assert.equal(s.rubies[0] - g, 0);
 assert(!S.build(s, 0, 4));
 s = idle();
 s.units = s.units.slice(0, 1);
@@ -84,7 +84,7 @@ console.log(
 s = idle();
 assert.equal(s.units.filter((u) => u.type === 'commis').length, 2);
 assert(S.recruit(s, 'commis', 0));
-assert.equal(s.gold[0], 60);
+assert.equal(s.rubies[0], 60);
 assert(S.recruit(s, 'commis', 1));
 assert.equal(s.queues[1][0].remaining, 5);
 assert.equal(s.queues[0][0].remaining, 5);
@@ -99,7 +99,7 @@ S.tick(s, 0.1);
 assert.equal(s.units.filter((u) => u.team === 1).length, 2);
 assert.equal(s.units.at(-1).max, 45);
 s = idle();
-s.gold[1] = 99999;
+s.rubies[1] = 99999;
 for (let i = 0; i < 8; i++) assert(S.recruit(s, 'mage', 1));
 assert(!S.recruit(s, 'mage', 1));
 assert.equal(s.queues[1].length, 8);
@@ -195,7 +195,7 @@ console.log('PASS: asymmetric production for all eight units and elite chef spla
 
 {
   const state = idle();
-  assert.deepEqual(state.gold, [100, 100]);
+  assert.deepEqual(state.rubies, [100, 100]);
   assert.equal(state.bases.length, 2);
   assert.deepEqual(state.queues, [[], []]);
   for (let t = 0; t < 2; t++) {

@@ -21,17 +21,17 @@ function trip(withDepot, team, index) {
     u = s.units.find((u) => u.team === team),
     m = s.mines[index];
   place(u, m.x, m.y);
-  s.gold[team] = 500;
+  s.rubies[team] = 500;
   if (withDepot) {
     command(s, team, { kind: 'build', index });
     assert(m.depot);
-    assert.equal(s.gold[team], 380);
+    assert.equal(s.rubies[team], 380);
     assert(!S.build(s, team, index));
   } else m.owner = team;
   S.gather(s, team, [u.id], index);
-  const initial = s.gold[team];
-  for (let n = 0; n < 2400 && s.gold[team] === initial; n++) S.tick(s, 0.05);
-  assert.equal(s.gold[team] - initial, m.boost ? 20 : 10);
+  const initial = s.rubies[team];
+  for (let n = 0; n < 2400 && s.rubies[team] === initial; n++) S.tick(s, 0.05);
+  assert.equal(s.rubies[team] - initial, m.boost ? 20 : 10);
   return s.time;
 }
 for (let team = 0; team < 2; team++)
@@ -44,7 +44,7 @@ for (let team = 0; team < 2; team++)
 {
   const s = S.create(),
     u = s.units[0];
-  s.gold[0] = 500;
+  s.rubies[0] = 500;
   place(u, s.mines[2].x, s.mines[2].y);
   S.build(s, 0, 2);
   S.gather(s, 0, [u.id], 2);

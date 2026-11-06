@@ -7,7 +7,7 @@ assert.deepEqual(
   [8, 8],
 );
 for (let t = 0; t < 2; t++) {
-  s.gold[t] = 2000;
+  s.rubies[t] = 2000;
   const base = s.bases[t];
   assert(s.slots[t].every((p) => S.walk[Math.floor(p.y / 20) * S.COLS + Math.floor(p.x / 20)]));
   for (let i = 0; i < 8; i++) {
@@ -17,7 +17,7 @@ for (let t = 0; t < 2; t++) {
   }
   assert.throws(() => command(s, t, { kind: 'construct', type: S.BUILDINGS[t][0].id }));
 }
-assert.deepEqual(s.gold, [850, 850]);
+assert.deepEqual(s.rubies, [850, 850]);
 assert.deepEqual(unpack(pack(s)).slots, s.slots);
 assert.equal(view(s, 0).slots[1].length, 0);
 assert.equal(view(s, 1).slots[0].length, 0);
@@ -40,19 +40,19 @@ for (const team of [0, 1])
   for (const cfg of S.BUILDINGS[team]) {
     const s = S.create(),
       slot = s.slots[team][3];
-    s.gold[team] = cfg.cost - 1;
+    s.rubies[team] = cfg.cost - 1;
     assert.throws(() => command(s, team, { kind: 'construct', type: cfg.id, slotId: slot.id }));
-    assert.equal(s.gold[team], cfg.cost - 1);
+    assert.equal(s.rubies[team], cfg.cost - 1);
     assert(!slot.occupe);
-    s.gold[team] = cfg.cost;
+    s.rubies[team] = cfg.cost;
     command(s, team, { kind: 'construct', type: cfg.id, slotId: slot.id });
-    assert.equal(s.gold[team], 0);
+    assert.equal(s.rubies[team], 0);
     assert(slot.occupe);
-    s.gold[team] = cfg.cost;
+    s.rubies[team] = cfg.cost;
     assert(!S.construct(s, team, cfg.id, slot.baseId, slot.id));
-    assert.equal(s.gold[team], cfg.cost);
+    assert.equal(s.rubies[team], cfg.cost);
     assert(!S.construct(s, team, cfg.id, 'main_' + (1 - team)));
-    assert.equal(s.gold[team], cfg.cost);
+    assert.equal(s.rubies[team], cfg.cost);
   }
 console.log(
   'PASS: all six building prices, insufficient funds, exact balance and no charges on rejected construction.',
