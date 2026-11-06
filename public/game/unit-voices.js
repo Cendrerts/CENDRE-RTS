@@ -6,9 +6,14 @@ export const UNIT_VOICE_FILES = Object.freeze({
 });
 
 export class UnitVoices {
-  constructor({files = UNIT_VOICE_FILES, cooldownMs = 1500, pitchVariation = 0.1,
-    volume = 1, onError = console.error} = {}) {
-    this.files = {...files};
+  constructor({
+    files = UNIT_VOICE_FILES,
+    cooldownMs = 1500,
+    pitchVariation = 0.1,
+    volume = 1,
+    onError = console.error,
+  } = {}) {
+    this.files = { ...files };
     this.cooldownMs = Math.max(0, cooldownMs);
     this.pitchVariation = Math.max(0, Math.min(0.1, pitchVariation));
     this.volume = Math.max(0, Math.min(1, volume));
@@ -42,28 +47,45 @@ export class UnitVoices {
       const response = await fetch(this.files[unitType]);
       if (!response.ok) throw new Error(`Audio ${unitType} : HTTP ${response.status}`);
       return context.decodeAudioData(await response.arrayBuffer());
-    })().catch(error => { this.buffers.delete(unitType); throw error; });
+    })().catch((error) => {
+      this.buffers.delete(unitType);
+      throw error;
+    });
     this.buffers.set(unitType, promise);
     return promise;
   }
 
   // Invoke synchronously inside the selection gesture to unlock mobile audio.
-  async select({instanceId, unitType}) {
+  async select({ instanceId, unitType }) {
     if (this.disposed || instanceId == null || !Object.hasOwn(this.files, unitType)) return false;
-    if (this.pending.has(instanceId) || performance.now() - (this.lastPlayed.get(instanceId) ?? -Infinity) < this.cooldownMs) return false;
-    const token = Symbol(), generation = this.generation;
+    if (
+      this.pending.has(instanceId) ||
+      performance.now() - (this.lastPlayed.get(instanceId) ?? -Infinity) < this.cooldownMs
+    )
+      return false;
+    const token = Symbol(),
+      generation = this.generation;
     this.pending.set(instanceId, token);
     try {
       this.initialize();
       const resume = this.context.resume();
       const [buffer] = await Promise.all([this.load(unitType), resume]);
-      if (this.disposed || generation !== this.generation || this.pending.get(instanceId) !== token || this.context.state !== 'running') return false;
+      if (
+        this.disposed ||
+        generation !== this.generation ||
+        this.pending.get(instanceId) !== token ||
+        this.context.state !== 'running'
+      )
+        return false;
       const source = this.context.createBufferSource();
       source.buffer = buffer;
       // Playback rate changes pitch and duration together.
       source.playbackRate.value = 1 + (Math.random() * 2 - 1) * this.pitchVariation;
       source.connect(this.output);
-      source.onended = () => { source.disconnect(); this.sources.delete(source); };
+      source.onended = () => {
+        source.disconnect();
+        this.sources.delete(source);
+      };
       source.start();
       this.sources.add(source);
       this.lastPlayed.set(instanceId, performance.now());
@@ -76,12 +98,18 @@ export class UnitVoices {
     }
   }
 
-  forget(instanceId) { this.lastPlayed.delete(instanceId); this.pending.delete(instanceId); }
+  forget(instanceId) {
+    this.lastPlayed.delete(instanceId);
+    this.pending.delete(instanceId);
+  }
   reset() {
     this.generation++;
     this.lastPlayed.clear();
     this.pending.clear();
-    for (const source of this.sources) { source.stop(); source.disconnect(); }
+    for (const source of this.sources) {
+      source.stop();
+      source.disconnect();
+    }
     this.sources.clear();
   }
   async dispose() {
@@ -94,16 +122,19 @@ export class UnitVoices {
 
 // The live engine uses commis/mage for both factions. Rats must stay silent.
 export function selectionVoice(units, player) {
-  const types = {commis: 'commis_unit', mage: 'chef_de_brigade'};
-  const unit = units.find(u => u.team === player && u.team === 0 && Object.hasOwn(types, u.type));
-  return unit ? {instanceId: unit.id, unitType: types[unit.type]} : null;
+  const types = { commis: 'commis_unit', mage: 'chef_de_brigade' };
+  const unit = units.find((u) => u.team === player && u.team === 0 && Object.hasOwn(types, u.type));
+  return unit ? { instanceId: unit.id, unitType: types[unit.type] } : null;
 }
 
 export function bindUnitSelection(root, voices) {
-  const handleClick = event => {
+  const handleClick = (event) => {
     const element = event.target?.closest?.('[data-unit-instance-id][data-unit-type]');
     if (!element || !root.contains(element)) return;
-    void voices.select({instanceId: element.dataset.unitInstanceId, unitType: element.dataset.unitType});
+    void voices.select({
+      instanceId: element.dataset.unitInstanceId,
+      unitType: element.dataset.unitType,
+    });
   };
   root.addEventListener('click', handleClick);
   return () => root.removeEventListener('click', handleClick);
