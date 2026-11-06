@@ -850,15 +850,20 @@ function manualTick(u, dt) {
   if (m.left <= 0) u.manual = null;
 }
 
-// Retreat from the visible enemy centroid; without contact, fall back toward home.
+// Retreat from nearby visible enemies; without contact, fall back toward home.
 function disengage(s, ids) {
   const units = s.units.filter((unit) => ids.includes(unit.id) && unit.hp > 0);
   if (!units.length) return;
   const team = units[0].team;
   const x = units.reduce((sum, unit) => sum + unit.x, 0) / units.length;
   const y = units.reduce((sum, unit) => sum + unit.y, 0) / units.length;
-  const enemies = [...s.units, s.bases[1 - team]].filter(
-    (unit) => unit.team !== team && unit.hp > 0 && canSee(s, team, unit),
+  const enemies = s.units.filter(
+    (unit) =>
+      unit.team !== team &&
+      unit.hp > 0 &&
+      !unit.base &&
+      Math.hypot(unit.x - x, unit.y - y) < 260 &&
+      canSee(s, team, unit),
   );
   let dx = s.bases[team].x - x;
   let dy = s.bases[team].y - y;

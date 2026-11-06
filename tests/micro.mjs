@@ -54,6 +54,16 @@ function advance(state, seconds) {
   assert(unit.path.at(-1).x < 790, 'Destination is away from the enemy');
 }
 {
+  const { state, unit, enemy } = combat();
+  state.bases[1].x = 300;
+  state.bases[1].y = unit.y;
+  state.visible[0].fill(1);
+  assert(S.canSee(state, 0, state.bases[1]), 'The distant opposing base is visible');
+  command(state, 0, { kind: 'retreat', ids: [unit.id] });
+  assert(unit.path.at(-1).x < unit.x, 'Retreat goes away from the skirmish despite the base on the opposite side');
+  assert.equal(unit.retreat, true);
+}
+{
   const units = [
     { id: 1, type: 'knight', hp: 10 },
     { id: 2, type: 'archer', hp: 10 },
