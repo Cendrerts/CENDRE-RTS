@@ -18,13 +18,25 @@ for (const player of [0, 1]) {
   assert.equal(units.actions.length, 4);
   const base = panelModel(state, player, new Set(), { baseId: 'main_' + player });
   assert.equal(base.mode, 'base');
+  assert.deepEqual(base.tabs, ['production', 'buildings', 'bases']);
+  assert.equal(base.activeTab, 'production');
+  assert.equal(base.grid[0][0].type, 'commis');
+  assert.equal(base.grid[0][0].name, S.stats('commis', player).name);
+  assert.equal(base.producerId, 'main_' + player);
+  const buildings = panelModel(state, player, new Set(), { baseId: 'main_' + player, tab: 'buildings' });
   assert.deepEqual(
-    base.grid.flat().map((item) => item.id),
+    buildings.grid.flat().map((item) => item.id),
     S.BUILDINGS[player].map((item) => item.id),
   );
   const slot = state.slots[player][0];
   const emplacement = panelModel(state, player, selected, { baseId: slot.baseId, slotId: slot.id });
   assert.equal(emplacement.mode, 'base');
+  assert.equal(emplacement.activeTab, 'buildings');
+  assert.equal(emplacement.slotId, slot.id);
+  assert.equal(emplacement.left.status, 'Emplacement choisi');
+  assert(S.recruit(state, 'commis', player, base.producerId));
+  assert.equal(panelModel(state, player, new Set(), { baseId: base.producerId }).queue.length, 1);
+  state.queues[player] = [];
   assert(S.construct(state, player, S.BUILDINGS[player][0].id, slot.baseId, slot.id));
   const production = panelModel(state, player, selected, { producerId: slot.id });
   assert.equal(production.mode, 'production');

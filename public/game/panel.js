@@ -20,6 +20,12 @@ export function panelModel(state, player, selection, context = {}) {
         : units.length
           ? 'units'
           : 'empty';
+  const activeTab = mode === 'base'
+    ? context.tab || (context.bases ? 'bases' : context.slotId ? 'buildings' : 'production')
+    : null;
+  const recruitmentProducer = producer || (mode === 'base' && activeTab === 'production'
+    ? Sim.producers(state, player, 'commis').find((item) => item.id === context.baseId)
+    : null);
   const queue = (state.queues?.[player] || [])
     .map((job, index) => ({ ...job, index }))
     .filter((job) => job.producerId === (producer?.id || context.baseId));
@@ -56,12 +62,12 @@ export function panelModel(state, player, selection, context = {}) {
       kind: 'filter',
       name: Sim.stats(item.type, player).name,
     }));
-  if (mode === 'production')
+  if (recruitmentProducer)
     items = [
       {
         kind: 'recruit',
-        type: producer.unit,
-        ...Sim.stats(producer.unit, player),
+        type: recruitmentProducer.unit,
+        ...Sim.stats(recruitmentProducer.unit, player),
         locked:
           queue.length >= 8 ||
           state.units.filter((unit) => unit.team === player).length +
@@ -69,8 +75,9 @@ export function panelModel(state, player, selection, context = {}) {
             30,
       },
     ];
-  if (mode === 'base') {
-    items = context.bases
+  if (context.slotId) left.status = 'Emplacement choisi';
+  if (mode === 'base' && activeTab !== 'production') {
+    items = activeTab === 'bases'
       ? [
           { ...Sim.stats('commis', player), kind: 'main', name: 'Base principale', type: 'commis' },
           ...state.mines.flatMap((mine, index) =>
@@ -140,7 +147,10 @@ export function panelModel(state, player, selection, context = {}) {
     mode,
     left,
     grid,
-    tabs: mode === 'base' ? ['Bâtiments', 'Bases'] : [],
+    tabs: mode === 'base' ? ['production', 'buildings', 'bases'] : [],
+    activeTab,
+    slotId: context.slotId,
+    producerId: recruitmentProducer?.id,
     actions: mode === 'units' ? ['Attaquer', 'Capacité', 'Décrocher', 'Tenir'] : [],
     queue,
   };

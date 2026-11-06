@@ -1258,8 +1258,13 @@ function drawSlots() {
       if (s.team !== player && !Sim.visibleAt(state, player, s.x, s.y)) continue;
       const { x, y } = s;
       ctx.save();
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash(s.occupe ? [] : [3, 3]);
+      const chosen = s.team === player && s.id === panelContext.slotId && !s.occupe;
+      ctx.lineWidth = chosen ? 3 : 1.5;
+      if (chosen) {
+        ctx.shadowColor = '#fff0a6';
+        ctx.shadowBlur = 16;
+      }
+      ctx.setLineDash(s.occupe || chosen ? [] : [3, 3]);
       poly(
         [
           [x - 23, y],
@@ -1268,7 +1273,7 @@ function drawSlots() {
           [x, y + 12],
         ],
         '#0b171cbb',
-        s.team ? '#a8cb65' : '#d6b77e',
+        chosen ? '#fff0a6' : s.team ? '#a8cb65' : '#d6b77e',
       );
       ctx.setLineDash([]);
       if (s.occupe) {
@@ -1653,7 +1658,7 @@ panelRoot.setAttribute('aria-label', 'Panneau contextuel');
 panelRoot.innerHTML =
   '<div class="context-left"><div id="contextIdentity"></div><div id="contextGroups"></div></div><div class="context-center"><div id="contextTabs"></div><div id="contextGrid"></div></div><div id="contextActions"></div>';
 document.body.append(panelRoot);
-$('#contextGroups').append($('#controlGroups'), $('#all'), $('#baseAction'));
+$('#contextGroups').append($('#controlGroups'), selectionToggle, $('#all'), $('#baseAction'));
 $('#baseAction').onclick = () => {
   selected.clear();
   panelContext = { baseId: 'main_' + player };
@@ -1708,12 +1713,13 @@ function renderContextPanel() {
   identity.append(portrait, label);
   const tabs = $('#contextTabs');
   tabs.replaceChildren();
-  for (const [index, name] of model.tabs.entries()) {
+  for (const name of model.tabs) {
     const button = document.createElement('button');
-    button.textContent = name;
-    button.setAttribute('aria-pressed', String(!!panelContext.bases === !!index));
+    button.textContent = { production: 'Production', buildings: 'Bâtiments', bases: 'Bases' }[name];
+    button.setAttribute('aria-pressed', String(model.activeTab === name));
     button.onclick = () => {
-      panelContext.bases = !!index;
+      panelContext.tab = name;
+      panelContext.bases = name === 'bases';
       updateUI();
     };
     tabs.append(button);
@@ -1725,10 +1731,21 @@ function renderContextPanel() {
     const icon = document.createElement('span');
     icon.innerHTML = portraitFor(item.type || 'commis');
     const caption = document.createElement('small');
-    caption.textContent =
-      item.kind === 'filter'
-        ? `${item.shortName} ×${item.count}`
-        : `${item.shortName}\n${item.cost}♦${item.production ? '\n' + item.production + 's' : ''}`;
+    caption.textContent = item.kind === 'filter'
+      ? `${item.shortName} ×${item.count}`
+      : item.shortName;
+    if (item.kind !== 'filter' && item.kind !== 'main') {
+      const cost = document.createElement('b');
+      cost.className = 'panel-cost';
+      cost.textContent = `${item.cost || 0} `;
+      cost.append(document.querySelector('header [aria-label="Rubis"] svg').cloneNode(true));
+      caption.append(cost);
+      if (item.production) {
+        const duration = document.createElement('small');
+        duration.textContent = `${item.production} s`;
+        caption.append(duration);
+      }
+    }
     button.append(icon, caption);
     if (item.locked) {
       const lock = document.createElement('i');
@@ -1777,10 +1794,10 @@ function renderContextPanel() {
         selected = filterSelection(selected, state.units, item.type);
         updateUI();
       } else if (item.kind === 'main') {
-        panelContext = { producerId: 'main_' + player };
+        panelContext = { baseId: 'main_' + player };
         updateUI();
       } else if (item.kind === 'recruit') {
-        panelCommand({ kind: 'recruit', type: item.type, producerId: panelContext.producerId });
+        panelCommand({ kind: 'recruit', type: item.type, producerId: model.producerId });
       } else if (item.kind === 'depot') {
         panelCommand({ kind: 'build', index: item.index });
       } else if (panelContext.slotId) {
@@ -1815,13 +1832,13 @@ function renderContextPanel() {
     ability.disabled = true;
     actions.append($('#attackAction'), ability, $('#retreat'), $('#hold'));
   } else {
-    if (model.mode === 'base') {
+    if (model.mode === 'base' && model.activeTab !== 'production') {
       const close = document.createElement('button');
       close.textContent = 'Retour carte';
       close.onclick = clearSelection;
       actions.append(close);
     }
-    for (let index = 0; index < (model.mode === 'production' ? 8 : 0); index++) {
+    for (let index = 0; index < (model.producerId ? 8 : 0); index++) {
       const job = model.queue[index];
       const button = document.createElement('button');
       button.className = 'queue-cell';
@@ -1841,7 +1858,7 @@ function renderContextPanel() {
         button.onclick = () =>
           panelCommand({
             kind: 'cancelProduction',
-            producerId: panelContext.producerId,
+            producerId: model.producerId,
             jobId: job.id,
           });
       }
