@@ -1,0 +1,137 @@
+import assert from 'node:assert/strict';
+import { performance } from 'node:perf_hooks';
+import { CendreSim as Sim } from '../public/game/sim.js';
+import { createRenderCache, prepareDrawList } from '../public/game/render-cache.js';
+import { combatScenario } from '../scripts/render-scenario.mjs';
+
+let draws = 0;
+const context = {
+  fillRect() {
+    draws++;
+  },
+  clearRect() {
+    draws++;
+  },
+  translate() {},
+  scale() {},
+  drawImage() {
+    draws++;
+  },
+};
+const cache = createRenderCache(() => ({ getContext: () => context }));
+const image = { complete: true, naturalWidth: 100, src: 'terrain' };
+cache.terrain(image, 844, 390, 0, 0, 1, Sim.W, Sim.H);
+const initial = draws;
+cache.terrain(image, 844, 390, 0, 0, 1, Sim.W, Sim.H);
+assert.equal(draws, initial, 'Stationary terrain is reused');
+cache.terrain(image, 844, 390, 1, 0, 1, Sim.W, Sim.H);
+assert(draws > initial, 'Camera movement invalidates terrain');
+const sprite = cache.sprite(image, 'knight', 0, 1, 46, 52);
+assert.equal(cache.sprite(image, 'knight', 0, 1, 46, 52), sprite);
+assert.notEqual(cache.sprite(image, 'knight', 1, 1, 46, 52), sprite);
+assert.notEqual(cache.sprite(image, 'knight', 0, 2, 46, 52), sprite);
+assert.equal(cache.sprite({ complete: false }, 'mage', 0, 2, 49, 55), null);
+const visible = new Uint8Array([0, 1]);
+const explored = new Uint8Array([1, 1]);
+assert(cache.updateFog(context, visible, explored, 2));
+const fogDraws = draws;
+assert.equal(cache.updateFog(context, visible, explored, 2), false);
+assert.equal(draws, fogDraws, 'Unchanged visibility never redraws fog');
+visible[0] = 1;
+assert(cache.updateFog(context, visible, explored, 2));
+explored[1] = 0;
+visible[1] = 0;
+assert(cache.updateFog(context, visible, explored, 2));
+
+const state = combatScenario(Sim);
+const health = state.units.reduce((sum, unit) => sum + unit.hp, 0);
+for (let frame = 0; frame < 120; frame++) Sim.tick(state, 1 / 60);
+const start = performance.now();
+for (let frame = 0; frame < 600; frame++) {
+  Sim.tick(state, 1 / 60);
+  const list = prepareDrawList(state, 0, Sim.canSee);
+  assert.equal(list.length, 60);
+  assert(list.every((unit, index) => !index || list[index - 1].y <= unit.y));
+}
+assert.equal(state.units.length, 60);
+assert(state.units.reduce((sum, unit) => sum + unit.hp, 0) < health, 'Both armies actually fight');
+console.log(`render-bench: sim + draw list ${((performance.now() - start) / 600).toFixed(3)} ms/frame (Node, no CPU throttling)`);
+
+// Compare every cell with the previous exhaustive visibility rule, including
+// tower exclusions, both teams, fractional positions and explored memory.
+for (let sample = 0; sample < 8; sample++) {
+  const scenario = combatScenario(Sim);
+  scenario.tower.owner = sample % 3 - 1;
+  scenario.mines[sample % scenario.mines.length].owner = sample % 2;
+  for (const [index, unit] of scenario.units.entries()) {
+    unit.x = (index * 137.3 + sample * 23.7) % Sim.W;
+    unit.y = (index * 83.9 + sample * 41.1) % Sim.H;
+  }
+  const expected = [new Uint8Array(Sim.COLS * Sim.ROWS), new Uint8Array(Sim.COLS * Sim.ROWS)];
+  for (let team = 0; team < 2; team++) {
+    const sources = [
+      ...Sim.baseSites(scenario, team).map((base) => ({ ...base, vision: 180 })),
+      ...scenario.units.filter((unit) => unit.team === team).map((unit) => ({ ...unit, vision: Sim.stats(unit.type, team).vision })),
+      ...scenario.mines.filter((mine) => mine.owner === team).map((mine) => ({ ...mine, vision: 105 })),
+    ];
+    for (let index = 0; index < expected[team].length; index++) {
+      const x = index % Sim.COLS * Sim.CELL + 10;
+      const y = Math.floor(index / Sim.COLS) * Sim.CELL + 10;
+      const tower = scenario.tower.owner === team &&
+        Math.hypot(x - scenario.bases[1 - team].x, y - scenario.bases[1 - team].y) > Sim.RULES.baseBlindRadius &&
+        !scenario.mines.some((mine) => mine.owner === 1 - team && Math.hypot(x - mine.x, y - mine.y) < 140);
+      expected[team][index] = Number(tower || sources.some((source) => (source.x - x) ** 2 + (source.y - y) ** 2 < source.vision ** 2));
+    }
+  }
+  const exploredBefore = scenario.explored.map((cells) => cells.slice());
+  Sim.visibility(scenario);
+  assert.deepEqual(scenario.visible, expected);
+  for (let team = 0; team < 2; team++) {
+    assert.deepEqual(scenario.explored[team], expected[team].map((value, index) => value || exploredBefore[team][index]));
+  }
+}
+console.log('render-bench: caches and cell-for-cell visibility equivalence passed');
+
+// Resizes, zooms and late terrain loads rebuild only the affected cache.
+for (const parameters of [
+  [845, 390, 1, 0, 1],
+  [845, 390, 1, 0, 2],
+]) {
+  const before = draws;
+  cache.terrain(image, ...parameters, Sim.W, Sim.H);
+  assert(draws > before);
+}
+const beforeLoad = draws;
+image.naturalWidth = 200;
+cache.terrain(image, 845, 390, 1, 0, 2, Sim.W, Sim.H);
+assert(draws > beforeLoad);
+
+// The allocation-free target search keeps stable ties and explicit orders.
+{
+  const scenario = Sim.create();
+  Sim.spawn(scenario, 'archer', 1);
+  const [attacker, first, second] = scenario.units;
+  for (const unit of scenario.units) {
+    unit.type = 'archer';
+    unit.harvest = null;
+    unit.path = [];
+    unit.hold = true;
+    unit.cool = 100;
+    unit.hp = 10000;
+  }
+  attacker.x = 790;
+  attacker.y = 570;
+  first.x = 850;
+  first.y = 570;
+  second.x = 790;
+  second.y = 630;
+  attacker.cool = 0;
+  Sim.visibility(scenario);
+  Sim.tick(scenario, 0.01);
+  assert(first.hp < 10000, 'Equal distances preserve unit order');
+  assert.equal(second.hp, 10000);
+  attacker.target = second;
+  attacker.cool = 0;
+  Sim.tick(scenario, 0.01);
+  assert(second.hp < 10000, 'An explicit target still takes priority');
+}
