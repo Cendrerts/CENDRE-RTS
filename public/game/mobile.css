@@ -59,3 +59,60 @@ input,select,textarea{font-size:16px!important}
 #orientation-guard{position:fixed;inset:0;z-index:2147483647;display:none;align-items:center;justify-content:center;flex-direction:column;padding:24px;background:#080e14;color:#eed7a9;text-align:center;font:600 18px/1.5 Arial,sans-serif;touch-action:none}
 #orientation-guard span{font-size:64px}
 @media(orientation:portrait){#orientation-guard{display:flex}}
+
+/* One compact row above Tout, Tenir and Repli. */
+#controlGroups {
+  position:absolute;
+  left:max(var(--edge),env(safe-area-inset-left));
+  bottom:calc(var(--control) + max(16px,env(safe-area-inset-bottom)) + 58px);
+  display:grid;
+  grid-template-columns:repeat(4,44px);
+  gap:4px;
+  pointer-events:auto;
+}
+#controlGroups[hidden] { display:none; }
+#controlGroups button {
+  position:relative;
+  width:44px;
+  height:40px;
+  padding:0;
+  border:1px solid #a28e62;
+  border-radius:8px;
+  background:#142229dc;
+  touch-action:none;
+}
+#controlGroups strong {
+  position:absolute;
+  top:2px;
+  left:4px;
+  font:700 12px/12px Arial;
+}
+#controlGroups b {
+  position:absolute;
+  bottom:2px;
+  right:3px;
+  padding:0 1px;
+  font:700 12px/12px Arial;
+  background:#142229;
+}
+#controlGroups .group-icon {
+  position:absolute;
+  top:50%;
+  left:50%;
+  transform:translate(-50%,-50%);
+  width:22px;
+  height:22px;
+  pointer-events:none;
+}
+#controlGroups svg { width:100%; height:100%; }
+#controlGroups button.empty { opacity:.45; }
+#controlGroups button.empty .group-icon,
+#controlGroups button.empty b { display:none; }
+#controlGroups button.assigned {
+  background:#576e38;
+  border:2px solid #ffe19a;
+  box-shadow:0 0 12px #ffe19a;
+}
+@media(orientation:portrait) {
+  #controlGroups { bottom:calc(262px + env(safe-area-inset-bottom)); }
+}

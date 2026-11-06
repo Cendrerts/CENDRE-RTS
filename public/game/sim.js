@@ -207,6 +207,7 @@ function forest(u) {
 function create() {
   let s = {
     queues: [[], []],
+    controlGroups: [[], [], [], []],
     time: 0,
     id: 0,
     gold: [100, 100],
