@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     env:
-      CODEX_HOME: ${{ github.workspace }}/../codex-home
+      CODEX_HOME: /home/runner/codex-home
       GH_TOKEN: ${{ github.token }}
       NUMBER: ${{ github.event.issue.number }}
       IS_PR: ${{ github.event.issue.pull_request != null }}
@@ -62,7 +62,7 @@ jobs:
       - name: Restaurer l'authentification Codex (dernière version)
         uses: actions/cache/restore@v4
         with:
-          path: ${{ github.workspace }}/../codex-home/auth.json
+          path: /home/runner/codex-home/auth.json
           key: codex-auth-none
           restore-keys: codex-auth-
 
@@ -121,7 +121,7 @@ jobs:
         if: always()
         uses: actions/cache/save@v4
         with:
-          path: ${{ github.workspace }}/../codex-home/auth.json
+          path: /home/runner/codex-home/auth.json
           key: codex-auth-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Commit, push et PR
