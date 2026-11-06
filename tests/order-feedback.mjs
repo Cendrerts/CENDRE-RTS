@@ -32,7 +32,7 @@ for (const kind of ['move', 'attackMove', 'attack', 'gather']) {
   const target = { id: 8, x: 120, y: 220 };
   const context = vm.createContext({
     orderFeedback, scale: 1, performance: { now: () => 10 },
-    world: () => point, radial: null, isEmptyTap: () => false,
+    world: () => point, radial: null, buildGhost: null, isEmptyTap: () => false,
     attackMoveArmed: kind === 'attackMove', selected: new Set([1]),
     resolveTap: () => ({ kind, target: kind === 'attack' ? target : undefined, ids: [1], index: 0 }),
     state: { units: [], mines: [point] }, player: 0, marker: null,

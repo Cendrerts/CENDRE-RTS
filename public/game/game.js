@@ -1,3 +1,4 @@
+import { panelModel } from './panel.js';
 import { readSettings, writeSettings } from './settings.js';
 import { bindAudioUnlock } from './audio-unlock.js';
 import { minimapToWorld, clampCamera, attackDirection, groupAttackAlerts } from './camera.js';
@@ -61,8 +62,7 @@ let state = Sim.create(),
   oy = 0,
   marker = null,
   attackMoveArmed = false,
-  selectedMine = null,
-  selectedProducer = null;
+  selectedMine = null;
 const portraitTap = createPortraitTap();
 let networkGroups = createControlGroups();
 let controlGroupsUI;
@@ -164,41 +164,8 @@ function portraitFor(type) {
 function setupPortraits() {
   voices.reset();
   portraitTap.reset();
-  setupConstruction();
+  panelContext = {};
   unitNames = player ? ghostNames : cookNames;
-  document
-    .querySelectorAll('[data-select=commis],[data-unit=commis]')
-    .forEach((b) => (b.hidden = false));
-  document.querySelectorAll('[data-unit]').forEach((b) => {
-    let t = b.dataset.unit;
-    b.innerHTML =
-      (unitNames[t] || 'Commis') +
-      '<small>' +
-      Sim.stats(t, player).cost +
-      ' rubis · ' +
-      Sim.stats(t, player).production +
-      ' s</small>';
-  });
-  $('#recruitTitle').textContent = 'PRODUCTION DES UNITÉS';
-  document.querySelectorAll('[data-select]').forEach((b) => {
-    let t = b.dataset.select;
-    b.title = unitNames[t] + ' · Retoucher pour désélectionner';
-    b.innerHTML =
-      '<div class="portrait">' +
-      portraitFor(t) +
-      '</div><b>[0 / 0]</b><span>' +
-      unitNames[t] +
-      '</span><div class="hp-track"><i></i></div>';
-    b.onclick = () => {
-      const units = state.units.filter((unit) => selected.has(unit.id) && unit.hp > 0);
-      if (units.length && units.every((unit) => unit.team === player && unit.type === t)) {
-        clearSelection();
-        return;
-      }
-      selectType(t, portraitTap.tap(t, performance.now()));
-    };
-  });
-  $('#focusPortrait').innerHTML = portraitFor('knight');
 }
 function layout() {
   scale = Math.max(viewWidth / W, viewHeight / H) * zoom;
@@ -244,6 +211,8 @@ function viewportUnits(t) {
   return unitsOfType(state.units, player, t, cameraBounds(ox, oy, scale, viewWidth, viewHeight));
 }
 function clearSelection() {
+  panelContext = {};
+  buildGhost = null;
   selected.clear();
   selectedMine = null;
   portraitTap.reset();
@@ -251,6 +220,8 @@ function clearSelection() {
   notify('Sélection vidée');
 }
 function selectType(t, scope = 'all') {
+  panelContext = {};
+  buildGhost = null;
   const groups = viewportUnits(t),
     units = scope === 'all' ? groups.total : groups.visible;
   selected = new Set(units.map((u) => u.id));
@@ -270,148 +241,29 @@ function selectType(t, scope = 'all') {
   );
 }
 
-let selectionTypesSignature = '';
-function refreshSelectionTypes(group) {
-  const panel = $('#selectionTypes');
-  const types = [...new Set(group.map((unit) => unit.type))];
-  panel.hidden = types.length < 2;
-  const signature = types.join(',');
-  if (signature === selectionTypesSignature) return;
-  selectionTypesSignature = signature;
-  panel.replaceChildren();
-  for (const type of types) {
-    const button = document.createElement('button');
-    button.innerHTML = portraitFor(type);
-    button.setAttribute('aria-label', TYPES[type].name || type);
-    button.title = type + ' : toucher pour isoler, appui long pour retirer';
-    let timer = null;
-    let removed = false;
-    const cancel = () => {
-      clearTimeout(timer);
-      timer = null;
-    };
-    button.onpointerdown = (event) => {
-      if (event.button !== 0) return;
-      removed = false;
-      button.setPointerCapture(event.pointerId);
-      timer = setTimeout(() => {
-        removed = true;
-        selected = filterSelection(selected, state.units, type, true);
-        updateUI();
-      }, 550);
-    };
-    button.onpointerup = cancel;
-    button.onpointercancel = () => {
-      removed = true;
-      cancel();
-    };
-    button.onlostpointercapture = cancel;
-    button.oncontextmenu = (event) => event.preventDefault();
-    button.onclick = () => {
-      cancel();
-      if (removed) return;
-      selected = filterSelection(selected, state.units, type);
-      updateUI();
-    };
-    panel.append(button);
-  }
-}
+let panelContext = {};
+let panelRoot = null;
+let panelSignature = '';
 function updateUI() {
   let army = state.units.filter((u) => u.team === player);
   selected = new Set([...selected].filter((id) => army.some((u) => u.id === id)));
-  let group = army.filter((u) => selected.has(u.id));
-  refreshSelectionTypes(group);
-  document.querySelectorAll('[data-select]').forEach((b) => {
-    let counts = viewportUnits(b.dataset.select),
-      us = counts.total,
-      hp = us.reduce((n, u) => n + u.hp, 0),
-      max = us.reduce((n, u) => n + u.max, 0);
-    b.querySelector('b').textContent = '[' + counts.visible.length + ' / ' + us.length + ']';
-    b.setAttribute(
-      'aria-label',
-      unitNames[b.dataset.select] +
-        ' : ' +
-        counts.visible.length +
-        ' visibles sur ' +
-        us.length +
-        ' au total. Un tap : vue actuelle. Retoucher le type sélectionné : vider la sélection.',
-    );
-    b.querySelector('.hp-track i').style.width = (max ? (hp / max) * 100 : 0) + '%';
-    b.disabled = !us.length;
-    b.setAttribute('aria-pressed', String(us.some((u) => selected.has(u.id))));
-  });
   $('#rubies').textContent = Math.floor(state.rubies[player]);
   $('#population').textContent = army.length + ' / 30';
   $('#clock').textContent =
     String(Math.floor(state.time / 60)).padStart(2, '0') +
     ':' +
     String(Math.floor(state.time % 60)).padStart(2, '0');
-  let type = group[0]?.type;
-  $('#focusName').textContent = group.length
-    ? group.every((u) => u.type === type)
-      ? unitNames[type]
-      : 'Armée mixte'
-    : 'VOTRE ARMÉE';
-  $('#focusHealth').textContent = group.length
-    ? Math.ceil(group.reduce((n, u) => n + u.hp, 0)) +
-      ' / ' +
-      group.reduce((n, u) => n + u.max, 0) +
-      ' PV'
-    : 'Sélectionnez un groupe';
-  if (type && $('#focusPortrait').dataset.type !== player + type) {
-    $('#focusPortrait').innerHTML = portraitFor(type);
-    $('#focusPortrait').dataset.type = player + type;
-  }
-  updateProductionChoices();
-  document.querySelectorAll('[data-unit]').forEach((b) => {
-    const type = b.dataset.unit,
-      all = Sim.producers(state, player, type),
-      ps = all.filter((p) => !selectedProducer || p.id === selectedProducer),
-      q = state.queues?.[player] || [],
-      free = ps.some((p) => q.filter((j) => j.producerId === p.id).length < 8),
-      required = Sim.BUILDINGS[player].find((c) => c.unit === type)?.name || 'Base principale';
-    b.disabled =
-      !running ||
-      paused ||
-      !free ||
-      state.rubies[player] < Sim.stats(type, player).cost ||
-      army.length + q.length >= 30;
-    const html =
-      unitNames[type] +
-      '<small>' +
-      (!all.length
-        ? '🔒 ' + required + ' requis'
-        : !ps.length
-          ? 'Autre bâtiment requis'
-          : Sim.stats(type, player).cost +
-            ' rubis · ' +
-            Sim.stats(type, player).production +
-            ' s · ' +
-            ps.length +
-            ' bâtiment(s)') +
-      '</small>';
-    if (b.innerHTML !== html) b.innerHTML = html;
-  });
   $('#towerStatus').textContent =
     state.tower.owner === player
       ? '◉ Tour : vision étendue'
       : state.tower.owner === 1 - player
         ? '◉ Tour : occupée par l’adversaire'
         : '◉ Tour : non contrôlée';
-  $('#build').disabled = !running || state.rubies[player] < 120;
-  updateConstruction();
+  renderContextPanel();
   touchUI?.refresh();
   controlGroupsUI?.refresh();
   radial?.refresh();
-  const q = state.queues?.[player] || [],
-    active = q.filter((j, i) => q.findIndex((k) => k.producerId === j.producerId) === i);
-  $('#productionStatus').textContent = q.length
-    ? active.length +
-      ' production(s) en parallèle · ' +
-      q.length +
-      ' en file : ' +
-      active.map((j) => unitNames[j.type] + ' ' + Math.ceil(j.remaining) + ' s').join(' / ')
-    : 'Files de production vides';
+
 }
 
 $('#chooseHuman').onclick = () => choose(0);
@@ -429,7 +281,6 @@ $('#start').onclick = () => {
   state = Sim.create();
   controlGroupsUI?.reset();
   selected.clear();
-  selectedProducer = null;
   player = chosen;
   soloAI = createAI(1 - player, $('#aiDifficulty').value);
   running = true;
@@ -441,12 +292,11 @@ $('#start').onclick = () => {
   setupPortraits();
   $('#veil').style.display = 'none';
   $('#pause').textContent = 'Ⅱ';
-  $('#recruitTray').hidden = true;
-  $('#buildingsTray').hidden = true;
   updateUI();
   notify('Explorez avec vos unités. Glisser : caméra · Maintenir + glisser : sélection · 2 doigts : caméra et zoom');
 };
 $('#all').onclick = () => {
+  panelContext = {};
   const units = state.units.filter((u) => u.team === player);
   selected = new Set(units.map((u) => u.id));
   playSelectionVoice(units);
@@ -577,57 +427,6 @@ window.addEventListener('keydown', (event) => {
     }
   }
 }, true);
-$('#help').onclick = () =>
-  notify(
-    'Ouvrier + mine à vous : récolter · Bâtiment principal : recruter · Portrait : sélectionner / désélectionner · Appui long dans le vide : désélectionner · Glisser : caméra · Maintenir + glisser : sélection · 2 doigts : caméra et zoom · Tour : 4 s sur place · Base secondaire : 120 rubis près d’une mine · Bois : −2 PV/s',
-  );
-$('#recruitToggle').onclick = () => {
-  selectedProducer = null;
-  $('#buildingsTray').hidden = true;
-  $('#recruitTray').hidden = !$('#recruitTray').hidden;
-  updateUI();
-};
-document.querySelectorAll('[data-unit]').forEach(
-  (b) =>
-    (b.onclick = () => {
-      if (net) {
-        sendCommand({ kind: 'recruit', type: b.dataset.unit, producerId: selectedProducer });
-        return;
-      }
-      if (!paused && Sim.recruit(state, b.dataset.unit, player, selectedProducer)) {
-        notify('Production ajoutée à la file');
-        updateUI();
-      }
-    }),
-);
-$('#build').onclick = () => {
-  if (!running || paused) return;
-  selectedMine = Number($('#expansionMine').value);
-  let group = state.units.filter(
-      (u) => u.team === player && (selected.size === 0 || selected.has(u.id)),
-    ),
-    m = state.mines
-      .map((m, i) => ({ m, i }))
-      .filter(
-        (a) =>
-          a.i === selectedMine &&
-          (a.m.owner !== player || (a.i >= 2 && !a.m.depot)) &&
-          group.some((u) => Math.hypot(u.x - a.m.x, u.y - a.m.y) < 95),
-      )
-      .sort((a, b) => (a.i === selectedMine ? -1 : b.i === selectedMine ? 1 : a.i - b.i))[0];
-  if (!m) {
-    notify('Approchez une unité d’une mine, puis construisez une base secondaire.');
-    return;
-  }
-  if (net) {
-    sendCommand({ kind: 'build', index: m.i });
-    return;
-  }
-  if (Sim.build(state, player, m.i)) {
-    notify('Base secondaire construite · Dépôt local disponible');
-    updateUI();
-  } else notify('Construction impossible : zone contestée ou rubis insuffisants.');
-};
 $('#zoomIn').onclick = () => {
   zoom = Math.min(3.5, zoom + 0.3);
   layout();
@@ -712,6 +511,8 @@ function applyFieldGesture(action) {
       selectionBox = null;
       const nextSelection = boxSelection(selected, units);
       if (nextSelection === selected) return;
+      panelContext = {};
+      buildGhost = null;
       selected = nextSelection;
       selectedMine = null;
       portraitTap.reset();
@@ -735,6 +536,14 @@ for (const [event, type] of Object.entries({
 function handleFieldTap(e, duration) {
   let p = world(e);
   p.unitRadius = Math.max(22, 16 / scale);
+  if (buildGhost && !radial?.isGhost) {
+    const slot = state.slots[player].find((item) => !item.occupe && item.baseId === buildGhost.context.baseId && Math.hypot(item.x - p.x, item.y - p.y) < 30);
+    if (slot) {
+      panelCommand({ kind: 'construct', type: buildGhost.option.id, baseId: slot.baseId, slotId: slot.id });
+      buildGhost = null;
+    }
+    return;
+  }
   if (radial?.isGhost) {
     pickGhostSlot(p);
     return;
@@ -749,7 +558,9 @@ function handleFieldTap(e, duration) {
     : resolved;
   if (action.kind === 'radial') {
     if (action.context.mine !== undefined) selectedMine = action.context.mine;
-    openRadial(e, action.context);
+    selected.clear();
+    panelContext = { ...action.context, bases: !action.context.baseId };
+    updateUI();
     return;
   }
   if (action.kind === 'enemyBase') {
@@ -758,13 +569,14 @@ function handleFieldTap(e, duration) {
     return;
   }
   if (action.kind === 'production') {
-    selectedProducer = action.id;
-    $('#recruitTray').hidden = false;
-    $('#buildingsTray').hidden = true;
+    selected.clear();
+    panelContext = { producerId: action.id };
     updateUI();
     return;
   }
   if (action.kind === 'select') {
+    panelContext = {};
+    buildGhost = null;
     selected = new Set([action.id]);
     playSelectionVoice(state.units.filter((unit) => unit.id === action.id));
     updateUI();
@@ -1240,7 +1052,6 @@ function showSnapshot(data) {
     layout();
     setupPortraits();
     $('#veil').style.display = 'none';
-    $('#recruitTray').hidden = true;
     $('#pause').disabled = false;
     notify('Duel commencé · Détruisez la base adverse.');
   }
@@ -1441,85 +1252,6 @@ function drawCook(u) {
   drawHealthBar(ctx, u, x, headY, scale, player, selected.has(u.id));
 }
 
-function setupConstruction() {
-  const box = $('#buildingChoices');
-  box.replaceChildren();
-  for (const b of Sim.BUILDINGS[player]) {
-    const button = document.createElement('button');
-    button.textContent = b.name + ' · ' + b.cost + ' rubis';
-    button.dataset.cost = b.cost;
-    button.onclick = () => {
-      if (!running || paused) return;
-      const baseId = $('#constructionBase').value;
-      if (net) {
-        sendCommand({ kind: 'construct', type: b.id, baseId });
-        return;
-      }
-      notify(
-        Sim.construct(state, player, b.id, baseId)
-          ? b.name + ' construit · Production disponible'
-          : 'Ressources insuffisantes ou aucun emplacement libre.',
-      );
-      updateUI();
-    };
-    box.append(button);
-  }
-}
-function refreshOptions(select, options) {
-  const signature = JSON.stringify(options);
-  if (select.dataset.options === signature) return;
-  const previous = select.value;
-  select.replaceChildren(
-    ...options.map(([value, label]) => {
-      const o = document.createElement('option');
-      o.value = value;
-      o.textContent = label;
-      return o;
-    }),
-  );
-  if (options.some(([v]) => v === previous)) select.value = previous;
-  select.dataset.options = signature;
-}
-function updateConstruction() {
-  const bases = Sim.baseSites(state, player);
-  refreshOptions(
-    $('#constructionBase'),
-    bases.map((b) => [b.id, b.name]),
-  );
-  const slots = (state.slots?.[player] || []).filter(
-      (p) => p.baseId === $('#constructionBase').value,
-    ),
-    used = slots.filter((p) => p.occupe).length;
-  $('#slotStatus').textContent = used + ' / ' + slots.length + ' emplacements occupés';
-  for (const b of $('#buildingChoices').children)
-    b.disabled =
-      !running ||
-      paused ||
-      !slots.length ||
-      used === slots.length ||
-      state.rubies[player] < Number(b.dataset.cost);
-  const mines = state.mines.flatMap((m, i) =>
-    i >= 2 && (!m.depot || m.owner !== player) && Sim.visibleAt(state, player, m.x, m.y)
-      ? [[String(i), m.name]]
-      : [],
-  );
-  refreshOptions($('#expansionMine'), mines.length ? mines : [['', 'Explorez une nouvelle mine']]);
-  $('#build').disabled = !running || paused || state.rubies[player] < 120 || !mines.length;
-}
-function updateProductionChoices() {
-  const ps = Object.keys(TYPES).flatMap((t) => Sim.producers(state, player, t));
-  if (selectedProducer && !ps.some((p) => p.id === selectedProducer)) selectedProducer = null;
-  refreshOptions($('#productionBuilding'), [
-    ['', 'Automatique · bâtiment le moins occupé'],
-    ...ps.map((p, i) => [p.id, p.name + ' · ' + (i + 1)]),
-  ]);
-  $('#productionBuilding').value = selectedProducer || '';
-}
-function openBuildings() {
-  $('#recruitTray').hidden = true;
-  $('#buildingsTray').hidden = false;
-  updateUI();
-}
 function drawSlots() {
   for (const slots of state.slots || [])
     for (const s of slots) {
@@ -1703,17 +1435,6 @@ function drawExpansionSites() {
   }
 }
 
-$('#buildingsToggle').onclick = () => {
-  if (!$('#buildingsTray').hidden) $('#buildingsTray').hidden = true;
-  else openBuildings();
-};
-$('#closeBuildings').onclick = () => ($('#buildingsTray').hidden = true);
-$('#constructionBase').onchange = updateUI;
-$('#productionBuilding').onchange = () => {
-  selectedProducer = $('#productionBuilding').value || null;
-  updateUI();
-};
-
 // Touch controls use the same authoritative simulation commands as desktop orders.
 touchUI = initTouchUI({
   get: () => ({ state, selected, player, running, paused, net: !!net }),
@@ -1750,7 +1471,7 @@ selectionToggle.onclick = () => {
 };
 $('#touchControls').append(selectionToggle);
 controlGroupsUI = initControlGroups({
-  enabled: () => running && !paused && !document.body.classList.contains('base-open'),
+  enabled: () => running && !paused,
   units: (index) => groupUnits(controlGroups(), index, state.units, player),
   icon: portraitFor,
   assign: (index) => {
@@ -1759,6 +1480,7 @@ controlGroupsUI = initControlGroups({
   },
   select: (index, center) => {
     const units = groupUnits(controlGroups(), index, state.units, player);
+    panelContext = {};
     selected = new Set(units.map((unit) => unit.id));
     selectedMine = null;
     if (center && units.length) {
@@ -1859,8 +1581,6 @@ function drawBuildGhost() {
 radial = createRadialMenu({
   onOpen: () => {
     touchUI?.stop();
-    $('#recruitTray').hidden = true;
-    $('#buildingsTray').hidden = true;
   },
   available: (c) =>
     running &&
@@ -1891,9 +1611,7 @@ radial = createRadialMenu({
       .map((b) => ({ ...b, detail: b.cost + ' rubis', kind: 'building' }));
   },
   action: (c) => {
-    selectedProducer = null;
-    $('#recruitTray').hidden = false;
-    $('#buildingsTray').hidden = true;
+    panelContext = { producerId: c.baseId || 'main_' + player };
     updateUI();
   },
   preview: (context, option) => {
@@ -1927,3 +1645,208 @@ radial = createRadialMenu({
     return ok;
   },
 });
+
+// The contextual panel owns the visible controls.
+panelRoot = document.createElement('section');
+panelRoot.id = 'contextPanel';
+panelRoot.setAttribute('aria-label', 'Panneau contextuel');
+panelRoot.innerHTML =
+  '<div class="context-left"><div id="contextIdentity"></div><div id="contextGroups"></div></div><div class="context-center"><div id="contextTabs"></div><div id="contextGrid"></div></div><div id="contextActions"></div>';
+document.body.append(panelRoot);
+$('#contextGroups').append($('#controlGroups'), $('#all'), $('#baseAction'));
+$('#baseAction').onclick = () => {
+  selected.clear();
+  panelContext = { baseId: 'main_' + player };
+  cameraX = state.bases[player].x;
+  cameraY = state.bases[player].y;
+  layout();
+  updateUI();
+};
+function panelCommand(command) {
+  if (!running || paused) return;
+  if (net) sendCommand(command);
+  else if (command.kind === 'recruit') Sim.recruit(state, command.type, player, command.producerId);
+  else if (command.kind === 'construct')
+    Sim.construct(state, player, command.type, command.baseId, command.slotId);
+  else if (command.kind === 'build') Sim.build(state, player, command.index);
+  else if (command.kind === 'cancelProduction')
+    Sim.cancelProduction(state, player, command.producerId, command.jobId);
+  updateUI();
+}
+function renderContextPanel() {
+  if (!panelRoot) return;
+  const selectedSlot = state.slots[player].find((slot) => slot.id === panelContext.slotId);
+  if (selectedSlot?.occupe) panelContext = { producerId: selectedSlot.id };
+  const model = panelModel(state, player, selected, { ...panelContext, width: innerWidth });
+  panelRoot.hidden = !running;
+  panelRoot.dataset.mode = model.mode;
+  for (const job of model.queue) {
+    const progress = panelRoot.querySelector(`[data-job-id="${job.id}"] progress`);
+    if (progress) progress.value = job.total - job.remaining;
+  }
+  const currentStatus = $('#contextIdentity small');
+  if (currentStatus)
+    currentStatus.textContent = `${Math.ceil(model.left.hp)} PV · ${model.left.status}`;
+  const signature = JSON.stringify([model, paused], (key, value) =>
+    ['remaining', 'hp', 'status'].includes(key) ? undefined : value,
+  );
+  if (signature === panelSignature) return;
+  panelSignature = signature;
+  const identity = $('#contextIdentity');
+  identity.replaceChildren();
+  const portrait = document.createElement('div');
+  portrait.innerHTML = portraitFor(model.left.type);
+  const label = document.createElement('div');
+  label.textContent = `${model.left.name} ${model.left.count || ''}`;
+  const status = document.createElement('small');
+  status.textContent = `${Math.ceil(model.left.hp)} PV · ${model.left.status}`;
+  label.append(status);
+  if (model.mode === 'base' || model.mode === 'production') {
+    portrait.textContent = model.mode === 'base' ? '⌂' : '⚒';
+    portrait.className = 'building-portrait';
+  }
+  identity.append(portrait, label);
+  const tabs = $('#contextTabs');
+  tabs.replaceChildren();
+  for (const [index, name] of model.tabs.entries()) {
+    const button = document.createElement('button');
+    button.textContent = name;
+    button.setAttribute('aria-pressed', String(!!panelContext.bases === !!index));
+    button.onclick = () => {
+      panelContext.bases = !!index;
+      updateUI();
+    };
+    tabs.append(button);
+  }
+  const grid = $('#contextGrid');
+  grid.replaceChildren();
+  for (const item of model.grid[0] || []) {
+    const button = document.createElement('button');
+    const icon = document.createElement('span');
+    icon.innerHTML = portraitFor(item.type || 'commis');
+    const caption = document.createElement('small');
+    caption.textContent =
+      item.kind === 'filter'
+        ? `${item.shortName} ×${item.count}`
+        : `${item.shortName}\n${item.cost}♦${item.production ? '\n' + item.production + 's' : ''}`;
+    button.append(icon, caption);
+    if (item.locked) {
+      const lock = document.createElement('i');
+      lock.className = 'panel-lock';
+      lock.textContent = '🔒';
+      button.append(lock);
+    }
+    button.title = item.locked
+      ? item.prerequisite || 'Rubis insuffisants ou file pleine'
+      : item.name;
+    button.setAttribute('aria-label', button.title);
+    button.disabled = paused || item.locked;
+    let timer;
+    let removed = false;
+    if (item.kind === 'filter') {
+      let pressOrigin;
+      button.onpointerdown = (event) => {
+        pressOrigin = { x: event.clientX, y: event.clientY };
+        removed = false;
+        button.setPointerCapture(event.pointerId);
+        timer = setTimeout(() => {
+          removed = true;
+          selected = filterSelection(selected, state.units, item.type, true);
+          updateUI();
+        }, 550);
+      };
+      button.onpointermove = (event) => {
+        if (
+          pressOrigin &&
+          Math.hypot(event.clientX - pressOrigin.x, event.clientY - pressOrigin.y) > 12
+        ) {
+          removed = true;
+          clearTimeout(timer);
+        }
+      };
+      button.onpointerup = () => clearTimeout(timer);
+      button.onpointercancel = () => {
+        removed = true;
+        clearTimeout(timer);
+      };
+      button.onlostpointercapture = () => clearTimeout(timer);
+    }
+    button.onclick = () => {
+      if (removed) return;
+      if (item.kind === 'filter') {
+        selected = filterSelection(selected, state.units, item.type);
+        updateUI();
+      } else if (item.kind === 'main') {
+        panelContext = { producerId: 'main_' + player };
+        updateUI();
+      } else if (item.kind === 'recruit') {
+        panelCommand({ kind: 'recruit', type: item.type, producerId: panelContext.producerId });
+      } else if (item.kind === 'depot') {
+        panelCommand({ kind: 'build', index: item.index });
+      } else if (panelContext.slotId) {
+        panelCommand({
+          kind: 'construct',
+          type: item.id,
+          baseId: panelContext.baseId,
+          slotId: panelContext.slotId,
+        });
+      } else {
+        buildGhost = {
+          context: { ...panelContext, team: player },
+          option: { ...item, kind: 'building' },
+          slotId: state.slots[player].find(
+            (slot) => !slot.occupe && slot.baseId === panelContext.baseId,
+          )?.id,
+        };
+        notify('Touchez un emplacement libre sur la carte pour construire.');
+      }
+    };
+    grid.append(button);
+  }
+  const actions = $('#contextActions');
+  for (const id of ['attackAction', 'retreat', 'hold']) {
+    const control = $('#' + id);
+    if (control) $('#squadTools').append(control);
+  }
+  actions.replaceChildren();
+  if (model.mode === 'units') {
+    const ability = document.createElement('button');
+    ability.textContent = 'Capacité';
+    ability.disabled = true;
+    actions.append($('#attackAction'), ability, $('#retreat'), $('#hold'));
+  } else {
+    if (model.mode === 'base') {
+      const close = document.createElement('button');
+      close.textContent = 'Retour carte';
+      close.onclick = clearSelection;
+      actions.append(close);
+    }
+    for (let index = 0; index < (model.mode === 'production' ? 8 : 0); index++) {
+      const job = model.queue[index];
+      const button = document.createElement('button');
+      button.className = 'queue-cell';
+      button.disabled = !job || paused;
+      button.textContent = job ? String(index + 1) : '—';
+      if (job) {
+        button.dataset.jobId = job.id;
+        button.title = Sim.stats(job.type, player).name + ' · Annuler et rembourser';
+        button.setAttribute('aria-label', button.title);
+        const icon = document.createElement('span');
+        icon.innerHTML = portraitFor(job.type);
+        button.prepend(icon);
+        const progress = document.createElement('progress');
+        progress.max = job.total;
+        progress.value = job.total - job.remaining;
+        button.append(progress);
+        button.onclick = () =>
+          panelCommand({
+            kind: 'cancelProduction',
+            producerId: panelContext.producerId,
+            jobId: job.id,
+          });
+      }
+      actions.append(button);
+    }
+  }
+}
+renderContextPanel();

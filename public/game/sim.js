@@ -361,7 +361,24 @@ function recruit(s, type, team, producerId = null) {
     q.filter((j) => j.producerId === p.id).reduce((n, j) => n + j.remaining, 0);
   options.sort((a, b) => workload(a) - workload(b));
   s.rubies[team] -= cfg.cost;
-  q.push({ type, remaining: cfg.production, total: cfg.production, producerId: options[0].id });
+  s.nextProductionJobId = (s.nextProductionJobId || 0) + 1;
+  q.push({
+    id: s.nextProductionJobId,
+    type,
+    remaining: cfg.production,
+    total: cfg.production,
+    producerId: options[0].id,
+  });
+  return true;
+}
+function cancelProduction(s, team, producerId, jobId) {
+  if (!Number.isInteger(jobId)) return false;
+  const queue = s.queues?.[team];
+  const index = queue?.findIndex((job) => job.id === jobId) ?? -1;
+  const job = queue?.[index];
+  if (s.winner !== null || !job || job.producerId !== producerId) return false;
+  s.rubies[team] += stats(job.type, team).cost;
+  queue.splice(index, 1);
   return true;
 }
 function productionTick(s, dt) {
@@ -372,6 +389,10 @@ function productionTick(s, dt) {
       available = Object.keys(TYPES).flatMap((type) => producers(s, t, type));
     for (let i = q.length - 1; i >= 0; i--) {
       const job = q[i];
+      if (!Number.isInteger(job.id)) {
+        s.nextProductionJobId = (s.nextProductionJobId || 0) + 1;
+        job.id = s.nextProductionJobId;
+      }
       if (!job.producerId) {
         const p = available.find((p) => p.unit === job.type);
         if (p) job.producerId = p.id;
@@ -880,6 +901,7 @@ export const CendreSim = {
   steer,
   disengage,
   baseSites,
+  cancelProduction,
   producers,
   gather,
   BUILDINGS,
