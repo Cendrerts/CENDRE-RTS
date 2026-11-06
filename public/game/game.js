@@ -1,5 +1,6 @@
 'use strict';
 import { CuistotsAmbience } from './cuistots-ambience.js';
+import { orderFeedback, drawOrderFeedback, vibrateOrder } from './order-feedback.js';
 import { UnitVoices, selectionVoice } from './unit-voices.js';
 import { createRadialMenu } from './radial.js';
 import { filterSelection, cameraBounds, unitsOfType, createPortraitTap, unitsInBox, boxSelection } from './selection.js';
@@ -80,6 +81,35 @@ function playSelectionVoice(units) {
   if (!running || paused) return;
   const voice = selectionVoice(units, player);
   if (voice) void voices.select(voice);
+}
+let hapticsEnabled = true;
+try {
+  hapticsEnabled = localStorage.getItem('cendre-haptics') !== 'off';
+} catch {}
+const hapticsButton = document.createElement('button');
+hapticsButton.id = 'haptics';
+hapticsButton.style.minWidth = '44px';
+hapticsButton.style.minHeight = '44px';
+function updateHapticsButton() {
+  hapticsButton.textContent = hapticsEnabled ? 'Vibration : oui' : 'Vibration : non';
+  hapticsButton.setAttribute('aria-pressed', String(hapticsEnabled));
+}
+hapticsButton.addEventListener('click', () => {
+  hapticsEnabled = !hapticsEnabled;
+  updateHapticsButton();
+  try {
+    localStorage.setItem('cendre-haptics', hapticsEnabled ? 'on' : 'off');
+  } catch {}
+});
+updateHapticsButton();
+$('#pause').before(hapticsButton);
+function showOrderFeedback(action, point, ids) {
+  const feedback = orderFeedback(action);
+  if (!feedback || !ids.length) return;
+  marker = { ...feedback, ...point, started: performance.now(), targetId: action.target?.id, base: action.target?.base };
+  const voice = selectionVoice(state.units.filter((unit) => ids.includes(unit.id)), player);
+  if (voice) void voices.acknowledge(voice);
+  vibrateOrder(hapticsEnabled);
 }
 let radial = null,
   buildGhost = null;
@@ -635,6 +665,7 @@ function handleFieldTap(e, duration) {
     return;
   }
   if (action.kind === 'gather') {
+    showOrderFeedback(action, state.mines[action.index], action.ids);
     if (net) sendCommand(action);
     else Sim.gather(state, player, action.ids, action.index);
     notify('Récolte automatique · Retour à la base pour déposer');
@@ -651,6 +682,8 @@ function handleFieldTap(e, duration) {
   }
   if (action.kind === 'move' || action.kind === 'attack') {
     const target = action.target || null;
+    const feedbackAction = { ...action, kind: attackMoveArmed ? 'attackMove' : action.kind };
+    showOrderFeedback(feedbackAction, target || p, [...selected]);
     if (net) {
       sendCommand({
         kind: attackMoveArmed ? 'attackMove' : 'move',
@@ -662,12 +695,6 @@ function handleFieldTap(e, duration) {
     } else Sim.order(state, [...selected], p.x, p.y, target, !target && !attackMoveArmed);
     attackMoveArmed = false;
     $('#attackAction').setAttribute('aria-pressed', 'false');
-    const nearest = Sim.nearest(p.x, p.y);
-    marker = {
-      x: (nearest % COLS) * CELL + 10,
-      y: Math.floor(nearest / COLS) * CELL + 10,
-      life: 1,
-    };
   } else notify('Sélectionnez vos unités avec les portraits en bas.');
 }
 mini.addEventListener('pointerdown', (e) => {
@@ -893,14 +920,14 @@ function draw() {
   for (let s of state.shots)
     if (Sim.visibleAt(state, player, s.x, s.y) && Sim.visibleAt(state, player, s.tx, s.ty))
       line(s.x, s.y, s.tx, s.ty, s.team ? '#8ef1ce' : '#ffd388', 2);
-  if (marker) {
-    ctx.strokeStyle = '#e9d6a8';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.ellipse(marker.x, marker.y, 22, 12, 0, 0, 7);
-    ctx.stroke();
-  }
   drawFog();
+  if (marker) {
+    const elapsed = (performance.now() - marker.started) / 1000;
+    const target = marker.base ? state.bases[1 - player] : state.units.find((unit) => unit.id === marker.targetId);
+    const position = target && Sim.canSee(state, player, target) ? (net ? motion.position(target, performance.now()) : target) : marker;
+    drawOrderFeedback(ctx, { ...marker, x: position.x, y: position.y }, elapsed, scale);
+    if (elapsed >= marker.duration) marker = null;
+  }
   drawBuildGhost();
   drawMini();
   if (selectionBox) {
@@ -928,7 +955,6 @@ function frame(t) {
     }
     if (state.winner !== null) finish();
     if (toastTime > 0 && (toastTime -= dt) <= 0) $('#toast').textContent = '';
-    if (marker && (marker.life -= dt) <= 0) marker = null;
   }
   lastUI += dt;
   if (lastUI > 0.15) {

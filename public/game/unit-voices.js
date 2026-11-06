@@ -98,6 +98,10 @@ export class UnitVoices {
     }
   }
 
+  acknowledge({ unitType }) {
+    return this.select({ instanceId: `order:${unitType}`, unitType });
+  }
+
   forget(instanceId) {
     this.lastPlayed.delete(instanceId);
     this.pending.delete(instanceId);
