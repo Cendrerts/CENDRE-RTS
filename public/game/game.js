@@ -7,6 +7,7 @@ import { createGestures } from './gestures.js';
 import { resolveTap, isEmptyTap } from './tap.js';
 import { installMobileDisplay } from './mobile-display.js';
 import { initTouchUI } from './mobile.js';
+import { createControlGroups, groupUnits, assignGroup, initControlGroups } from './control-groups.js';
 import { NetworkMotion, pollDelay } from './network-motion.js';
 import { ratSVG, ratSprites } from './rats.js';
 import { RatsGout } from './rats-config.js';
@@ -43,6 +44,13 @@ let state = Sim.create(),
   selectedMine = null,
   selectedProducer = null;
 const portraitTap = createPortraitTap();
+let networkGroups = createControlGroups();
+let controlGroupsUI;
+function controlGroups() {
+  if (net) return networkGroups;
+  state.controlGroups ??= createControlGroups();
+  return state.controlGroups;
+}
 const voices = new UnitVoices();
 let ambience = null;
 function updateAmbience() {
@@ -308,6 +316,7 @@ function updateUI() {
   $('#build').disabled = !running || state.gold[player] < 120;
   updateConstruction();
   touchUI?.refresh();
+  controlGroupsUI?.refresh();
   radial?.refresh();
   const q = state.queues?.[player] || [],
     active = q.filter((j, i) => q.findIndex((k) => k.producerId === j.producerId) === i);
@@ -333,6 +342,7 @@ $('#start').onclick = () => {
     return;
   }
   state = Sim.create();
+  controlGroupsUI?.reset();
   selected.clear();
   selectedProducer = null;
   player = chosen;
@@ -996,6 +1006,8 @@ function showSnapshot(data) {
   $('#networkError').textContent = '';
   if (data.status === 'playing' && !net.begun) {
     net.begun = true;
+    networkGroups = createControlGroups();
+    controlGroupsUI?.reset();
     selected.clear();
     running = true;
     paused = false;
@@ -1515,6 +1527,28 @@ touchUI = initTouchUI({
     }
   },
   notify,
+});
+
+controlGroupsUI = initControlGroups({
+  enabled: () => running && !paused && !document.body.classList.contains('base-open'),
+  units: (index) => groupUnits(controlGroups(), index, state.units, player),
+  icon: portraitFor,
+  assign: (index) => {
+    const units = assignGroup(controlGroups(), index, selected, state.units, player);
+    notify('Groupe ' + (index + 1) + ' assigné · ' + units.length + ' unités');
+  },
+  select: (index, center) => {
+    const units = groupUnits(controlGroups(), index, state.units, player);
+    selected = new Set(units.map((unit) => unit.id));
+    selectedMine = null;
+    if (center && units.length) {
+      cameraX = units.reduce((sum, unit) => sum + unit.x, 0) / units.length;
+      cameraY = units.reduce((sum, unit) => sum + unit.y, 0) / units.length;
+      layout();
+    }
+    playSelectionVoice(units);
+    updateUI();
+  },
 });
 
 function openRadial(e, context) {
