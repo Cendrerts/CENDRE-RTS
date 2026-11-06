@@ -1,0 +1,10 @@
+// Déploiement de test sur Cloudflare : sert uniquement les fichiers statiques du jeu (solo).
+// Adresse du jeu : https://cendre-rts.<compte>.workers.dev/game/
+{
+  "name": "cendre-rts",
+  "compatibility_date": "2026-11-01",
+  "assets": {
+    "directory": "./public",
+    "html_handling": "auto-trailing-slash"
+  }
+}
