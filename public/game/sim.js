@@ -386,17 +386,54 @@ function productionTick(s, dt) {
 }
 
 function order(s, ids, x, y, target = null, retreat = false) {
-  s.units
-    .filter((u) => ids.includes(u.id))
-    .forEach((u, i) => {
-      u.manual = null;
-      u.harvest = null;
-      u.path = route(u.x, u.y, x + ((i % 3) - 1) * 20, y + Math.floor(i / 3) * 20);
-      u.target = target;
-      u.hold = false;
-      u.retreat = retreat;
-      u.repath = 0;
-    });
+  const units = s.units.filter((u) => ids.includes(u.id));
+  if (!units.length) return;
+  const centerX = units.reduce((sum, unit) => sum + unit.x, 0) / units.length;
+  const centerY = units.reduce((sum, unit) => sum + unit.y, 0) / units.length;
+  const spreadX = units.reduce((sum, unit) => sum + (unit.x - centerX) ** 2, 0);
+  const spreadY = units.reduce((sum, unit) => sum + (unit.y - centerY) ** 2, 0);
+  const axis = spreadX >= spreadY ? 'x' : 'y';
+  const secondaryAxis = axis === 'x' ? 'y' : 'x';
+  const byOffset = (a, b) => a[axis] - b[axis] || a[secondaryAxis] - b[secondaryAxis];
+  units.sort((a, b) => byOffset(a, b) || a.id - b.id);
+  const targetCell = nearest(x, y);
+  const targetX = (targetCell % COLS) * CELL + 10;
+  const targetY = Math.floor(targetCell / COLS) * CELL + 10;
+  const cells = [];
+  for (let cell = 0; cell < walk.length; cell++) {
+    if (!walk[cell]) continue;
+    const px = (cell % COLS) * CELL + 10;
+    const py = Math.floor(cell / COLS) * CELL + 10;
+    cells.push({ x: px, y: py, distance: (px - targetX) ** 2 + (py - targetY) ** 2 });
+  }
+  cells.sort((a, b) => a.distance - b.distance);
+  const destinations = [];
+  for (const cell of cells) {
+    const path = route(targetX, targetY, cell.x, cell.y);
+    if (cell.distance > 0 && !path.length) continue;
+    let previous = { x: targetX, y: targetY };
+    let length = 0;
+    for (const point of path) {
+      length += Math.hypot(point.x - previous.x, point.y - previous.y);
+      previous = point;
+    }
+    if (length > 1.5 * Math.sqrt(cell.distance)) continue;
+    destinations.push(cell);
+    if (destinations.length === units.length) break;
+  }
+  destinations.sort(byOffset);
+  units.forEach((u, index) => {
+    const destination = destinations[index % destinations.length];
+    u.manual = null;
+    u.harvest = null;
+    u.path = route(u.x, u.y, destination.x, destination.y);
+    if (!u.path.length) u.path = [{ x: destination.x, y: destination.y }];
+    u.target = target;
+    u.hold = false;
+    u.retreat = retreat;
+    u.repath = 0;
+    u.stuck = null;
+  });
 }
 function build(s, team, index) {
   let m = s.mines[index];
@@ -483,6 +520,7 @@ function tick(s, dt) {
     visibility(s);
     s.fogClock = 0;
   }
+  const fighting = new Set();
   for (let u of s.units) {
     if (u.hp <= 0) continue;
     u.cool -= dt;
@@ -514,6 +552,7 @@ function tick(s, dt) {
     }
     let d = target ? Math.hypot(target.x - u.x, target.y - u.y) : Infinity;
     if (target && d <= cfg.range + (target.base ? 45 : 0) && !u.retreat) {
+      fighting.add(u.id);
       if (u.cool <= 0) {
         u.cool = cfg.rate;
         target.hp -= cfg.damage;
@@ -552,19 +591,83 @@ function tick(s, dt) {
           l = Math.hypot(dx, dy),
           step = cfg.speed * dt;
         if (l <= step) {
-          u.x = p.x;
-          u.y = p.y;
-          u.path.shift();
+          moveSafely(u, p.x - u.x, p.y - u.y);
+          if (Math.hypot(p.x - u.x, p.y - u.y) < 0.01) u.path.shift();
           if (!u.path.length) u.retreat = false;
         } else {
-          u.x += (dx / l) * step;
-          u.y += (dy / l) * step;
+          moveSafely(u, (dx / l) * step, (dy / l) * step);
         }
+      }
+    }
+  }
+  separate(s.units, fighting, dt);
+  for (const u of s.units) {
+    if (!u.path.length || u.hold || fighting.has(u.id)) {
+      u.stuck = null;
+      continue;
+    }
+    if (!u.stuck || Math.hypot(u.x - u.stuck.x, u.y - u.stuck.y) > 2) {
+      u.stuck = { x: u.x, y: u.y, elapsed: 0 };
+    } else {
+      u.stuck.elapsed += dt;
+      if (u.stuck.elapsed > 1) {
+        const destination = u.path.at(-1);
+        u.path = route(u.x, u.y, destination.x, destination.y);
+        if (!u.path.length) u.path = [destination];
+        u.stuck = null;
       }
     }
   }
   s.units = s.units.filter((u) => u.hp > 0);
   s.shots = s.shots.filter((p) => (p.life -= dt) > 0);
+}
+
+// Check the whole segment, including both sides of diagonal corners.
+function moveSafely(u, dx, dy) {
+  const steps = Math.max(1, Math.ceil(Math.hypot(dx, dy) / 2));
+  const valid = (x, y) =>
+    x >= 0 && x < W && y >= 0 && y < H &&
+    walk[Math.floor(y / CELL) * COLS + Math.floor(x / CELL)];
+  for (let step = 0; step < steps; step++) {
+    const x = u.x + dx / steps;
+    const y = u.y + dy / steps;
+    if (!valid(x, u.y) || !valid(u.x, y) || !valid(x, y)) break;
+    u.x = x;
+    u.y = y;
+  }
+}
+function separate(units, fighting, dt) {
+  const radius = (u) => u.type === 'knight' ? 12 : u.type === 'mage' ? 11 : 9;
+  for (let i = 0; i < units.length; i++) {
+    const a = units[i];
+    if (a.hp <= 0) continue;
+    for (let j = i + 1; j < units.length; j++) {
+      const b = units[j];
+      if (b.hp <= 0) continue;
+      if (a.team === b.team && (a.harvest || b.harvest)) continue;
+      let dx = b.x - a.x;
+      let dy = b.y - a.y;
+      const distance = Math.hypot(dx, dy);
+      const overlap = radius(a) + radius(b) - distance;
+      if (overlap <= 0) continue;
+      if (distance === 0) {
+        // Stable IDs break coincident positions without randomness.
+        const angle = ((a.id * 31 + b.id * 17) % 360) * Math.PI / 180;
+        dx = Math.cos(angle);
+        dy = Math.sin(angle);
+      } else {
+        dx /= distance;
+        dy /= distance;
+      }
+      const movableA = !fighting.has(a.id);
+      const movableB = !fighting.has(b.id);
+      const count = Number(movableA) + Number(movableB);
+      if (!count) continue;
+      const push = Math.min(overlap / count, 30 * dt);
+      if (movableA) moveSafely(a, -dx * push, -dy * push);
+      if (movableB) moveSafely(b, dx * push, dy * push);
+    }
+  }
 }
 
 function harvestPath(u, x, y) {
@@ -650,13 +753,12 @@ function harvestTick(s, u, dt) {
         d = Math.hypot(dx, dy),
         time = d / RULES.harvestSpeed;
       if (time <= left) {
-        u.x = p.x;
-        u.y = p.y;
+        moveSafely(u, p.x - u.x, p.y - u.y);
+        if (Math.hypot(p.x - u.x, p.y - u.y) >= 0.01) break;
         u.path.shift();
         left -= time;
       } else {
-        u.x += (dx / d) * RULES.harvestSpeed * left;
-        u.y += (dy / d) * RULES.harvestSpeed * left;
+        moveSafely(u, (dx / d) * RULES.harvestSpeed * left, (dy / d) * RULES.harvestSpeed * left);
         left = 0;
       }
     }
