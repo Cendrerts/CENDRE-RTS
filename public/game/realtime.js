@@ -1,3 +1,11 @@
+export function normalizeRoomCode(value) {
+  return String(value || '').replace(/\s/g, '').toUpperCase().replace(/^SALON/, '');
+}
+
+export function networkQuality(rtt) {
+  return rtt < 80 ? 'good' : rtt <= 160 ? 'fair' : 'poor';
+}
+
 import { CendreSim as Sim } from './sim.js';
 // A session survives socket replacement; sequence numbers make retries idempotent.
 export class RealtimeClient {
@@ -20,7 +28,10 @@ export class RealtimeClient {
     const base = globalThis.location?.href || 'http://localhost/';
     const url = new URL(this.url, base);
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-    for (const [key, value] of Object.entries(this.parameters)) url.searchParams.set(key, value);
+    url.searchParams.delete('token');
+    for (const [key, value] of Object.entries(this.parameters)) {
+      if (key !== 'token') url.searchParams.set(key, key === 'code' ? normalizeRoomCode(value) : value);
+    }
     try {
       this.socket = new this.Socket(url.href);
     } catch (error) {
@@ -28,6 +39,11 @@ export class RealtimeClient {
       return;
     }
     const socket = this.socket;
+    socket.onopen = () => {
+      if (socket === this.socket && !this.closed) {
+        socket.send(JSON.stringify({ type: 'hello', token: this.parameters.token }));
+      }
+    };
     this.timeout = this.clock.setTimeout(() => socket.close(), 4000);
     socket.onmessage = (event) => {
       if (socket !== this.socket || this.closed) return;
@@ -39,6 +55,7 @@ export class RealtimeClient {
       }
       if (data.type === 'session') {
         this.clock.clearTimeout(this.timeout);
+        socket.authenticated = true;
         this.session = data;
         this.parameters = { code: data.code, token: data.token };
         this.backoff = 250;
@@ -75,7 +92,9 @@ export class RealtimeClient {
     }
   }
   send(message) {
-    if (this.socket?.readyState === 1) this.socket.send(JSON.stringify(message));
+    if (this.socket?.readyState === 1 && this.socket.authenticated) {
+      this.socket.send(JSON.stringify(message));
+    }
   }
   command(command, seq) {
     const message = { type: 'cmd', cmd: command, seq };

@@ -1,11 +1,11 @@
-import { randomCode } from '../lib/match.mjs';
+import { randomCode, normalizeRoomCode } from '../lib/match.mjs';
 export { Match } from './match-do.js';
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (url.pathname !== '/api/ws') return env.ASSETS.fetch(request);
-    const code = (url.searchParams.get('code') || '').toUpperCase();
+    const code = normalizeRoomCode(url.searchParams.get('code'));
     if (url.searchParams.get('action') === 'create' && !code) {
       url.searchParams.set('code', randomCode());
     } else if (!/^[A-Z2-9]{7}$/.test(code)) {

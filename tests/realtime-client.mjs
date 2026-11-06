@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { RealtimeClient, RealtimeMotion } from '../public/game/realtime.js';
+import { RealtimeClient, RealtimeMotion, normalizeRoomCode, networkQuality } from '../public/game/realtime.js';
 import { CendreSim as Sim } from '../public/game/sim.js';
 class Clock {
   time = 0;
@@ -34,6 +34,7 @@ class Socket {
     clock.setTimeout(() => {
       if (clock.time < offlineUntil) this.close();
       else {
+        this.onopen?.();
         this.message({ type: 'session', code: 'ABCDEFG', token: 'secret', team: 0 });
         this.message({ type: 'snapshot', ack: 0 });
       }
@@ -53,7 +54,8 @@ class Socket {
   }
 }
 let rtt;
-const client = new RealtimeClient({ Socket, clock, now: () => clock.time, onRtt: (value) => { rtt = value; } });
+const statuses = [];
+const client = new RealtimeClient({ Socket, clock, onStatus: (status) => statuses.push(status), now: () => clock.time, onRtt: (value) => { rtt = value; } });
 const connected = client.connect({ action: 'create', team: 0 });
 clock.advance(1);
 await connected;
@@ -63,8 +65,14 @@ clock.advance(151);
 assert.equal(rtt, 150);
 offlineUntil = 3151;
 sockets.at(-1).close();
+assert.equal(statuses.at(-1), 'reconnecting', 'backoff announces reconnection');
 clock.advance(6000);
-assert(sockets.at(-1).url.includes('token=secret'));
+assert(sockets.every((socket) => !new URL(socket.url).searchParams.has('token')));
+assert(sent.some((message) => message.type === 'hello' && message.token === 'secret'));
+assert.equal(sent[0].type, 'hello');
+assert.equal(normalizeRoomCode('  salon ab cd efg  '), 'ABCDEFG');
+assert.equal(normalizeRoomCode('a b c d e f g'), 'ABCDEFG');
+assert.deepEqual([79, 80, 160, 161].map(networkQuality), ['good', 'fair', 'fair', 'poor']);
 assert(sent.filter((message) => message.type === 'cmd').length >= 2, 'unacked orders replay');
 sockets.at(-1).message({ type: 'ack', seq: 1 });
 assert.equal(client.pending.size, 0);

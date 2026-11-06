@@ -6,6 +6,11 @@ import { CendreSim as S } from '../public/game/sim.js';
 class Clock {
   time = 100000;
   timers = new Set();
+  timeouts = new Map();
+  setTimeout = (callback, delay) => {
+    this.timeouts.set(callback, this.time + delay);
+    return callback;
+  };
   Date = { now: () => this.time };
   setInterval = (callback) => {
     this.timers.add(callback);
@@ -15,6 +20,12 @@ class Clock {
   async advance(milliseconds) {
     for (let elapsed = 0; elapsed < milliseconds; elapsed += 50) {
       this.time += 50;
+      for (const [callback, deadline] of this.timeouts) {
+        if (this.time >= deadline) {
+          this.timeouts.delete(callback);
+          callback();
+        }
+      }
       for (const callback of this.timers) callback();
       await Promise.resolve();
     }
@@ -93,7 +104,7 @@ assert.equal(b.team, 1);
 assert.equal(b.status, 'countdown');
 assert(!JSON.stringify(ctx.storage.saved).includes(a.token));
 await assert.rejects(match.authenticate(url('action=join')), /complet/);
-await assert.rejects(match.authenticate(url('token=invalid')), /inconnue/);
+await assert.rejects(match.authenticate(url(''), 'invalid'), /inconnue/);
 await clock.advance(3000);
 assert.equal(match.sim.time, 0);
 sa.messages = [];
@@ -134,7 +145,7 @@ assert.equal(match.status(), 'disconnected');
 const paused = match.sim.time;
 await clock.advance(1000);
 assert.equal(match.sim.time, paused);
-const rejoined = await match.authenticate(url(`token=${b.token}`));
+const rejoined = await match.authenticate(url(''), b.token);
 assert.equal(rejoined.team, b.team);
 const sb2 = connect(b.team);
 await clock.advance(1000);
@@ -247,11 +258,36 @@ try {
     });
   assert.equal((await upgrade.fetch(request('action=create', 'https://evil.test'))).status, 403);
   assert.equal((await upgrade.fetch(request('action=create'))).status, 101);
-  const firstSocket = upgrade.sockets()[0];
+  const firstSocket = upgrade.ctx.sockets.at(-1);
+  assert.equal(firstSocket.messages.length, 0, 'no session before hello');
+  assert.equal(upgrade.room, null, 'no membership before hello');
+  await upgrade.webSocketMessage(firstSocket, JSON.stringify({ type: 'hello' }));
   const session = firstSocket.messages.find((message) => message.type === 'session');
+  assert(session);
   assert.equal((await upgrade.fetch(request(`token=${session.token}`))).status, 101);
+  const oldProtocol = upgrade.ctx.sockets.at(-1);
+  await upgrade.webSocketMessage(oldProtocol, JSON.stringify({ type: 'hello' }));
+  assert(oldProtocol.closed, 'URL token cannot authenticate');
+  assert(!firstSocket.closed);
+  assert.equal((await upgrade.fetch(request(''))).status, 101);
+  const replacement = upgrade.ctx.sockets.at(-1);
+  await upgrade.webSocketMessage(replacement, JSON.stringify({ type: 'hello', token: session.token }));
   assert(firstSocket.closed);
   assert.equal(upgrade.sockets().length, 1);
+  await upgrade.fetch(request(''));
+  const silent = upgrade.ctx.sockets.at(-1);
+  await upgrade.clock.advance(4950);
+  assert(!silent.closed);
+  await upgrade.clock.advance(50);
+  assert(silent.closed, 'hello deadline is exactly 5 seconds');
+  await upgrade.fetch(request(''));
+  const premature = upgrade.ctx.sockets.at(-1);
+  await upgrade.webSocketMessage(premature, JSON.stringify({ type: 'ping' }));
+  assert(premature.closed, 'first message must be hello');
+  await upgrade.fetch(request(''));
+  const invalid = upgrade.ctx.sockets.at(-1);
+  await upgrade.webSocketMessage(invalid, JSON.stringify({ type: 'hello', token: 'wrong' }));
+  assert(invalid.closed, 'invalid hello closes connection');
   assert.equal((await upgrade.fetch(new Request(url('')))).status, 426);
   let routed;
   const env = {
@@ -281,7 +317,7 @@ try {
   );
   assert.match(routed.code, /^[A-Z2-9]{7}$/);
   assert.equal(
-    await worker.fetch(new Request('https://cendre.test/api/ws?code=abcdefg'), env),
+    await worker.fetch(new Request('https://cendre.test/api/ws?code=%20salon%20ab%20cd%20efg%20'), env),
     'DO',
   );
   assert.equal(routed.code, 'ABCDEFG');

@@ -30,7 +30,8 @@ export class Match {
   sockets(team) {
     return this.ctx.getWebSockets().filter((socket) => {
       const attachment = socket.deserializeAttachment();
-      return !attachment.closed && (team === undefined || attachment.team === team);
+      return !attachment.closed && attachment.team !== undefined &&
+        (team === undefined || attachment.team === team);
     });
   }
 
@@ -140,21 +141,17 @@ export class Match {
       if (request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') {
         throw new MatchError('WebSocket requis.', 426);
       }
-      // Gate authentication and membership changes across asynchronous token hashing.
-      const session = await this.ctx.blockConcurrencyWhile(() => this.authenticate(url));
+      url.searchParams.delete('token');
       const pair = new WebSocketPair();
       const [client, server] = Object.values(pair);
       this.ctx.acceptWebSocket(server);
-      server.serializeAttachment({ team: session.team, closed: false });
-      for (const previous of this.sockets(session.team)) {
-        if (previous !== server) {
-          previous.serializeAttachment({ team: session.team, closed: true });
-          previous.close(1000, 'Session remplacée');
+      server.serializeAttachment({ url: url.href, deadline: this.now() + 5000, closed: false });
+      this.clock.setTimeout(() => {
+        const attachment = server.deserializeAttachment();
+        if (attachment.team === undefined && !attachment.closed) {
+          this.webSocketClose(server);
         }
-      }
-      this.send(server, { type: 'session', ...session });
-      this.snapshot(server);
-      this.startTimer();
+      }, 5000);
       return new Response(null, { status: 101, webSocket: client });
     } catch (error) {
       if (!(error instanceof MatchError)) throw error;
@@ -162,7 +159,7 @@ export class Match {
     }
   }
 
-  async authenticate(url) {
+  async authenticate(url, helloToken) {
     const action = url.searchParams.get('action') || 'sync';
     const code = url.searchParams.get('code');
     if (!/^[A-Z2-9]{7}$/.test(code || '')) throw new MatchError('Code incorrect.');
@@ -173,7 +170,7 @@ export class Match {
     if (action !== 'create' && !this.room) throw new MatchError('Salon introuvable.', 404);
     if (this.room?.cancelled) throw new MatchError('Salon fermé.', 410);
     const token =
-      action === 'sync' ? url.searchParams.get('token') : crypto.randomUUID() + crypto.randomUUID();
+      action === 'sync' ? helloToken : crypto.randomUUID() + crypto.randomUUID();
     if (typeof token !== 'string' || !token.length || token.length > 100) {
       throw new MatchError('Connexion requise.', 401);
     }
@@ -206,11 +203,37 @@ export class Match {
   }
 
   webSocketMessage(socket, raw) {
-    if (!this.room || socket.deserializeAttachment().closed) return;
+    if (socket.deserializeAttachment().closed) return;
     try {
       if (typeof raw !== 'string' || raw.length > 12000) throw new MatchError('Message incorrect.');
       const message = JSON.parse(raw);
-      const { team } = socket.deserializeAttachment();
+      const attachment = socket.deserializeAttachment();
+      if (attachment.team === undefined) {
+        return this.ctx.blockConcurrencyWhile(async () => {
+          try {
+            if (message?.type !== 'hello' || this.now() >= attachment.deadline) {
+              throw new MatchError('Hello requis dans les 5 secondes.');
+            }
+            const session = await this.authenticate(new URL(attachment.url), message.token);
+            if (socket.deserializeAttachment().closed) return;
+            socket.serializeAttachment({ team: session.team, closed: false });
+            for (const previous of this.sockets(session.team)) {
+              if (previous !== socket) {
+                previous.serializeAttachment({ team: session.team, closed: true });
+                previous.close(1000, 'Session remplacée');
+              }
+            }
+            this.send(socket, { type: 'session', ...session });
+            this.snapshot(socket);
+            this.startTimer();
+          } catch (error) {
+            if (!(error instanceof MatchError)) throw error;
+            this.send(socket, { type: 'error', error: error.message });
+            this.webSocketClose(socket);
+          }
+        });
+      }
+      const { team } = attachment;
       const player = this.room.players.find((entry) => entry.team === team);
       if (message?.type === 'cmd') {
         if (!Number.isSafeInteger(message.seq) || message.seq < 1)
@@ -241,6 +264,7 @@ export class Match {
     } catch (error) {
       if (!(error instanceof MatchError) && !(error instanceof SyntaxError)) throw error;
       this.send(socket, { type: 'error', error: error.message });
+      if (socket.deserializeAttachment().team === undefined) this.webSocketClose(socket);
     }
   }
 
@@ -248,9 +272,10 @@ export class Match {
     const attachment = socket.deserializeAttachment();
     if (attachment.closed) return;
     socket.serializeAttachment({ ...attachment, closed: true });
+    socket.close(1000, 'Déconnexion');
+    if (attachment.team === undefined) return;
     const player = this.room.players.find((entry) => entry.team === attachment.team);
     player.seen = this.now();
-    socket.close(1000, 'Déconnexion');
     if (!this.sockets().length) this.stopTimer();
     this.ctx.waitUntil(this.save());
   }

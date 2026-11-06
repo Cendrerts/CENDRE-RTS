@@ -3,15 +3,19 @@
 `wrangler.jsonc` déploie les fichiers de `public/` et le Worker. Seul `/api/ws`
 passe au Durable Object `MATCH`, identifié par le code du salon. Aucun accès D1
 n'est nécessaire. L'API HTTP historique dans `app/api/match/route.ts` et ses tests
-restent en place ; le client actuel continue d'utiliser ce chemin.
+restent en place en secours ; le client essaie toujours le WebSocket d'abord.
 
 ## Protocole pour le futur client WebSocket
 
 - Créer : `wss://<hôte>/api/ws?action=create&team=0` (ou `team=1`).
 - Rejoindre : `/api/ws?action=join&code=ABCDEFG`.
-- Reconnecter : `/api/ws?code=ABCDEFG&token=<jeton>`.
+- Reconnecter : `/api/ws?code=ABCDEFG`.
 
-Le premier message `{type:'session', code, token, team, status}` donne le code et
+Chaque connexion envoie d’abord `{type:'hello', token}` (jeton requis pour une
+reconnexion, omis pour créer ou rejoindre). Aucun jeton ne passe dans l’URL.
+Sans hello valide sous 5 secondes, la socket est fermée.
+
+La réponse `{type:'session', code, token, team, status}` donne le code et
 le jeton à conserver côté client. Seul son SHA-256 est stocké côté serveur.
 Une reconnexion remplace l'ancienne socket de ce participant.
 
