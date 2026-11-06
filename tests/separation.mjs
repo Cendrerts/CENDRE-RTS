@@ -36,6 +36,57 @@ function arrival() {
 }
 assert.deepEqual(arrival(), arrival(), 'Simulation déterministe');
 
+function pathLength(x, y, path) {
+  let length = 0;
+  for (const point of path) {
+    length += Math.hypot(point.x - x, point.y - y);
+    x = point.x;
+    y = point.y;
+  }
+  return length;
+}
+
+// IDs deliberately run right-to-left, opposite to the initial spatial order.
+const line = group(9);
+for (const [index, unit] of line.units.entries()) {
+  unit.x = 930 - index * 20;
+  unit.y = 650;
+}
+const leftToRight = [...line.units].sort((a, b) => a.x - b.x);
+S.order(line, line.units.map((unit) => unit.id), 850, 550);
+for (const unit of line.units) {
+  const destination = unit.path.at(-1);
+  assert(pathLength(unit.x, unit.y, unit.path) <=
+    1.5 * Math.hypot(destination.x - unit.x, destination.y - unit.y));
+}
+for (let step = 0; step < 500; step++) tick(line);
+let orderedPairs = 0;
+let pairs = 0;
+for (let i = 0; i < leftToRight.length; i++) {
+  assert.equal(leftToRight[i].path.length, 0);
+  for (let j = i + 1; j < leftToRight.length; j++) {
+    pairs++;
+    if (leftToRight[i].x <= leftToRight[j].x + 1) orderedPairs++;
+  }
+}
+assert(orderedPairs / pairs >= 0.8, 'Ordre gauche-droite conservé à 80 %');
+
+// Near cliff edges, nearby cells across the void must not become formation slots.
+for (const [x, y] of [[1130, 450], [710, 250], [1050, 210]]) {
+  const state = group(9);
+  const cell = S.nearest(x, y);
+  const targetX = cell % S.COLS * S.CELL + 10;
+  const targetY = Math.floor(cell / S.COLS) * S.CELL + 10;
+  S.order(state, state.units.map((unit) => unit.id), x, y);
+  for (const unit of state.units) {
+    const destination = unit.path.at(-1);
+    const direct = Math.hypot(destination.x - targetX, destination.y - targetY);
+    const path = S.route(targetX, targetY, destination.x, destination.y);
+    assert(direct === 0 || path.length > 0, 'Case connectée à la cible');
+    assert(pathLength(targetX, targetY, path) <= 1.5 * direct, 'Pas de détour derrière une falaise');
+  }
+}
+
 // The northern ramp is only about 100 px wide.
 const passage = group(20, 770, 150);
 S.order(passage, passage.units.map((unit) => unit.id), 950, 650);

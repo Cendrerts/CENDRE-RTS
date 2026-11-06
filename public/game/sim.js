@@ -387,16 +387,43 @@ function productionTick(s, dt) {
 
 function order(s, ids, x, y, target = null, retreat = false) {
   const units = s.units.filter((u) => ids.includes(u.id));
+  if (!units.length) return;
+  const centerX = units.reduce((sum, unit) => sum + unit.x, 0) / units.length;
+  const centerY = units.reduce((sum, unit) => sum + unit.y, 0) / units.length;
+  const spreadX = units.reduce((sum, unit) => sum + (unit.x - centerX) ** 2, 0);
+  const spreadY = units.reduce((sum, unit) => sum + (unit.y - centerY) ** 2, 0);
+  const axis = spreadX >= spreadY ? 'x' : 'y';
+  const secondaryAxis = axis === 'x' ? 'y' : 'x';
+  const byOffset = (a, b) => a[axis] - b[axis] || a[secondaryAxis] - b[secondaryAxis];
+  units.sort((a, b) => byOffset(a, b) || a.id - b.id);
+  const targetCell = nearest(x, y);
+  const targetX = (targetCell % COLS) * CELL + 10;
+  const targetY = Math.floor(targetCell / COLS) * CELL + 10;
   const cells = [];
   for (let cell = 0; cell < walk.length; cell++) {
     if (!walk[cell]) continue;
     const px = (cell % COLS) * CELL + 10;
     const py = Math.floor(cell / COLS) * CELL + 10;
-    cells.push({ x: px, y: py, distance: (px - x) ** 2 + (py - y) ** 2 });
+    cells.push({ x: px, y: py, distance: (px - targetX) ** 2 + (py - targetY) ** 2 });
   }
   cells.sort((a, b) => a.distance - b.distance);
+  const destinations = [];
+  for (const cell of cells) {
+    const path = route(targetX, targetY, cell.x, cell.y);
+    if (cell.distance > 0 && !path.length) continue;
+    let previous = { x: targetX, y: targetY };
+    let length = 0;
+    for (const point of path) {
+      length += Math.hypot(point.x - previous.x, point.y - previous.y);
+      previous = point;
+    }
+    if (length > 1.5 * Math.sqrt(cell.distance)) continue;
+    destinations.push(cell);
+    if (destinations.length === units.length) break;
+  }
+  destinations.sort(byOffset);
   units.forEach((u, index) => {
-    const destination = cells[index];
+    const destination = destinations[index % destinations.length];
     u.manual = null;
     u.harvest = null;
     u.path = route(u.x, u.y, destination.x, destination.y);
@@ -617,6 +644,7 @@ function separate(units, fighting, dt) {
     for (let j = i + 1; j < units.length; j++) {
       const b = units[j];
       if (b.hp <= 0) continue;
+      if (a.team === b.team && (a.harvest || b.harvest)) continue;
       let dx = b.x - a.x;
       let dy = b.y - a.y;
       const distance = Math.hypot(dx, dy);

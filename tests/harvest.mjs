@@ -81,3 +81,31 @@ for (let team = 0; team < 2; team++) {
 console.log(
   'PASS: worker trips, mining delay, delivery only, both factions, ruby, capture, interruption, ownership, death, no passive income, persistence and end state.',
 );
+
+// One isolated worker is the reference yield with no possible separation.
+function mineYield(count, withAllies) {
+  const state = S.create();
+  state.units = [];
+  for (let index = 0; index < count; index++) {
+    S.spawn(state, 'commis', 0);
+    const worker = state.units.at(-1);
+    worker.x = 470;
+    worker.y = 690;
+    S.gather(state, 0, [worker.id], 0);
+  }
+  if (withAllies) {
+    for (let index = 0; index < 6; index++) {
+      S.spawn(state, 'knight', 0);
+      const ally = state.units.at(-1);
+      ally.x = 470;
+      ally.y = 690;
+      ally.hold = true;
+    }
+  }
+  advance(state, 60);
+  return state.gold[0] - 100;
+}
+const referenceYield = mineYield(1, false) * 10;
+assert(referenceYield > 0);
+assert(mineYield(10, false) >= referenceYield * 0.95, 'Rendement de dix ouvriers ≥ 95 %');
+assert(mineYield(10, true) >= referenceYield * 0.95, 'Les alliés ne repoussent pas les récolteurs');
