@@ -1,0 +1,160 @@
+name: Codex
+
+# Lance Codex quand le propriétaire du dépôt écrit un commentaire commençant par /codex
+# - sur une issue : Codex traite l'issue et ouvre une PR
+# - sur une PR : Codex applique les corrections demandées sur la branche de la PR
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+# Une seule exécution à la fois : l'authentification ChatGPT se renouvelle à chaque passage.
+concurrency:
+  group: codex-auth
+  cancel-in-progress: false
+
+jobs:
+  codex:
+    if: startsWith(github.event.comment.body, '/codex') && github.event.comment.author_association == 'OWNER'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      CODEX_HOME: ${{ github.workspace }}/../codex-home
+      GH_TOKEN: ${{ github.token }}
+      NUMBER: ${{ github.event.issue.number }}
+      IS_PR: ${{ github.event.issue.pull_request != null }}
+      TITLE: ${{ github.event.issue.title }}
+      BODY: ${{ github.event.issue.body }}
+      COMMENT: ${{ github.event.comment.body }}
+    steps:
+      - name: Accusé de réception
+        run: gh api repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions -f content=eyes
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Branche de travail
+        id: branch
+        run: |
+          if [ "$IS_PR" = "true" ]; then
+            BRANCH=$(gh pr view "$NUMBER" --json headRefName -q .headRefName 2>/dev/null || gh api repos/${{ github.repository }}/pulls/$NUMBER --jq .head.ref)
+            git checkout "$BRANCH"
+          else
+            BRANCH="codex/issue-$NUMBER"
+            if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null; then
+              git checkout "$BRANCH"
+            else
+              git checkout -b "$BRANCH"
+            fi
+          fi
+          echo "name=$BRANCH" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Restaurer l'authentification Codex (dernière version)
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ github.workspace }}/../codex-home/auth.json
+          key: codex-auth-none
+          restore-keys: codex-auth-
+
+      - name: Amorcer l'authentification depuis le secret si besoin
+        env:
+          CODEX_AUTH_JSON: ${{ secrets.CODEX_AUTH_JSON }}
+        run: |
+          mkdir -p "$CODEX_HOME"
+          if [ ! -s "$CODEX_HOME/auth.json" ]; then
+            printf '%s' "$CODEX_AUTH_JSON" > "$CODEX_HOME/auth.json"
+          fi
+          chmod 600 "$CODEX_HOME/auth.json"
+
+      - name: Installer Codex
+        run: npm install -g @openai/codex@latest
+
+      - name: Préparer la consigne
+        run: |
+          INSTRUCTION="${COMMENT#/codex}"
+          {
+            if [ "$IS_PR" = "true" ]; then
+              echo "Tu travailles sur la branche de la PR #$NUMBER (« $TITLE ») du jeu CENDRE."
+              echo "Applique les corrections demandées ci-dessous, sans rien faire d'autre."
+              echo
+              echo "## Corrections demandées"
+              echo "$INSTRUCTION"
+              echo
+              echo "## Description de la PR"
+              echo "$BODY"
+            else
+              echo "Traite l'issue #$NUMBER du jeu CENDRE : « $TITLE »."
+              echo
+              echo "## Issue"
+              echo "$BODY"
+              if [ -n "$(echo "$INSTRUCTION" | tr -d '[:space:]')" ]; then
+                echo
+                echo "## Consigne supplémentaire"
+                echo "$INSTRUCTION"
+              fi
+            fi
+            echo
+            echo "## Règles"
+            echo "- Lis et respecte AGENTS.md."
+            echo "- Lance tous les tests (chaque fichier de tests/ avec node) et node --check sur public/game/*.js. Ils doivent tous passer."
+            echo "- Ne fais pas de commit ni de push, ne touche pas à .github/. Le workflow s'en charge."
+            echo "- Termine par un résumé en français : ce qui a changé, ce qui a été vérifié, ce qui reste à tester sur un vrai téléphone."
+          } > "$RUNNER_TEMP/prompt.md"
+
+      - name: Lancer Codex
+        run: |
+          codex exec --dangerously-bypass-approvals-and-sandbox \
+            --output-last-message "$RUNNER_TEMP/summary.md" \
+            - < "$RUNNER_TEMP/prompt.md"
+
+      - name: Sauvegarder l'authentification renouvelée
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ github.workspace }}/../codex-home/auth.json
+          key: codex-auth-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Commit, push et PR
+        run: |
+          git config user.name "codex-bot"
+          git config user.email "codex-bot@users.noreply.github.com"
+          git restore --staged . 2>/dev/null || true
+          git checkout -- .github 2>/dev/null || true
+          git add -A
+          if git diff --cached --quiet; then
+            gh issue comment "$NUMBER" --body "Codex n'a fait aucun changement. Résumé :
+
+          $(cat "$RUNNER_TEMP/summary.md" 2>/dev/null)"
+            exit 0
+          fi
+          git commit -q -m "Codex : #$NUMBER $TITLE"
+          git push -q origin "${{ steps.branch.outputs.name }}"
+          if [ "$IS_PR" = "true" ]; then
+            gh pr comment "$NUMBER" --body-file "$RUNNER_TEMP/summary.md"
+          else
+            EXISTING=$(gh api "repos/${{ github.repository }}/pulls?head=${{ github.repository_owner }}:${{ steps.branch.outputs.name }}&state=open" --jq '.[0].number // empty')
+            if [ -n "$EXISTING" ]; then
+              gh pr comment "$EXISTING" --body-file "$RUNNER_TEMP/summary.md"
+            else
+              { echo "Closes #$NUMBER"; echo; cat "$RUNNER_TEMP/summary.md"; } > "$RUNNER_TEMP/pr.md"
+              gh api repos/${{ github.repository }}/pulls \
+                -f title="$TITLE" \
+                -f head="${{ steps.branch.outputs.name }}" \
+                -f base=main \
+                -F body=@"$RUNNER_TEMP/pr.md" --jq .html_url
+            fi
+          fi
+
+      - name: Signaler un échec
+        if: failure()
+        run: gh issue comment "$NUMBER" --body "❌ L'exécution de Codex a échoué. Journal : ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
