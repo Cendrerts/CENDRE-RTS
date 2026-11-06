@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { healthBarBounds, drawHealthBar, unitFeet, selectionRing, TEAM_COLORS, drawCargoRuby } from '../public/game/unit-overlays.js';
+import { healthBarBounds, drawHealthBar, unitFeet, selectionRing, TEAM_COLORS, drawCargoRuby, drawMine } from '../public/game/unit-overlays.js';
 import { minimapPoint, drawMinimap } from '../public/game/minimap.js';
 
 function recordingContext() {
@@ -65,9 +65,37 @@ for (const selected of [false, true]) {
   if (selected) assert.equal(ctx.calls[1][1], '#ff5353');
 }
 const ruby = recordingContext();
-drawCargoRuby(ruby, 50, 100, 2);
+drawCargoRuby(ruby, 50, 100, 2, { type: 'commis', cargo: 10 });
 assert.deepEqual(ruby.calls[0], ['moveTo', 50, 90]);
 assert.ok(ruby.calls.some((call) => call[0] === 'fill'));
+
+for (const cargo of [0, 10, 20]) {
+  const worker = recordingContext();
+  drawCargoRuby(worker, 50, 100, 2, { type: 'commis', cargo });
+  assert.equal(worker.calls.filter((call) => call[0] === 'fill').length, cargo > 0 ? 1 : 0);
+}
+const soldier = recordingContext();
+drawCargoRuby(soldier, 50, 100, 2, { type: 'soldat', cargo: 10 });
+assert.equal(soldier.calls.length, 0);
+
+for (const owner of [-1, 0, 1]) {
+  for (const boost of [false, true]) {
+    const mine = recordingContext();
+    drawMine(mine, { x: 100, y: 200, owner, boost }, 2, 0);
+    const strokes = mine.calls.filter((call) => call[0] === 'stroke');
+    assert.deepEqual(strokes[0], ['stroke', TEAM_COLORS[owner] ?? '#969ca5', 0.75]);
+    const points = mine.calls.filter((call) => call[0] === 'moveTo' || call[0] === 'lineTo');
+    const width = Math.max(...points.map((call) => call[1])) - Math.min(...points.map((call) => call[1]));
+    assert.equal(width * 2, boost ? 54 : 36);
+    assert.equal(mine.calls.filter((call) => call[0] === 'fill' && call[1] === '#f12d61').length, 3);
+    assert.equal(strokes.filter((call) => call[1] === '#ffc1d2').length, 3);
+    if (boost) {
+      const pulse = recordingContext();
+      drawMine(pulse, { x: 100, y: 200, owner, boost }, 2, Math.PI / 4);
+      assert.notEqual(mine.calls.find((call) => call[0] === 'fill')[1], pulse.calls.find((call) => call[0] === 'fill')[1]);
+    }
+  }
+}
 
 assert.deepEqual(minimapPoint(840, 470, 168, 94, 1680, 940), { x: 84, y: 47 });
 const mini = recordingContext();

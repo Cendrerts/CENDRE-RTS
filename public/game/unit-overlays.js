@@ -38,7 +38,8 @@ export function selectionRing(ctx, feet, size, scale, team) {
   ctx.restore();
 }
 
-export function drawCargoRuby(ctx, x, headY, scale) {
+export function drawCargoRuby(ctx, x, headY, scale, unit) {
+  if (unit.type !== 'commis' || !(unit.cargo > 0)) return;
   const radius = 4 / scale;
   const y = headY - 16 / scale;
   ctx.save();
@@ -53,5 +54,46 @@ export function drawCargoRuby(ctx, x, headY, scale) {
   ctx.closePath();
   ctx.fill();
   ctx.stroke();
+  ctx.restore();
+}
+
+// Crystal geometry is in world units: a normal cluster spans 36 CSS px at zoom 2.
+export function drawMine(ctx, mine, scale, time = 0) {
+  const size = mine.boost ? 1.5 : 1;
+  ctx.save();
+  if (mine.boost) {
+    ctx.fillStyle = `rgba(241,45,97,${0.12 + 0.04 * Math.sin(time * 2)})`;
+    ctx.beginPath();
+    ctx.ellipse(mine.x, mine.y - 4, 16, 12, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.strokeStyle = TEAM_COLORS[mine.owner] ?? '#969ca5';
+  ctx.lineWidth = 1.5 / scale;
+  ctx.beginPath();
+  ctx.ellipse(mine.x, mine.y + 2 * size, 11 * size, 4 * size, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  const crystals = [
+    { x: -6, y: 0, width: 3, height: 9 },
+    { x: 6, y: 0, width: 3, height: 11 },
+    { x: 0, y: 2, width: 4, height: 17 },
+  ];
+  ctx.lineWidth = 1 / scale;
+  ctx.strokeStyle = '#ffc1d2';
+  for (const crystal of crystals) {
+    const x = mine.x + crystal.x * size;
+    const y = mine.y + crystal.y * size;
+    const width = crystal.width * size;
+    const height = crystal.height * size;
+    ctx.fillStyle = '#f12d61';
+    ctx.beginPath();
+    ctx.moveTo(x, y - height);
+    ctx.lineTo(x + width, y - height * 0.65);
+    ctx.lineTo(x + width * 0.6, y);
+    ctx.lineTo(x - width * 0.6, y);
+    ctx.lineTo(x - width, y - height * 0.65);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  }
   ctx.restore();
 }

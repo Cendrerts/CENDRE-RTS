@@ -13,7 +13,7 @@ import { ratSVG, ratSprites } from './rats.js';
 import { RatsGout } from './rats-config.js';
 import { cookSVG, cookSprites } from './cooks.js';
 import { drawMinimap } from './minimap.js';
-import { drawHealthBar, selectionRing, unitFeet, drawCargoRuby } from './unit-overlays.js';
+import { drawHealthBar, selectionRing, unitFeet, drawCargoRuby, drawMine } from './unit-overlays.js';
 import { CendreSim as Sim } from './sim.js';
 const { W, H, CELL, COLS, ROWS, TYPES, RULES } = Sim;
 const canvas = document.querySelector('#field'),
@@ -856,6 +856,10 @@ function draw() {
     ctx.fillRect(0, 0, W, H);
   }
   drawExpansionSites();
+  for (const mine of state.mines) {
+    const cellIndex = Math.floor(mine.y / CELL) * COLS + Math.floor(mine.x / CELL);
+    if (state.explored[player][cellIndex]) drawMine(ctx, mine, scale, performance.now() / 1000);
+  }
   for (let m of state.mines) {
     if (state.mines[selectedMine] !== m || !Sim.visibleAt(state, player, m.x, m.y)) continue;
     ctx.strokeStyle = m.owner === player ? '#aac9f5' : m.owner === -1 ? '#d6b579' : '#6ee2ba';
@@ -1182,7 +1186,7 @@ function drawCook(u) {
   const img = (u.team === 1 ? ratSprites : cookSprites)[u.type];
   if (img?.complete) ctx.drawImage(img, x - size / 2, y - size + 5 + bob, size, size * 1.125);
   const headY = y - size + bob;
-  if (u.type === 'commis' && u.cargo > 0) drawCargoRuby(ctx, x, headY, scale);
+  drawCargoRuby(ctx, x, headY, scale, u);
   drawHealthBar(ctx, u, x, headY, scale, player, selected.has(u.id));
 }
 
