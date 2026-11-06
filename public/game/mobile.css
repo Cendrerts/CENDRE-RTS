@@ -60,12 +60,59 @@ input,select,textarea{font-size:16px!important}
 #orientation-guard span{font-size:64px}
 @media(orientation:portrait){#orientation-guard{display:flex}}
 
-/* Four 44px targets beside the left thumb, above the squad tools. */
-#controlGroups{position:absolute;left:max(var(--edge),env(safe-area-inset-left));bottom:calc(var(--control) + max(16px,env(safe-area-inset-bottom)) + 64px);display:grid;grid-template-columns:repeat(2,44px);gap:4px;pointer-events:auto}
-#controlGroups[hidden]{display:none}
-#controlGroups button{position:relative;width:44px;height:44px;padding:2px;border:1px solid #a28e62;border-radius:8px;background:#142229dc;touch-action:none}
-#controlGroups strong{position:absolute;top:2px;left:4px;font:700 12px Arial}
-#controlGroups b{position:absolute;bottom:2px;right:4px;font:700 11px Arial;background:#142229}
-#controlGroups .group-icon{display:block;width:30px;height:30px;margin:auto;pointer-events:none}
-#controlGroups svg{width:100%;height:100%}
-#controlGroups button.assigned{background:#576e38;border:2px solid #ffe19a;box-shadow:0 0 12px #ffe19a}
+/* One compact row above Tout, Tenir and Repli. */
+#controlGroups {
+  position:absolute;
+  left:max(var(--edge),env(safe-area-inset-left));
+  bottom:calc(var(--control) + max(16px,env(safe-area-inset-bottom)) + 58px);
+  display:grid;
+  grid-template-columns:repeat(4,44px);
+  gap:4px;
+  pointer-events:auto;
+}
+#controlGroups[hidden] { display:none; }
+#controlGroups button {
+  position:relative;
+  width:44px;
+  height:40px;
+  padding:0;
+  border:1px solid #a28e62;
+  border-radius:8px;
+  background:#142229dc;
+  touch-action:none;
+}
+#controlGroups strong {
+  position:absolute;
+  top:2px;
+  left:4px;
+  font:700 12px/12px Arial;
+}
+#controlGroups b {
+  position:absolute;
+  bottom:2px;
+  right:3px;
+  padding:0 1px;
+  font:700 12px/12px Arial;
+  background:#142229;
+}
+#controlGroups .group-icon {
+  position:absolute;
+  top:50%;
+  left:50%;
+  transform:translate(-50%,-50%);
+  width:22px;
+  height:22px;
+  pointer-events:none;
+}
+#controlGroups svg { width:100%; height:100%; }
+#controlGroups button.empty { opacity:.45; }
+#controlGroups button.empty .group-icon,
+#controlGroups button.empty b { display:none; }
+#controlGroups button.assigned {
+  background:#576e38;
+  border:2px solid #ffe19a;
+  box-shadow:0 0 12px #ffe19a;
+}
+@media(orientation:portrait) {
+  #controlGroups { bottom:calc(262px + env(safe-area-inset-bottom)); }
+}

@@ -58,7 +58,7 @@ export function initControlGroups(api) {
   const buttons = Array.from({ length: 4 }, (_, index) => {
     const button = document.createElement('button');
     button.type = 'button';
-    button.innerHTML = `<strong>${index + 1}</strong><span class="group-icon"></span><b>0</b>`;
+    button.innerHTML = `<strong>${index + 1}</strong><span class="group-icon"></span><b></b>`;
     button.addEventListener('contextmenu', (event) => event.preventDefault());
     button.addEventListener('pointerdown', (event) => {
       if (press || event.button !== 0 || !api.enabled()) return;
@@ -101,11 +101,12 @@ export function initControlGroups(api) {
     if (container.hidden) cancel();
     buttons.forEach((button, index) => {
       const units = api.units(index);
-      button.querySelector('b').textContent = units.length;
+      button.classList.toggle('empty', units.length === 0);
+      button.querySelector('b').textContent = units.length ? units.length : '';
       const icon = button.querySelector('.group-icon');
       const type = dominantType(units);
       if (icon.dataset.type !== String(type)) {
-        icon.innerHTML = type ? api.icon(type) : '·';
+        icon.innerHTML = type ? api.icon(type) : '';
         icon.dataset.type = String(type);
       }
       button.setAttribute('aria-label', `Groupe ${index + 1} : ${units.length} unités. Appui long : assigner. Double-tap : centrer.`);
