@@ -43,3 +43,6 @@ yarn-error.log*
 
 # OS metadata
 .DS_Store
+
+# Captures et mesures produites par les agents
+/artifacts/
