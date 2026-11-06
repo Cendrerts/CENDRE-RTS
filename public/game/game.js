@@ -533,9 +533,9 @@ for (const [event, type] of Object.entries({
 })) {
   canvas.addEventListener(event, (e) => handleFieldPointer(e, type));
 }
+let tapFlash = null;
 function handleFieldTap(e, duration) {
   let p = world(e);
-  p.unitRadius = Math.max(22, 16 / scale);
   if (buildGhost && !radial?.isGhost) {
     const slot = state.slots[player].find((item) => !item.occupe && item.baseId === buildGhost.context.baseId && Math.hypot(item.x - p.x, item.y - p.y) < 30);
     if (slot) {
@@ -548,11 +548,13 @@ function handleFieldTap(e, duration) {
     pickGhostSlot(p);
     return;
   }
-  if (duration >= 550 && isEmptyTap(state, player, p)) {
+  if (duration >= 550 && isEmptyTap(state, player, p, scale)) {
     clearSelection();
     return;
   }
-  const resolved = resolveTap(state, player, selected, p);
+  const resolved = resolveTap(state, player, selected, p, scale, (target) => {
+    tapFlash = { ...target, started: performance.now() };
+  });
   const action = attackMoveArmed && selected.size && !['select', 'radial', 'production', 'enemyBase'].includes(resolved.kind)
     ? { kind: 'move' }
     : resolved;
@@ -908,6 +910,28 @@ function draw() {
     const position = target && Sim.canSee(state, player, target) ? (net ? motion.position(target, performance.now()) : target) : marker;
     drawOrderFeedback(ctx, { ...marker, x: position.x, y: position.y }, elapsed, scale);
     if (elapsed >= marker.duration) marker = null;
+  }
+  if (tapFlash) {
+    const elapsed = performance.now() - tapFlash.started;
+    if (elapsed >= 280) tapFlash = null;
+    else {
+      ctx.save();
+      ctx.strokeStyle = '#fff0a6';
+      ctx.globalAlpha = Math.sin(Math.PI * elapsed / 280);
+      ctx.lineWidth = 3 / scale;
+      const { target, bounds, radius, center, sprite } = tapFlash;
+      if (sprite) {
+        const halfWidth = Math.max(bounds.width / 2, radius / scale);
+        const halfHeight = Math.max(bounds.height / 2, radius / scale);
+        ctx.strokeRect(center.x - halfWidth, center.y - halfHeight, halfWidth * 2, halfHeight * 2);
+      } else if (bounds) ctx.strokeRect(bounds.x, bounds.y, bounds.width, bounds.height);
+      else {
+        ctx.beginPath();
+        ctx.arc(target.x, target.y, radius / scale, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
   }
   drawBuildGhost();
   drawMini();
