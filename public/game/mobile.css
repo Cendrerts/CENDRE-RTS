@@ -173,3 +173,21 @@ header .stats{margin-left:0}header #pause{margin-left:auto}header #netBadge{posi
 #closePause{position:absolute;right:8px;top:8px;font-size:24px}
 #pauseActions,#settingsPanel{display:grid;gap:8px}#settingsPanel label{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px}#settingsPanel input[type=checkbox]{width:44px;height:44px;margin:0;accent-color:#d2b278}#settingsPanel input[type=range]{min-height:44px;width:45%;accent-color:#d2b278}#settingsPanel select{background:#172324;color:inherit}
 body.large-interface{--control:100px;--deck-height:102px;--deck-width:430px}body.large-interface .stats{font-size:15px}body.large-interface #commandDeck button{min-width:48px;min-height:54px}body.large-interface #commandDeck button span{font-size:12px}body.large-interface #baseTabs button,body.large-interface .camera button{min-width:48px;min-height:48px}body.large-interface .pause-panel{font-size:18px}
+
+#selectionToggle {
+  position:absolute;
+  left:calc(max(var(--edge),env(safe-area-inset-left)) + 192px);
+  bottom:calc(var(--control) + max(16px,env(safe-area-inset-bottom)) + 58px);
+  min-width:96px;
+  min-height:44px;
+  pointer-events:auto;
+  background:#142229dc;
+}
+#selectionToggle[aria-pressed=true] {
+  background:#356451;
+  border-color:#8ef1ce;
+}
+#controlGroups button { min-height:44px; }
+@media (orientation:portrait) {
+  #selectionToggle { bottom:calc(262px + env(safe-area-inset-bottom)); }
+}

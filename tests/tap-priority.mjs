@@ -18,8 +18,8 @@ for (const player of [0, 1]) {
   const mine = state.mines[player];
   const before = JSON.stringify(state);
 
-  assert.equal(resolveTap(state, player, army, basePoint).kind, 'move');
-  assert.equal(resolveTap(state, player, army, slot).kind, 'move');
+  assert.equal(resolveTap(state, player, army, basePoint).kind, 'radial');
+  assert.equal(resolveTap(state, player, army, slot).kind, 'radial');
   assert.deepEqual(resolveTap(state, player, empty, slot), {
     kind: 'radial', context: { baseId: slot.baseId, slotId: slot.id },
   });
@@ -31,7 +31,7 @@ for (const player of [0, 1]) {
   assert.equal(resolveTap(state, player, army, state.bases[1 - player]).kind, 'attack');
   assert.deepEqual(resolveTap(state, player, army, worker), { kind: 'select', id: worker.id });
   const group = new Set([soldier.id, worker.id]);
-  assert.deepEqual(resolveTap(state, player, group, soldier), { kind: 'move' });
+  assert.deepEqual(resolveTap(state, player, group, soldier), { kind: 'select', id: soldier.id });
   assert.deepEqual(resolveTap(state, player, army, soldier), { kind: 'select', id: soldier.id });
   assert.equal(resolveTap(state, player, army, mine).kind, 'move');
   assert.equal(resolveTap(state, player, workers, state.mines[1 - player]).kind, 'move');
@@ -45,10 +45,10 @@ for (const player of [0, 1]) {
   assert.deepEqual([...army], [soldier.id]);
 
   slot.occupe = true;
-  assert.equal(resolveTap(state, player, army, slot).kind, 'move');
+  assert.equal(resolveTap(state, player, army, slot).kind, 'production');
   assert.deepEqual(resolveTap(state, player, empty, slot), { kind: 'production', id: slot.id });
   const site = state.mines[2].site;
-  assert.equal(resolveTap(state, player, army, site).kind, 'move');
+  assert.equal(resolveTap(state, player, army, site).kind, 'radial');
   assert.equal(resolveTap(state, player, empty, site).kind, 'radial');
 
   // Friendly selection and enemy attacks beat harvesting when their hit areas overlap.
