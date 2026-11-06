@@ -12,6 +12,8 @@ import { NetworkMotion, pollDelay } from './network-motion.js';
 import { ratSVG, ratSprites } from './rats.js';
 import { RatsGout } from './rats-config.js';
 import { cookSVG, cookSprites } from './cooks.js';
+import { drawMinimap } from './minimap.js';
+import { drawHealthBar, selectionRing, unitFeet, drawCargoRuby } from './unit-overlays.js';
 import { CendreSim as Sim } from './sim.js';
 const { W, H, CELL, COLS, ROWS, TYPES, RULES } = Sim;
 const canvas = document.querySelector('#field'),
@@ -815,10 +817,6 @@ function building(b) {
     );
   }
   bar(x, y - 150, b.hp, b.max, 100);
-  ctx.fillStyle = '#d4d9bd';
-  ctx.font = '12px Georgia';
-  ctx.textAlign = 'center';
-  ctx.fillText(team ? 'CRYPTE DU VOILE' : 'CITADELLE DE LA BRAISE', x, y + 65);
 }
 function unit(u) {
   drawCook(u);
@@ -835,23 +833,16 @@ function drawFog() {
 }
 const walkLength = COLS * ROWS;
 function drawMini() {
-  mc.fillStyle = '#080e14';
-  mc.fillRect(0, 0, 168, 94);
-  if (terrain.complete && terrain.naturalWidth) mc.drawImage(terrain, 0, 0, 168, 94);
-  mc.drawImage(fog, 0, 0, 168, 94);
-  for (let u of state.units)
-    if (Sim.canSee(state, player, u)) {
-      mc.fillStyle = u.team === player ? '#a1c9ff' : '#75edc8';
-      mc.fillRect(u.x / 10 - 1, u.y / 10 - 1, 2, 2);
-    }
-  mc.strokeStyle = '#ddc998';
-  mc.lineWidth = 1;
-  mc.strokeRect(
-    -ox / scale / 10,
-    -oy / scale / 10,
-    viewWidth / scale / 10,
-    viewHeight / scale / 10,
-  );
+  drawMinimap(mc, {
+    terrain,
+    fog,
+    units: state.units.filter((unit) => Sim.canSee(state, player, unit)),
+    mines: state.mines.filter((mine) => Sim.visibleAt(state, player, mine.x, mine.y)),
+    camera: { x: -ox / scale, y: -oy / scale, width: viewWidth / scale, height: viewHeight / scale },
+    player,
+    worldWidth: W,
+    worldHeight: H,
+  });
 }
 function draw() {
   ctx.setTransform(canvas.width / viewWidth, 0, 0, canvas.height / viewHeight, 0, 0);
@@ -866,26 +857,12 @@ function draw() {
   }
   drawExpansionSites();
   for (let m of state.mines) {
-    if (!Sim.visibleAt(state, player, m.x, m.y)) continue;
+    if (state.mines[selectedMine] !== m || !Sim.visibleAt(state, player, m.x, m.y)) continue;
     ctx.strokeStyle = m.owner === player ? '#aac9f5' : m.owner === -1 ? '#d6b579' : '#6ee2ba';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 1 / scale;
     ctx.beginPath();
     ctx.ellipse(m.x, m.y, 42, 22, 0, 0, 7);
     ctx.stroke();
-    ctx.font = '11px Arial';
-    ctx.fillStyle = '#e5d4ad';
-    ctx.textAlign = 'center';
-    ctx.fillText(
-      m.owner === player
-        ? m.boost
-          ? '20 / LIVRAISON · VEINE RICHE'
-          : '10 / LIVRAISON'
-        : m.boost
-          ? 'VEINE RICHE · RENDEMENT ×2'
-          : 'EMPLACEMENT DE BASE',
-      m.x,
-      m.y + 38,
-    );
   }
   let tw = state.tower;
   if (Sim.visibleAt(state, player, tw.x, tw.y)) {
@@ -904,24 +881,10 @@ function draw() {
   state.units
     .filter((u) => Sim.canSee(state, player, u))
     .sort((a, b) => a.y - b.y)
-    .forEach((u) => {
-      unit(u);
-      if (Sim.forest(u) && u.team === player) {
-        ctx.font = '9px Arial';
-        ctx.fillStyle = '#edbc84';
-        ctx.textAlign = 'center';
-        ctx.fillText('CACHÉ · −2 PV/s', u.x, u.y + 22);
-      }
-    });
+    .forEach(unit);
   for (let b of state.bases)
     if (Sim.canSee(state, player, b)) {
       bar(b.x, b.y - 80, b.hp, b.max, 85);
-      {
-        ctx.font = 'bold 12px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillStyle = '#f4dab0';
-        ctx.fillText(b.team ? 'GRANDE DÉCHARGE' : 'CUISINE CENTRALE', b.x, b.y - 91);
-      }
     }
   for (let s of state.shots)
     if (Sim.visibleAt(state, player, s.x, s.y) && Sim.visibleAt(state, player, s.tx, s.ty))
@@ -945,19 +908,6 @@ function draw() {
     ctx.lineWidth = 2;
     ctx.fillRect(start.x, start.y, end.x - start.x, end.y - start.y);
     ctx.strokeRect(start.x, start.y, end.x - start.x, end.y - start.y);
-    const worldStart = { x: (start.x - ox) / scale, y: (start.y - oy) / scale };
-    const worldEnd = { x: (end.x - ox) / scale, y: (end.y - oy) / scale };
-    const count = String(unitsInBox(state.units, player, worldStart, worldEnd).length);
-    ctx.font = 'bold 14px sans-serif';
-    const badgeWidth = ctx.measureText(count).width + 16;
-    const badgeX = Math.max(0, Math.min(viewWidth - badgeWidth, Math.max(start.x, end.x) - badgeWidth));
-    const badgeY = Math.max(0, Math.min(viewHeight - 24, Math.min(start.y, end.y)));
-    ctx.fillStyle = '#183c32';
-    ctx.fillRect(badgeX, badgeY, badgeWidth, 24);
-    ctx.fillStyle = '#8ef1ce';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(count, badgeX + badgeWidth / 2, badgeY + 12);
     ctx.restore();
   }
 }
@@ -1227,30 +1177,13 @@ function drawCook(u) {
       ? Math.sin(state.time * 3 + u.id) * 3
       : Math.sin(state.time * 8 + u.id) * (u.path?.length || net ? 1 : 0);
   ellipse(x, y + 4, size * 0.28, 6, '#06100d77');
-  if (selected.has(u.id)) {
-    ctx.strokeStyle = '#f7cb78';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.ellipse(x, y + 3, size * 0.36, 9, 0, 0, 7);
-    ctx.stroke();
-  }
+  const feet = unitFeet(x, y, size, u.team);
+  if (selected.has(u.id)) selectionRing(ctx, feet, size, scale, u.team);
   const img = (u.team === 1 ? ratSprites : cookSprites)[u.type];
   if (img?.complete) ctx.drawImage(img, x - size / 2, y - size + 5 + bob, size, size * 1.125);
-  if (u.type === 'commis' && u.team === player && (u.harvest || u.cargo)) {
-    ctx.textAlign = 'center';
-    ctx.font = '9px Arial';
-    ctx.fillStyle = '#ffe3a0';
-    ctx.fillText(
-      u.cargo
-        ? 'Sac : ' + u.cargo
-        : u.harvest?.phase === 'MINAGE'
-          ? 'Récolte ' + Math.min(100, Math.floor((u.harvest.elapsed / 3) * 100)) + ' %'
-          : 'Vers la mine',
-      x,
-      y + 17,
-    );
-  }
-  if (u.hp < u.max || selected.has(u.id)) bar(x, y - size - 3, u.hp, u.max);
+  const headY = y - size + bob;
+  if (u.type === 'commis' && u.cargo > 0) drawCargoRuby(ctx, x, headY, scale);
+  drawHealthBar(ctx, u, x, headY, scale, player, selected.has(u.id));
 }
 
 function setupConstruction() {
@@ -1354,15 +1287,9 @@ function drawSlots() {
       if (s.occupe) {
         const index = Sim.BUILDINGS[s.team].findIndex((b) => b.id === s.batiment.type);
         drawFactionBuilding(x, y, s.team, index, 0.65);
-        ctx.font = '9px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillStyle = '#e3c891';
-        ctx.fillText(['II', 'III', 'IV'][index] + ' · N1', x, y + 22);
       } else if (s.team === player) {
-        ctx.font = '11px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillStyle = '#e3c891';
-        ctx.fillText('+', x, y + 4);
+        line(x - 4, y, x + 4, y, '#e3c891');
+        line(x, y - 4, x, y + 4, '#e3c891');
       }
       ctx.restore();
     }
@@ -1484,13 +1411,8 @@ function drawExpansionSites() {
     if (!m.site || !Sim.visibleAt(state, player, m.x, m.y)) continue;
     const { x, y } = m.site;
     ctx.save();
-    ctx.font = '9px Arial';
-    ctx.textAlign = 'center';
     if (m.depot) {
       drawFactionBuilding(x, y, m.owner, 3, 0.95);
-      ctx.fillStyle = m.owner === player ? '#edcf8e' : '#a7dd83';
-      ctx.fillText(m.owner ? 'GRANDE DÉCHARGE' : 'CUISINE CENTRALE', x, y + 21);
-      ctx.fillText('DÉPÔT LOCAL', x, y + 32);
     } else {
       ctx.setLineDash([4, 4]);
       poly(
@@ -1504,8 +1426,6 @@ function drawExpansionSites() {
         '#d6bd83',
       );
       ctx.setLineDash([]);
-      ctx.fillStyle = '#e8ce91';
-      ctx.fillText('BASE · 120', x, y + 30);
     }
     ctx.restore();
     if (i >= 5) {
