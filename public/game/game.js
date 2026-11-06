@@ -15,6 +15,7 @@ import { RatsGout } from './rats-config.js';
 import { cookSVG, cookSprites } from './cooks.js';
 import { drawMinimap } from './minimap.js';
 import { drawHealthBar, selectionRing, unitFeet, drawCargoRuby, drawMine } from './unit-overlays.js';
+import { createRenderCache, prepareDrawList } from './render-cache.js';
 import { CendreSim as Sim } from './sim.js';
 const { W, H, CELL, COLS, ROWS, TYPES, RULES } = Sim;
 const canvas = document.querySelector('#field'),
@@ -22,6 +23,14 @@ const canvas = document.querySelector('#field'),
   $ = (s) => document.querySelector(s),
   mini = $('#minimap'),
   mc = mini.getContext('2d');
+const renderCache = createRenderCache(() => document.createElement('canvas'));
+const debug = new URLSearchParams(location.search).get('debug') === '1';
+const debugDisplay = debug ? document.createElement('output') : null;
+if (debugDisplay) {
+  debugDisplay.style.cssText = 'position:fixed;top:0;left:0;z-index:9999;background:#080e14;color:white;font:12px monospace;padding:4px;pointer-events:none';
+  document.body.append(debugDisplay);
+}
+let preparedUnits = [];
 const terrain = new Image();
 terrain.src = 'assets/terres-brulees.png';
 const fog = document.createElement('canvas');
@@ -849,21 +858,15 @@ function unit(u) {
   drawCook(u);
 }
 function drawFog() {
-  fc.clearRect(0, 0, COLS, ROWS);
-  for (let i = 0; i < walkLength; i++) {
-    if (state.visible[player][i]) continue;
-    fc.fillStyle = state.explored[player][i] ? 'rgba(5,12,18,.67)' : '#080e14';
-    fc.fillRect(i % COLS, Math.floor(i / COLS), 1, 1);
-  }
+  renderCache.updateFog(fc, state.visible[player], state.explored[player], COLS);
   ctx.imageSmoothingEnabled = true;
   ctx.drawImage(fog, 0, 0, W, H);
 }
-const walkLength = COLS * ROWS;
 function drawMini() {
   drawMinimap(mc, {
     terrain,
     fog,
-    units: state.units.filter((unit) => Sim.canSee(state, player, unit)),
+    units: preparedUnits,
     mines: state.mines.filter((mine) => Sim.visibleAt(state, player, mine.x, mine.y)),
     camera: { x: -ox / scale, y: -oy / scale, width: viewWidth / scale, height: viewHeight / scale },
     player,
@@ -873,15 +876,11 @@ function drawMini() {
 }
 function draw() {
   ctx.setTransform(canvas.width / viewWidth, 0, 0, canvas.height / viewHeight, 0, 0);
-  ctx.fillStyle = '#080e14';
-  ctx.fillRect(0, 0, viewWidth, viewHeight);
+  const dpr = canvas.width / viewWidth;
+  const background = renderCache.terrain(terrain, canvas.width, canvas.height, ox * dpr, oy * dpr, scale * dpr, W, H);
+  ctx.drawImage(background, 0, 0, viewWidth, viewHeight);
   ctx.translate(ox, oy);
   ctx.scale(scale, scale);
-  if (terrain.complete && terrain.naturalWidth) ctx.drawImage(terrain, 0, 0, W, H);
-  else {
-    ctx.fillStyle = '#514535';
-    ctx.fillRect(0, 0, W, H);
-  }
   drawExpansionSites();
   for (const mine of state.mines) {
     const cellIndex = Math.floor(mine.y / CELL) * COLS + Math.floor(mine.x / CELL);
@@ -909,10 +908,7 @@ function draw() {
     }
   }
   drawSlots();
-  state.units
-    .filter((u) => Sim.canSee(state, player, u))
-    .sort((a, b) => a.y - b.y)
-    .forEach(unit);
+  preparedUnits.forEach(unit);
   for (let b of state.bases)
     if (Sim.canSee(state, player, b)) {
       bar(b.x, b.y - 80, b.hp, b.max, 85);
@@ -945,6 +941,8 @@ function draw() {
 setupPortraits();
 updateUI();
 function frame(t) {
+  const frameStarted = debug ? performance.now() : 0;
+  const interval = t - last;
   let dt = Math.min((t - last) / 1000, 0.05);
   last = t;
   touchUI?.tick(dt);
@@ -962,7 +960,11 @@ function frame(t) {
     lastUI = 0;
   }
   updateAmbience();
+  preparedUnits = prepareDrawList(state, player, Sim.canSee);
   draw();
+  if (debugDisplay) {
+    debugDisplay.textContent = `${Math.round(1000 / interval)} FPS · ${(performance.now() - frameStarted).toFixed(2)} ms/image`;
+  }
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
@@ -1210,7 +1212,8 @@ function drawCook(u) {
   const feet = unitFeet(x, y, size, u.team);
   if (selected.has(u.id)) selectionRing(ctx, feet, size, scale, u.team);
   const img = (u.team === 1 ? ratSprites : cookSprites)[u.type];
-  if (img?.complete) ctx.drawImage(img, x - size / 2, y - size + 5 + bob, size, size * 1.125);
+  const sprite = renderCache.sprite(img, u.type, u.team, scale * canvas.width / viewWidth, size, size * 1.125);
+  if (sprite) ctx.drawImage(sprite, x - size / 2, y - size + 5 + bob, size, size * 1.125);
   const headY = y - size + bob;
   drawCargoRuby(ctx, x, headY, scale, u);
   drawHealthBar(ctx, u, x, headY, scale, player, selected.has(u.id));

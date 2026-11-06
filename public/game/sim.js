@@ -495,20 +495,36 @@ function visibility(s) {
       ...baseSites(s, t).map((b) => ({ ...b, vision: 180 })),
       ...s.units
         .filter((u) => u.team === t)
-        .map((u) => ({ ...u, vision: stats(u.type, u.team).vision })),
+        .map((u) => ({ x: u.x, y: u.y, vision: stats(u.type, u.team).vision })),
       ...s.mines.filter((m) => m.owner === t).map((m) => ({ ...m, vision: 105 })),
     ];
-    for (let i = 0; i < v.length; i++) {
-      let x = (i % COLS) * CELL + 10,
-        y = Math.floor(i / COLS) * CELL + 10;
-      let tower =
-        s.tower.owner === t &&
-        Math.hypot(x - s.bases[1 - t].x, y - s.bases[1 - t].y) > RULES.baseBlindRadius &&
-        !s.mines.some((m) => m.owner === 1 - t && Math.hypot(x - m.x, y - m.y) < 140);
-      if (tower || sources.some((a) => (a.x - x) ** 2 + (a.y - y) ** 2 < a.vision * a.vision)) {
-        v[i] = 1;
-        s.explored[t][i] = 1;
+    // Visit only cells inside each source's bounds instead of testing every
+    // cell against every source. The strict radius test matches the old rule.
+    for (const source of sources) {
+      const minX = Math.max(0, Math.ceil((source.x - source.vision - 10) / CELL));
+      const maxX = Math.min(COLS - 1, Math.floor((source.x + source.vision - 10) / CELL));
+      const minY = Math.max(0, Math.ceil((source.y - source.vision - 10) / CELL));
+      const maxY = Math.min(ROWS - 1, Math.floor((source.y + source.vision - 10) / CELL));
+      const radiusSquared = source.vision * source.vision;
+      for (let cy = minY; cy <= maxY; cy++) {
+        const dy = cy * CELL + 10 - source.y;
+        for (let cx = minX; cx <= maxX; cx++) {
+          const index = cy * COLS + cx;
+          if (v[index]) continue;
+          const dx = cx * CELL + 10 - source.x;
+          if (dx * dx + dy * dy < radiusSquared) v[index] = 1;
+        }
       }
+    }
+    for (let i = 0; i < v.length; i++) {
+      if (!v[i] && s.tower.owner === t) {
+        const x = (i % COLS) * CELL + 10;
+        const y = Math.floor(i / COLS) * CELL + 10;
+        const outsideEnemyBase = Math.hypot(x - s.bases[1 - t].x, y - s.bases[1 - t].y) > RULES.baseBlindRadius;
+        const outsideEnemyMine = !s.mines.some((mine) => mine.owner === 1 - t && Math.hypot(x - mine.x, y - mine.y) < 140);
+        if (outsideEnemyBase && outsideEnemyMine) v[i] = 1;
+      }
+      if (v[i]) s.explored[t][i] = 1;
     }
   }
 }
@@ -555,16 +571,16 @@ function tick(s, dt) {
       target = u.target;
     if (target && (target.hp <= 0 || !canSee(s, u.team, target))) target = u.target = null;
     if (!target && !u.retreat) {
-      let list = [...s.units, s.bases[1 - u.team]].filter(
-        (v) =>
-          v.team !== u.team &&
-          v.hp > 0 &&
-          canSee(s, u.team, v) &&
-          Math.hypot(v.x - u.x, v.y - u.y) < cfg.range + 75,
-      );
-      target = list.sort(
-        (a, b) => Math.hypot(a.x - u.x, a.y - u.y) - Math.hypot(b.x - u.x, b.y - u.y),
-      )[0];
+      let nearestDistanceSquared = (cfg.range + 75) ** 2;
+      // Stable iteration preserves the previous sort's tie order.
+      for (let index = 0; index <= s.units.length; index++) {
+        const candidate = index < s.units.length ? s.units[index] : s.bases[1 - u.team];
+        if (candidate.team === u.team || candidate.hp <= 0) continue;
+        const distanceSquared = (candidate.x - u.x) ** 2 + (candidate.y - u.y) ** 2;
+        if (distanceSquared >= nearestDistanceSquared || !canSee(s, u.team, candidate)) continue;
+        nearestDistanceSquared = distanceSquared;
+        target = candidate;
+      }
     }
     if (!target && !u.hold && u.chasing && u.attackDestination) {
       u.path = route(u.x, u.y, u.attackDestination.x, u.attackDestination.y);
@@ -668,8 +684,11 @@ function separate(units, fighting, dt) {
       if (a.team === b.team && (a.harvest || b.harvest)) continue;
       let dx = b.x - a.x;
       let dy = b.y - a.y;
+      const combinedRadius = radius(a) + radius(b);
+      const distanceSquared = dx * dx + dy * dy;
+      if (distanceSquared >= combinedRadius * combinedRadius) continue;
       const distance = Math.hypot(dx, dy);
-      const overlap = radius(a) + radius(b) - distance;
+      const overlap = combinedRadius - distance;
       if (overlap <= 0) continue;
       if (distance === 0) {
         // Stable IDs break coincident positions without randomness.
