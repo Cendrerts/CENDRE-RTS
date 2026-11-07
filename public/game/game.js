@@ -1348,11 +1348,15 @@ function drawRally() {
   ctx.save();
   ctx.strokeStyle = TEAM_COLORS[player];
   ctx.fillStyle = ctx.strokeStyle;
-  ctx.lineWidth = 1 / scale;
-  ctx.setLineDash([4 / scale, 4 / scale]);
+  ctx.lineWidth = 4 / scale;
+  ctx.strokeStyle = '#101819';
+  ctx.setLineDash([6 / scale, 5 / scale]);
   ctx.beginPath();
   ctx.moveTo(opened.building.x, opened.building.y);
   ctx.lineTo(point.x, point.y);
+  ctx.stroke();
+  ctx.strokeStyle = TEAM_COLORS[player];
+  ctx.lineWidth = 2 / scale;
   ctx.stroke();
   ctx.setLineDash([]);
   ctx.lineWidth = 2 / scale;
@@ -1778,6 +1782,46 @@ panelRoot.innerHTML =
 document.body.append(panelRoot);
 $('#contextGroups').append($('#controlGroups'), $('#all'));
 $('#combatActions').append($('#baseAction'), selectionToggle, $('#attackAction'));
+const idleButton = document.createElement('button');
+idleButton.id = 'idleWorkers';
+idleButton.hidden = true;
+panelRoot.append(idleButton);
+let lastIdleWorkerId = null;
+let idlePressTimer = null;
+let idleLongPress = false;
+function selectIdleWorkers(all = false) {
+  const workers = Sim.idleWorkers(state, player);
+  if (!workers.length) return;
+  const next = workers.find((unit) => unit.id > (lastIdleWorkerId ?? -1)) || workers[0];
+  const units = all ? workers : [next];
+  selected = new Set(units.map((unit) => unit.id));
+  lastIdleWorkerId = next.id;
+  selectedMine = null;
+  panelContext = {};
+  cameraX = next.x;
+  cameraY = next.y;
+  layout();
+  updateUI();
+}
+idleButton.addEventListener('pointerdown', (event) => {
+  event.stopPropagation();
+  idleButton.setPointerCapture(event.pointerId);
+  idleLongPress = false;
+  idlePressTimer = setTimeout(() => {
+    idleLongPress = true;
+    selectIdleWorkers(true);
+  }, 550);
+});
+idleButton.addEventListener('pointerup', (event) => {
+  event.stopPropagation();
+  clearTimeout(idlePressTimer);
+  if (!idleLongPress) selectIdleWorkers();
+});
+idleButton.addEventListener('pointercancel', () => clearTimeout(idlePressTimer));
+idleButton.addEventListener('click', (event) => {
+  if (event.detail === 0) selectIdleWorkers();
+});
+idleButton.addEventListener('contextmenu', (event) => event.preventDefault());
 const panelChevron = document.createElement('button');
 panelChevron.id = 'panelChevron';
 panelChevron.setAttribute('aria-label', 'Replier le panneau');
@@ -1854,6 +1898,10 @@ function renderContextPanel() {
     width: innerWidth,
     visibility: panelVisibilityState,
   });
+  const idleCount = Sim.idleWorkers(state, player).length;
+  idleButton.hidden = idleCount === 0;
+  idleButton.textContent = `⚒ Ouvrier inactif · ${idleCount}`;
+  idleButton.setAttribute('aria-label', `Ouvrier inactif : ${idleCount}. Appui long : tous`);
   panelRoot.dataset.collapsed = String(model.collapsed);
   panelRoot.hidden = !running;
   panelRoot.dataset.mode = model.mode;
