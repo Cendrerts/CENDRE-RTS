@@ -7,7 +7,7 @@ export function panelCapacity(width = 844) {
 
 export function panelVisibility(previous = {}, event = 'selection') {
   if (event === 'collapse') return { collapsed: true, manual: true };
-  if (event === 'expand') return { collapsed: false, manual: false };
+  if (event === 'expand' || event === 'building') return { collapsed: false, manual: false };
   return previous.manual ? previous : { collapsed: false, manual: false };
 }
 
