@@ -575,6 +575,7 @@ function handleFieldTap(e, duration) {
     if (action.context.mine !== undefined) selectedMine = action.context.mine;
     selected.clear();
     panelContext = { ...action.context, bases: !action.context.baseId };
+    panelVisibilityState = panelVisibility(panelVisibilityState, 'building');
     updateUI();
     return;
   }
@@ -586,6 +587,7 @@ function handleFieldTap(e, duration) {
   if (action.kind === 'production') {
     selected.clear();
     panelContext = { producerId: action.id };
+    panelVisibilityState = panelVisibility(panelVisibilityState, 'building');
     updateUI();
     return;
   }
@@ -1681,6 +1683,7 @@ radial = createRadialMenu({
   },
   action: (c) => {
     panelContext = { producerId: c.baseId || 'main_' + player };
+    panelVisibilityState = panelVisibility(panelVisibilityState, 'building');
     updateUI();
   },
   preview: (context, option) => {
@@ -1768,6 +1771,7 @@ panelRoot.addEventListener('pointercancel', () => {
 $('#baseAction').onclick = () => {
   selected.clear();
   panelContext = { baseId: 'main_' + player };
+  panelVisibilityState = panelVisibility(panelVisibilityState, 'building');
   cameraX = state.bases[player].x;
   cameraY = state.bases[player].y;
   layout();
@@ -1787,7 +1791,10 @@ function panelCommand(command) {
 function renderContextPanel() {
   if (!panelRoot) return;
   const selectedSlot = state.slots[player].find((slot) => slot.id === panelContext.slotId);
-  if (selectedSlot?.occupe) panelContext = { producerId: selectedSlot.id };
+  if (selectedSlot?.occupe) {
+    panelContext = { producerId: selectedSlot.id };
+    panelVisibilityState = panelVisibility(panelVisibilityState, 'building');
+  }
   panelVisibilityState = panelVisibility(panelVisibilityState);
   const model = panelModel(state, player, selected, {
     ...panelContext,
@@ -1844,6 +1851,7 @@ function renderContextPanel() {
     button.onclick = () => {
       panelContext.tab = name;
       panelContext.bases = name === 'bases';
+      panelVisibilityState = panelVisibility(panelVisibilityState, 'building');
       updateUI();
     };
     tabs.append(button);
@@ -1919,6 +1927,7 @@ function renderContextPanel() {
         updateUI();
       } else if (item.kind === 'main') {
         panelContext = { baseId: 'main_' + player };
+        panelVisibilityState = panelVisibility(panelVisibilityState, 'building');
         updateUI();
       } else if (item.kind === 'recruit') {
         panelCommand({ kind: 'recruit', type: item.type, producerId: model.producerId });

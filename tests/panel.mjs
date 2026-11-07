@@ -70,7 +70,44 @@ function baseQueue(state, player) {
   return panelModel(state, player, new Set(), { baseId: 'main_' + player }).queue;
 }
 const collapsed = panelVisibility({}, 'collapse');
-assert.equal(panelVisibility(collapsed, 'selection').collapsed, true);
+assert.deepEqual(collapsed, { collapsed: true, manual: true });
+const afterUnits = panelVisibility(collapsed, 'selection');
+assert.deepEqual(afterUnits, { collapsed: true, manual: true });
+assert.deepEqual(panelVisibility(collapsed, 'building'), { collapsed: false, manual: false });
+const afterBuilding = panelVisibility(afterUnits, 'building');
+assert.deepEqual(afterBuilding, { collapsed: false, manual: false });
+for (const player of [0, 1]) {
+  const state = S.create();
+  const unit = state.units.find((item) => item.team === player);
+  const selected = new Set([unit.id]);
+  const units = panelModel(state, player, selected, { visibility: afterUnits });
+  assert.equal(units.mode, 'units');
+  assert.equal(units.collapsed, true);
+  const base = panelModel(state, player, selected, {
+    baseId: 'main_' + player,
+    visibility: afterBuilding,
+  });
+  assert.equal(base.collapsed, false);
+  assert.equal(base.activeTab, 'production');
+  assert.equal(base.producerId, 'main_' + player);
+  const slot = state.slots[player][0];
+  const construction = panelModel(state, player, selected, {
+    baseId: slot.baseId,
+    slotId: slot.id,
+    visibility: panelVisibility(collapsed, 'building'),
+  });
+  assert.equal(construction.collapsed, false);
+  assert.equal(construction.activeTab, 'buildings');
+  state.rubies[player] = 9999;
+  assert(S.construct(state, player, S.BUILDINGS[player][0].id, slot.baseId, slot.id));
+  const production = panelModel(state, player, selected, {
+    producerId: slot.id,
+    visibility: panelVisibility(collapsed, 'building'),
+  });
+  assert.equal(production.collapsed, false);
+  assert.equal(production.mode, 'production');
+  assert.equal(production.producerId, slot.id);
+}
 assert.equal(panelVisibility(collapsed, 'expand').collapsed, false);
 assert.equal(panelModel(S.create(), 0, new Set(), { visibility: collapsed }).collapsed, true);
 
