@@ -305,3 +305,214 @@ function playSeries(strong, weak, minimumWins) {
 }
 playSeries('difficile', 'normal', 15);
 playSeries('brutal', 'difficile', 13);
+
+// Fixed orders only: the push trigger is the placement of the second depot.
+// Neither opponent uses createAI or reads hidden units.
+function scriptedOpponent(team, strategy) {
+  let nextOrder = 0;
+  let expansionWorker = null;
+  let attack = null;
+  const sent = new Set();
+  return {
+    update(state) {
+      if (state.time < nextOrder) return;
+      nextOrder = state.time + 0.5;
+      const own = state.units.filter((unit) => unit.team === team);
+      const workers = own.filter((unit) => unit.type === 'commis');
+      const army = own.filter((unit) => unit.type !== 'commis');
+      const mines = state.mines.filter((mine) => mine.owner === team);
+      const workerTarget = strategy === 'rush' ? 5 : mines.length * 5;
+      const queuedWorkers = state.queues[team].filter((job) => job.type === 'commis').length;
+      if (workers.length + queuedWorkers < workerTarget) S.recruit(state, 'commis', team);
+      for (const worker of workers) {
+        if (worker.id === expansionWorker || worker.harvest) continue;
+        const destination = mines.find((mine) => workers.filter((other) => other.harvest?.mine === state.mines.indexOf(mine)).length < 5);
+        if (destination) S.gather(state, team, [worker.id], state.mines.indexOf(destination));
+      }
+      if (strategy === 'push' && state.time >= 120 && mines.length < 2) {
+        const destination = state.mines.map((mine, index) => ({ mine, index }))
+          .filter(({ index }) => index >= 2)
+          .sort((a, b) => Math.hypot(a.mine.x - state.bases[team].x, a.mine.y - state.bases[team].y) - Math.hypot(b.mine.x - state.bases[team].x, b.mine.y - state.bases[team].y))[0];
+        const worker = workers.find((unit) => unit.id === expansionWorker) || workers[0];
+        if (worker) {
+          expansionWorker = worker.id;
+          if (S.build(state, team, destination.index)) {
+            S.gather(state, team, [worker.id], destination.index);
+            expansionWorker = null;
+          } else if (worker.harvest || !worker.path.length) {
+            S.order(state, [worker.id], destination.mine.x, destination.mine.y, null, true);
+          }
+        }
+      }
+      const order = BUILD_ORDERS[team];
+      const buildingCount = strategy === 'rush' ? 1 : 2;
+      for (const building of order.slice(0, buildingCount)) {
+        if (!S.producers(state, team, building.unit).length) S.construct(state, team, building.id);
+        for (const producer of S.producers(state, team, building.unit)) {
+          if (!state.queues[team].some((job) => job.producerId === producer.id)) S.recruit(state, building.unit, team, producer.id);
+        }
+      }
+      if (!attack) {
+        if (strategy === 'rush' && state.time >= 150) attack = state.bases[1 - team];
+        if (strategy === 'push') {
+          attack = state.mines.find((mine, index) => index >= 2 && mine.owner === 1 - team && mine.depot) || null;
+        }
+      }
+      for (const unit of army) {
+        if (!attack) continue;
+        const visibleWorkers = state.units.filter((enemy) => enemy.team !== team && S.canSee(state, team, enemy) && enemy.type === 'commis' && Math.hypot(enemy.x - attack.x, enemy.y - attack.y) < 300);
+        const target = visibleWorkers[0];
+        if (target && unit.target !== target) {
+          S.order(state, [unit.id], target.x, target.y, target, false);
+        } else if (!sent.has(unit.id) || !unit.path.length && !unit.target) {
+          const goal = strategy === 'push' && !visibleWorkers.length && sent.has(unit.id) ? state.bases[1 - team] : attack;
+          S.order(state, [unit.id], goal.x, goal.y, null, false);
+          sent.add(unit.id);
+        }
+      }
+    },
+  };
+}
+
+for (const strategy of ['rush', 'push']) {
+  let victories = 0;
+  seed = 57;
+  for (let game = 0; game < 10; game++) {
+    const state = S.create();
+    const team = game % 2;
+    for (const unit of state.units) {
+      const cell = S.nearest(unit.x + random() * 40 - 20, unit.y + random() * 40 - 20);
+      unit.x = (cell % S.COLS) * S.CELL + 10;
+      unit.y = Math.floor(cell / S.COLS) * S.CELL + 10;
+    }
+    S.visibility(state);
+    const brutal = createAI(team, 'brutal');
+    const opponent = scriptedOpponent(1 - team, strategy);
+    let economyChecked = false;
+    for (let step = 0; step < 9000 && state.winner === null; step++) {
+      const controllers = team ? [opponent, brutal] : [brutal, opponent];
+      for (const index of game % 2 ? [1, 0] : [0, 1]) controllers[index].update(state);
+      S.tick(state, 0.1);
+      if (!economyChecked && state.time >= 240) {
+        economyChecked = true;
+        if (strategy === 'push') {
+          const counts = [0, 1].map((owner) => state.units.filter((unit) => unit.team === owner && unit.type === 'commis').length);
+          assert(counts[team] >= counts[1 - team], `Push ${game}: workers ${counts}`);
+        }
+      }
+    }
+    assert.notEqual(state.winner, null, `${strategy} ${game}: unfinished match`);
+    if (state.winner === team) victories++;
+    console.log(`${strategy} ${game}: ${state.time.toFixed(1)}s, ${state.winner === team ? 'brutal' : 'script'}`);
+  }
+  assert(victories >= 8, `Brutal won ${victories}/10 against ${strategy}`);
+}
+
+// With no rush to repel, both factions launch a real first wave before 4 min.
+for (const team of [0, 1]) {
+  const state = S.create();
+  const controller = createAI(team, 'brutal');
+  while (state.time < 240 && controller.metrics.waves === 0) {
+    controller.update(state);
+    S.tick(state, 0.1);
+  }
+  assert(controller.metrics.waves > 0);
+  assert(controller.metrics.waveSizes[0] >= 7);
+  assert(state.time < 240);
+}
+
+// Brutal delays its expansion without defenders, even with money to pay.
+{
+  const state = S.create();
+  state.time = 120;
+  state.rubies[0] = 1000;
+  const controller = createAI(0, 'brutal');
+  controller.update(state);
+  assert(state.units.filter((unit) => unit.team === 0).every((worker) => worker.harvest || worker.retreat));
+  assert.equal(controller.metrics.expansions.length, 0);
+}
+
+// A scout that sees the enemy base returns to paid work rather than attacking.
+{
+  const state = S.create();
+  state.time = 60;
+  const controller = createAI(0, 'brutal');
+  controller.update(state);
+  const scout = state.units.find((unit) => unit.team === 0 && unit.retreat && !unit.harvest);
+  assert(scout);
+  scout.x = state.bases[1].x;
+  scout.y = state.bases[1].y;
+  scout.path = [];
+  S.visibility(state);
+  state.time = 61;
+  controller.update(state);
+  assert.equal(controller.intelligence.bases.length, 1);
+  assert.equal(scout.harvest?.mine, 0);
+}
+
+// Harvesting is parallel: five workers really yield more than the old three.
+for (const team of [0, 1]) {
+  const income = [];
+  for (const count of [3, 5]) {
+    const state = S.create();
+    for (let index = 1; index < count; index++) S.spawn(state, 'commis', team);
+    const workers = state.units.filter((unit) => unit.team === team);
+    S.gather(state, team, workers.map((worker) => worker.id), team);
+    while (state.time < 60) S.tick(state, 0.1);
+    income.push(state.rubies[team]);
+  }
+  assert(income[1] > income[0]);
+}
+
+// A visibly destroyed army opens an immediate counterattack, before the timer.
+{
+  const state = S.create();
+  state.units = [];
+  for (let index = 0; index < 8; index++) S.spawn(state, 'knight', 0);
+  for (let index = 0; index < 3; index++) S.spawn(state, 'knight', 1);
+  for (const unit of state.units) {
+    unit.x = state.bases[0].x + (unit.team ? 160 : 110);
+    unit.y = state.bases[0].y - 65;
+    unit.path = [];
+  }
+  state.rubies[0] = 0;
+  state.time = 60;
+  S.visibility(state);
+  const controller = createAI(0, 'brutal');
+  controller.update(state);
+  assert.equal(controller.metrics.waves, 0);
+  state.units = state.units.filter((unit) => unit.team === 0);
+  S.visibility(state);
+  state.time = 61;
+  controller.update(state);
+  assert.equal(controller.metrics.waves, 1);
+  assert(controller.metrics.waveSizes[0] >= 5);
+}
+
+// An outmatched expansion evacuates its workers and recalls distant defenders.
+{
+  const state = S.create();
+  const worker = state.units.find((unit) => unit.team === 0);
+  worker.x = state.mines[3].x;
+  worker.y = state.mines[3].y;
+  state.rubies[0] = 1000;
+  assert(S.build(state, 0, 3));
+  S.gather(state, 0, [worker.id], 3);
+  S.spawn(state, 'knight', 0);
+  for (let index = 0; index < 5; index++) S.spawn(state, 'knight', 1);
+  for (const unit of state.units.filter((unit) => unit.team === 1 && unit.type === 'knight')) {
+    unit.x = worker.x + 60;
+    unit.y = worker.y;
+    unit.path = [];
+  }
+  state.time = 140;
+  S.visibility(state);
+  createAI(0, 'brutal').update(state);
+  assert.equal(worker.harvest, null);
+  assert(worker.retreat);
+  assert(worker.path.length > 0);
+  const defender = state.units.find((unit) => unit.team === 0 && unit.type === 'knight');
+  assert(defender.path.length > 0);
+  assert(defender.attackDestination);
+  assert(Math.hypot(defender.attackDestination.x - state.mines[3].x, defender.attackDestination.y - state.mines[3].y) < 100);
+}
