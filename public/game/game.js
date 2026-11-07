@@ -1074,7 +1074,7 @@ function showSnapshot(data) {
     waiting: 'En attente de votre ami…',
     countdown: 'Début du duel dans ' + data.countdown + '…',
     playing: '1v1 · Connecté',
-    disconnected: 'Adversaire déconnecté · Partie suspendue (2 min maximum)',
+    disconnected: 'Adversaire déconnecté – ' + data.disconnectCountdown + ' s',
     ended: 'Duel terminé',
   };
   $('#roomStatus').textContent = labels[data.status] || 'Connexion…';
@@ -1083,7 +1083,7 @@ function showSnapshot(data) {
     (data.status === 'playing' ? ' · ' + Math.round(lastRtt) + ' ms' : '');
   $('#netBadge').dataset.quality = networkQuality(lastRtt);
   $('#networkError').textContent = '';
-  if (data.status === 'playing' && !net.begun) {
+  if (['playing', 'disconnected'].includes(data.status) && !net.begun) {
     net.begun = true;
     networkGroups = createControlGroups();
     controlGroupsUI?.reset();
@@ -1102,8 +1102,12 @@ function showSnapshot(data) {
   if (data.status === 'ended' && state.winner !== null && !net.finished) {
     net.finished = true;
     finish();
+    if (data.reason === 'déconnexion') {
+      $('#modalTitle').textContent = state.winner === player ? 'Victoire par déconnexion' : 'Défaite par déconnexion';
+      $('#modalText').textContent = 'Le délai de reconnexion de 30 secondes est écoulé.';
+    }
   }
-  paused = data.status !== 'playing';
+  paused = !['playing', 'disconnected'].includes(data.status);
   updateUI();
   persistRoom();
 }
@@ -1162,6 +1166,8 @@ async function connectRealtime(parameters) {
       if (status === 'reconnecting') {
         $('#netBadge').textContent = 'Reconnexion…';
         $('#netBadge').dataset.quality = 'poor';
+      } else if (status !== 'connected') {
+        notify(status);
       }
     },
   });
@@ -1183,7 +1189,7 @@ function sendCommand(command) {
     return;
   }
   if (realtime) {
-    realtime.command(command, ++seq);
+    if (!realtime.command(command, ++seq)) return false;
     motion.predict(command, state, player, performance.now());
     persistRoom();
     return true;
