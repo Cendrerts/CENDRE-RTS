@@ -44,6 +44,7 @@ for (const kind of ['move', 'attackMove', 'patrol', 'attack', 'gather']) {
     world: () => point,
     radial: null,
     buildGhost: null,
+    openedRallyBuilding: () => null,
     isEmptyTap: () => false,
     attackMoveArmed: kind === 'attackMove',
     patrolArmed: kind === 'patrol',
