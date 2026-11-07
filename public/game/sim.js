@@ -655,12 +655,19 @@ function tick(s, dt) {
     if (target && (target.hp <= 0 || !canSee(s, u.team, target))) target = u.target = null;
     if (!target && !u.retreat) {
       target = entities.get(u.autoTargetId);
-      if (target && (target.hp <= 0 || !canSee(s, u.team, target))) target = null;
+      if (target && (target.hp <= 0 || !canSee(s, u.team, target) ||
+          Math.hypot(target.x - u.x, target.y - u.y) > cfg.range + 75 + (target.base ? 45 : 0))) {
+        target = null;
+        if (u.chasing) u.path = [];
+      }
       if (!target) {
         target = automaticTarget(s, u, cfg.range + 75);
-      } else if (s.time - (u.lastRetargetAt ?? -Infinity) >= 0.5 &&
-          (targetPriority(target) > 1 || Math.hypot(target.x - u.x, target.y - u.y) > cfg.range)) {
-        const attacker = automaticTarget(s, u, cfg.range, true);
+      } else if (s.time - (u.lastRetargetAt ?? -Infinity) >= 0.5) {
+        const threat = targetPriority(target) > 1 ? automaticTarget(s, u, cfg.range + 75) : null;
+        let attacker = threat && targetPriority(threat) === 1 ? threat : null;
+        if (!attacker && Math.hypot(target.x - u.x, target.y - u.y) > cfg.range) {
+          attacker = automaticTarget(s, u, cfg.range, true);
+        }
         if (attacker && attacker !== target) {
           target = attacker;
           u.lastRetargetAt = s.time;
