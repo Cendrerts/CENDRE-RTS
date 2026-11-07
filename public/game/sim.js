@@ -207,6 +207,7 @@ function forest(u) {
 }
 function create() {
   let s = {
+    matchCounters: [emptyMatchCounters(), emptyMatchCounters()],
     queues: [[], []],
     controlGroups: [[], [], [], []],
     time: 0,
@@ -350,8 +351,34 @@ function spawn(s, type, team, origin = null) {
   }
   applyRally(s, s.units.at(-1), origin);
 }
+function emptyMatchCounters() {
+  return {
+    rubiesCollected: 0,
+    unitsProduced: 0,
+    unitsLost: 0,
+    unitsKilled: 0,
+    buildingsDestroyed: 0,
+  };
+}
+function matchStats(s) {
+  return {
+    teams: [0, 1].map((team) => ({ ...emptyMatchCounters(), ...s.matchCounters?.[team] })),
+    duration: s.time,
+  };
+}
+function applyDamage(s, target, damage, attackerTeam = null) {
+  const wasAlive = target.hp > 0;
+  target.hp -= damage;
+  recordDamageEvent(s, target);
+  if (!wasAlive || target.hp > 0) return;
+  if (!target.base) s.matchCounters[target.team].unitsLost++;
+  if (attackerTeam === null || attackerTeam === target.team) return;
+  const counter = target.base ? 'buildingsDestroyed' : 'unitsKilled';
+  s.matchCounters[attackerTeam][counter]++;
+}
 // Shared migration for saved solo states and persisted server matches.
 function migrateState(s) {
+  s.matchCounters ??= [emptyMatchCounters(), emptyMatchCounters()];
   if (Object.hasOwn(s, 'gold')) {
     if (!Object.hasOwn(s, 'rubies')) s.rubies = s.gold;
     delete s.gold;
@@ -463,6 +490,7 @@ function productionTick(s, dt) {
         if (j.remaining <= 1e-6) {
           q.splice(index, 1);
           spawn(s, j.type, t, p);
+          s.matchCounters[t].unitsProduced++;
         } else break;
       }
     }
@@ -704,8 +732,7 @@ function tick(s, dt) {
     u.cool -= dt;
     u.repath -= dt;
     if (forest(u)) {
-      u.hp -= RULES.forestDamage * dt;
-      recordDamageEvent(s, u);
+      applyDamage(s, u, RULES.forestDamage * dt);
     }
     if (u.hp <= 0) continue;
     if (u.manual) {
@@ -770,8 +797,7 @@ function tick(s, dt) {
         u.cool = cfg.rate;
         u.lastAttackTargetId = target.id ?? null;
         u.lastAttackAt = s.time;
-        target.hp -= cfg.damage;
-        recordDamageEvent(s, target);
+        applyDamage(s, target, cfg.damage, u.team);
         if (cfg.splash) {
           for (const v of s.units)
             if (
@@ -780,8 +806,7 @@ function tick(s, dt) {
               v.hp > 0 &&
               Math.hypot(v.x - target.x, v.y - target.y) <= cfg.splash
             ) {
-              v.hp -= cfg.damage;
-              recordDamageEvent(s, v);
+              applyDamage(s, v, cfg.damage, u.team);
             }
         }
         s.shots.push({
@@ -1062,6 +1087,7 @@ function harvestTick(s, u, dt) {
       h.elapsed = 0;
     } else {
       s.rubies[u.team] += u.cargo || 0;
+      s.matchCounters[u.team].rubiesCollected += u.cargo || 0;
       u.cargo = 0;
       if (!availableMine(m, u.team)) {
         reassignHarvest(s, u);
@@ -1115,6 +1141,7 @@ export const CendreSim = {
   gather,
   BUILDINGS,
   migrateState,
+  matchStats,
   ensureSlots,
   construct,
   W,
