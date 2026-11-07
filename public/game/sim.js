@@ -1081,10 +1081,10 @@ function disengage(s, ids) {
   const enemies = s.units.filter(
     (unit) =>
       unit.team !== team &&
+      canSee(s, team, unit) &&
       unit.hp > 0 &&
       !unit.base &&
-      Math.hypot(unit.x - x, unit.y - y) < 260 &&
-      canSee(s, team, unit),
+      Math.hypot(unit.x - x, unit.y - y) < 260,
   );
   let dx = s.bases[team].x - x;
   let dy = s.bases[team].y - y;
