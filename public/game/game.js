@@ -276,6 +276,18 @@ function choose(t) {
   $('#chooseHuman').setAttribute('aria-pressed', String(t === 0));
   $('#chooseGhost').setAttribute('aria-pressed', String(t === 1));
 }
+const welcomeTitle = $('#modalTitle').textContent;
+const welcomeText = $('#modalText').textContent;
+const startLabel = $('#start').innerHTML;
+$('#matchMenu').onclick = async () => {
+  if (net?.finished) await leaveRoom();
+  $('#veil').classList.remove('match-ended');
+  $('#matchStats')?.remove();
+  $('#modalTitle').textContent = welcomeTitle;
+  $('#modalText').textContent = welcomeText;
+  $('#start').innerHTML = startLabel;
+  $('#veil').style.display = 'flex';
+};
 $('#start').onclick = async () => {
   if (net?.finished) await leaveRoom();
   if (net) {

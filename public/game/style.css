@@ -46,4 +46,7 @@ footer{border-top:3px ridge #626963;background:linear-gradient(#202a2a,#0c1319);
 #matchStats caption{padding:0 0 10px;color:#e1c58f;font-size:14px}
 #matchStats th,#matchStats td{padding:6px 8px;border-bottom:1px solid #78806a66;text-align:right}
 #matchStats th:first-child{text-align:left}
-#veil.match-ended #start{display:block;width:100%;min-height:44px;margin:14px 0 0;font-size:15px}
+#matchMenu{display:none}
+#veil.match-ended #matchActions{display:flex;gap:10px;margin-top:14px}
+#veil.match-ended #matchActions button{display:block;flex:1;min-height:44px;margin:0;font-size:15px}
+#veil.match-ended #matchMenu{background:#17282c;color:#eee6d5;border:1px solid #78806a}
