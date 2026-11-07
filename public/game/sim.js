@@ -444,6 +444,8 @@ function order(s, ids, x, y, target = null, retreat = !target) {
   cells.sort((a, b) => a.distance - b.distance);
   const destinations = [];
   for (const cell of cells) {
+    if (destinations.some((destination) =>
+      Math.hypot(destination.x - cell.x, destination.y - cell.y) < 24)) continue;
     const path = route(targetX, targetY, cell.x, cell.y);
     if (cell.distance > 0 && !path.length) continue;
     let previous = { x: targetX, y: targetY };
@@ -741,18 +743,32 @@ function tick(s, dt) {
         u.repath = 0.9;
       }
       if (!u.hold && u.path.length) {
-        let p = u.path[0],
-          dx = p.x - u.x,
-          dy = p.y - u.y,
-          l = Math.hypot(dx, dy),
-          step = cfg.speed * dt;
-        if (l <= step) {
-          moveSafely(u, p.x - u.x, p.y - u.y);
-          if (Math.hypot(p.x - u.x, p.y - u.y) < 0.01) u.path.shift();
-          if (!u.path.length) u.retreat = false;
-        } else {
-          moveSafely(u, (dx / l) * step, (dy / l) * step);
+        // A displaced unit must not return to a waypoint it has already passed.
+        // Keep the next segment's corner checks when cutting a waypoint.
+        while (u.path.length > 1) {
+          const point = u.path[0];
+          const next = u.path[1];
+          const passed = (u.x - point.x) * (next.x - point.x) +
+            (u.y - point.y) * (next.y - point.y) >= 0;
+          if (!passed) break;
+          const probe = { x: u.x, y: u.y };
+          moveSafely(probe, next.x - probe.x, next.y - probe.y);
+          if (Math.hypot(probe.x - next.x, probe.y - next.y) > 0.01) break;
+          u.path.shift();
         }
+        let remaining = cfg.speed * dt;
+        while (remaining > 0 && u.path.length) {
+          const point = u.path[0];
+          const dx = point.x - u.x;
+          const dy = point.y - u.y;
+          const length = Math.hypot(dx, dy);
+          const step = Math.min(length, remaining);
+          if (length > 0) moveSafely(u, dx / length * step, dy / length * step);
+          remaining -= step;
+          if (Math.hypot(point.x - u.x, point.y - u.y) >= 0.01) break;
+          u.path.shift();
+        }
+        if (!u.path.length) u.retreat = false;
       }
     }
   }
@@ -787,7 +803,12 @@ function moveSafely(u, dx, dy) {
   for (let step = 0; step < steps; step++) {
     const x = u.x + dx / steps;
     const y = u.y + dy / steps;
-    if (!valid(x, u.y) || !valid(u.x, y) || !valid(x, y)) break;
+    if (!valid(x, u.y) || !valid(u.x, y) || !valid(x, y)) {
+      // Slide along terrain instead of freezing both axes against a corner.
+      if (valid(x, u.y)) u.x = x;
+      else if (valid(u.x, y)) u.y = y;
+      continue;
+    }
     u.x = x;
     u.y = y;
   }
@@ -803,6 +824,8 @@ function separate(units, fighting, dt) {
       if (a.team === b.team && (a.harvest || b.harvest)) continue;
       let dx = b.x - a.x;
       let dy = b.y - a.y;
+      // No unit pair can overlap beyond the largest combined radius.
+      if (dx <= -24 || dx >= 24 || dy <= -24 || dy >= 24) continue;
       const combinedRadius = radius(a) + radius(b);
       const distanceSquared = dx * dx + dy * dy;
       if (distanceSquared >= combinedRadius * combinedRadius) continue;
@@ -818,8 +841,9 @@ function separate(units, fighting, dt) {
         dx /= distance;
         dy /= distance;
       }
-      const movableA = !fighting.has(a.id);
-      const movableB = !fighting.has(b.id);
+      // Incoming units yield to allies that have already settled in formation.
+      const movableA = !fighting.has(a.id) && (a.path.length > 0 || b.path.length === 0);
+      const movableB = !fighting.has(b.id) && (b.path.length > 0 || a.path.length === 0);
       const count = Number(movableA) + Number(movableB);
       if (!count) continue;
       const push = Math.min(overlap / count, 30 * dt);
