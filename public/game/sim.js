@@ -307,7 +307,9 @@ function applyRally(s, unit, origin) {
   const rally = rallyBuilding(s, unit.team, origin?.id)?.rally;
   const point = rallyPoint(s, rally);
   if (!point) return;
-  order(s, [unit.id], point.x, point.y, null, false);
+  const workerGroundRally = unit.type === 'commis' &&
+    rally.mineIndex === undefined && rally.unitId === undefined;
+  order(s, [unit.id], point.x, point.y, null, workerGroundRally);
   if (rally.mineIndex !== undefined && unit.type === 'commis' && availableMine(point, unit.team)) {
     assignHarvest(s, unit, rally.mineIndex);
   } else if (rally.unitId !== undefined && point.team === unit.team) {

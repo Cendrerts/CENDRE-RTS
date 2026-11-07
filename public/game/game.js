@@ -1348,11 +1348,15 @@ function drawRally() {
   ctx.save();
   ctx.strokeStyle = TEAM_COLORS[player];
   ctx.fillStyle = ctx.strokeStyle;
-  ctx.lineWidth = 1 / scale;
-  ctx.setLineDash([4 / scale, 4 / scale]);
+  ctx.lineWidth = 4 / scale;
+  ctx.strokeStyle = '#101819';
+  ctx.setLineDash([6 / scale, 5 / scale]);
   ctx.beginPath();
   ctx.moveTo(opened.building.x, opened.building.y);
   ctx.lineTo(point.x, point.y);
+  ctx.stroke();
+  ctx.strokeStyle = TEAM_COLORS[player];
+  ctx.lineWidth = 2 / scale;
   ctx.stroke();
   ctx.setLineDash([]);
   ctx.lineWidth = 2 / scale;
