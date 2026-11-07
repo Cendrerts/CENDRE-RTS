@@ -14,6 +14,9 @@ const W = 1680,
   COLS = 84,
   ROWS = 47;
 const TYPES = BrigadeCuisine.unites;
+function unitLimit(team) {
+  return (team === 1 ? RatsGout : BrigadeCuisine).unitLimit;
+}
 function stats(type, team) {
   return team === 1 ? RatsGout.unites[type] : TYPES[type];
 }
@@ -405,7 +408,7 @@ function recruit(s, type, team, producerId = null) {
   if (
     !options.length ||
     s.rubies[team] < cfg.cost ||
-    s.units.filter((u) => u.team === team).length + q.length >= 30
+    s.units.filter((u) => u.team === team).length + q.length >= unitLimit(team)
   )
     return false;
   const workload = (p) =>
@@ -1127,6 +1130,7 @@ export const CendreSim = {
   TYPES,
   RULES,
   stats,
+  unitLimit,
   walk,
   nearest,
   route,
