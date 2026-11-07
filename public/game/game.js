@@ -1596,9 +1596,9 @@ controlGroupsUI = initControlGroups({
   enabled: () => running && !paused,
   units: (index) => groupUnits(controlGroups(), index, state.units, player),
   icon: portraitFor,
-  assign: (index) => {
+  assign: (index, { quiet = false } = {}) => {
     const units = assignGroup(controlGroups(), index, selected, state.units, player);
-    notify('Groupe ' + (index + 1) + ' assigné · ' + units.length + ' unités');
+    if (!quiet) notify('Groupe ' + (index + 1) + ' assigné · ' + units.length + ' unités');
   },
   select: (index, center) => {
     const units = groupUnits(controlGroups(), index, state.units, player);

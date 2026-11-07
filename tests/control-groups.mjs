@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { createControlGroups, assignGroup, groupUnits, dominantType, createGroupTap, isGroupHold } from '../public/game/control-groups.js';
 import { createPortraitTap, unitsOfType } from '../public/game/selection.js';
+import { initTouchUI } from '../public/game/mobile.js';
 import { CendreSim as Sim } from '../public/game/sim.js';
 
 const units = [
@@ -104,11 +105,13 @@ try {
   let currentSelection = new Set([2, 3]);
   let assignments = 0;
   const recalled = [];
+  const assignmentOptions = [];
   const ui = initControlGroups({
     enabled: () => true,
     units: (index) => groupUnits(localGroups, index, units, 0),
     icon: () => '',
-    assign(index) {
+    assign(index, options) {
+      assignmentOptions.push(options);
       assignments++;
       assignGroup(localGroups, index, currentSelection, units, 0);
     },
@@ -127,6 +130,7 @@ try {
   assert.deepEqual(localGroups[0], [2, 3], 'short tap assigns an empty group');
   assert.ok(buttons[0].classList.contains('assigned'));
   assert.match(hint.textContent, /^Groupe 1 créé/);
+  assert.equal(assignmentOptions[0].quiet, true, 'first creation suppresses the assignment toast');
   assert.ok([...timers.values()].some((timer) => timer.duration === 2500));
   currentSelection = new Set([3]);
   shortTap(0);
@@ -134,12 +138,30 @@ try {
   assert.deepEqual(recalled, [{ index: 0, center: false }]);
   shortTap(0);
   assert.equal(recalled[1].center, true);
-  currentSelection.clear();
-  panel.disabled = true;
+  currentSelection = new Set([5]);
+  const touchElements = new Map();
+  const touchDocument = globalThis.document;
+  globalThis.document = {
+    body: element(),
+    querySelector(selector) {
+      if (selector === '#attackAction') return panel;
+      if (!touchElements.has(selector)) touchElements.set(selector, element());
+      return touchElements.get(selector);
+    },
+    addEventListener() {},
+  };
+  try {
+    initTouchUI({
+      get: () => ({ state: { units }, selected: currentSelection, player: 0, running: true, paused: false }),
+    });
+    assert.equal(panel.disabled, true, 'enemy-only selection cannot assign a group');
+  } finally {
+    globalThis.document = touchDocument;
+  }
   ui.refresh();
   assert.equal(buttons[1].classList.contains('can-assign'), false);
   shortTap(1);
-  assert.deepEqual(localGroups[1], [], 'no selection leaves the group empty');
+  assert.deepEqual(localGroups[1], [], 'enemy-only selection leaves the group empty');
   assert.equal(assignments, 1);
   assert.equal(hint.textContent, 'Sélectionne des unités, puis touche ici pour créer un groupe');
   const helpTimer = [...timers.values()].find((timer) => timer.duration === 2000);
@@ -147,9 +169,10 @@ try {
   helpTimer.callback();
   assert.equal(hint.hidden, true);
   panel.disabled = false;
-  currentSelection.add(3);
+  currentSelection = new Set([3]);
   shortTap(1);
   assert.equal(hint.hidden, true, 'creation help appears only for the first group');
+  assert.equal(assignmentOptions[1].quiet, false, 'later assignments retain the toast');
   buttons[0].fire('pointerdown');
   const holdTimer = [...timers.values()].find((timer) => timer.duration === 400);
   holdTimer.callback();

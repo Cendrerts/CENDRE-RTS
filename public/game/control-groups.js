@@ -78,7 +78,7 @@ export function initControlGroups(api) {
     hintTimer = setTimeout(hideHint, duration);
   }
   function assign(index) {
-    api.assign(index);
+    api.assign(index, { quiet: !firstGroupCreated });
     buttons[index].classList.add('assigned');
     setTimeout(() => buttons[index].classList.remove('assigned'), 700);
     if (!firstGroupCreated && api.units(index).length) {
