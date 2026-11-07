@@ -1,25 +1,23 @@
-/* Identity and groups, flexible grid, 180px production queue or actions. */
-#combatActions,
 #squadTools {
   display: none !important;
 }
 #contextPanel {
   position: fixed;
   z-index: 25;
-  bottom: 0;
-  left: 0;
-  width: 100%;
-  height: 130px;
+  bottom: 4px;
+  left: max(4px, env(safe-area-inset-left));
+  width: max-content;
+  max-width: calc(100vw - 120px);
+  height: 112px;
   box-sizing: border-box;
-  display: grid;
-  grid-template-columns: 276px minmax(0, 1fr) 180px;
+  display: flex;
   gap: 8px;
-  padding: 4px 8px;
+  padding: 6px 10px;
+  border: 1px solid #bca574;
+  border-radius: 12px;
   background: #101d22d9;
   backdrop-filter: blur(12px);
-  border-top: 1px solid #bca574;
   color: #f7e7c8;
-  overflow: hidden;
 }
 #contextPanel[hidden] {
   display: none;
@@ -30,203 +28,124 @@
   min-width: 44px;
   min-height: 44px;
   margin: 0;
-  padding: 2px;
-  border-radius: 5px;
+  padding: 2px 5px;
+  border-radius: 6px;
   font-size: 11px;
-  touch-action: manipulation;
+  touch-action: none;
+  transform: none;
 }
 #contextPanel button:disabled {
   opacity: 0.5;
 }
+#contextPanel button[aria-pressed='true'] {
+  border-color: #e6c47e;
+  background: #3b3c30;
+}
 #contextIdentity {
   display: flex;
-  height: 72px;
   align-items: center;
+  gap: 8px;
+  height: 98px;
+  width: 180px;
   font-size: 13px;
 }
 #contextIdentity > div:first-child {
-  width: 56px;
+  width: 76px;
   flex-shrink: 0;
+  text-align: center;
 }
 #contextIdentity svg {
-  width: 56px;
-  height: 62px;
+  width: 70px;
+  height: 70px;
+  display: block;
+  margin: auto;
 }
 #contextIdentity small {
   display: block;
   font-size: 11px;
 }
-#contextGroups {
+#contextIdentity progress {
+  display: block;
+  width: 72px;
+  height: 6px;
+  accent-color: #53c877;
+}
+#contextIdentity .building-portrait {
+  font-size: 54px;
+}
+#contextPanel #contextGroups {
+  position: absolute;
+  bottom: 116px;
+  left: 0;
   display: flex;
-  gap: 2px;
-  height: 46px;
 }
 #contextPanel #controlGroups {
   position: static;
   display: flex;
-  gap: 2px;
+  gap: 3px;
   width: auto;
   padding: 0;
-  background: none;
   border: 0;
+  background: #101d22b0;
   transform: none;
+  border-radius: 8px;
 }
 #contextPanel #controlGroups button {
   width: 44px;
   height: 44px;
 }
 #contextPanel #controlGroups .group-icon,
-#contextPanel #controlGroups b {
+#contextPanel #controlGroups b,
+#contextGroups > #all {
   display: none;
-}
-#contextGroups > #all,
-#contextGroups > #baseAction {
-  display: none;
-}
-#contextTabs {
-  display: flex;
-  height: 44px;
-  gap: 4px;
-}
-#contextTabs:empty {
-  display: none;
-}
-#contextGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(56px, 1fr));
-  grid-auto-rows: 70px;
-  gap: 4px;
-}
-#contextGrid button {
-  width: 100%;
-  height: 70px;
-  overflow: hidden;
-  line-height: 11px;
-}
-#contextGrid span {
-  float: none;
-  width: 100%;
-  height: 30px;
-  display: block;
-  line-height: 30px;
-}
-#contextGrid svg {
-  width: 30px;
-  height: 30px;
-  display: block;
-  margin: auto;
-}
-#contextGrid small {
-  font-size: 11px;
-  display: block;
-  white-space: pre-line;
-  line-height: 11px;
-}
-#contextActions {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  grid-auto-rows: 56px;
-  gap: 4px;
-}
-#contextActions svg {
-  width: 28px;
-  height: 25px;
-}
-#contextPanel #attackAction,
-#contextPanel #retreat,
-#contextPanel #hold {
-  width: auto;
-  height: 56px;
-  transform: none;
-}
-#contextActions:has(.queue-cell) {
-  grid-template-columns: repeat(4, 1fr);
-  gap: 0;
-}
-#contextActions .queue-cell {
-  width: 44px;
-  font-size: 9px;
-}
-.queue-cell progress {
-  display: block;
-  width: 38px;
-  height: 7px;
-}
-#contextPanel[data-mode='empty'] {
-  height: 52px;
-  display: block;
-}
-#contextPanel[data-mode='empty'] #contextIdentity,
-#contextPanel[data-mode='empty'] .context-center,
-#contextPanel[data-mode='empty'] #contextActions {
-  display: none;
-}
-#contextPanel[data-mode='empty'] #contextGroups > button {
-  display: block;
-  width: 64px;
-}
-#contextPanel[data-mode='empty'] #contextGroups {
-  justify-content: center;
-}
-#joystick {
-  bottom: 140px !important;
-}
-#contextPanel #selectionToggle {
-  position: static;
-  min-width: 90px;
-  height: 44px;
-}
-#toast {
-  bottom: 140px;
-  left: 50%;
-  z-index: 26;
-  max-width: 50%;
-  transform: translateX(-50%);
-}
-body:has(#contextPanel[data-mode='empty']) #toast {
-  bottom: 62px;
-}
-#contextGrid .panel-cost {
-  display: block;
-  font-size: 11px;
-  font-weight: bold;
-}
-#contextPanel #all,
-#contextPanel #baseAction {
-  transform: none;
-}
-#contextPanel[data-mode='base'] #contextGrid {
-  padding-top: 4px;
-}
-#contextPanel[data-mode='empty'] #baseAction,
-#contextPanel[data-mode='empty'] #all {
-  height: 44px;
-}
-#contextPanel #contextGroups {
-  align-items: center;
-}
-#contextPanel button[aria-pressed='true'] {
-  border-color: #e6c47e;
-  background: #3b3c30;
-}
-#contextIdentity .building-portrait {
-  font-size: 54px;
-  text-align: center;
-}
-.queue-cell span {
-  display: block;
-  height: 30px;
-}
-.queue-cell svg {
-  width: 28px;
-  height: 30px;
 }
 #contextPanel #controlGroups strong {
   position: static;
   font-size: 16px;
 }
-#contextPanel #contextGrid button {
+#contextTabs {
+  display: flex;
+  gap: 4px;
+  height: 44px;
+}
+#contextTabs:empty {
+  display: none;
+}
+#contextGrid {
+  display: flex;
+  gap: 4px;
+  padding-top: 3px;
+}
+#contextGrid:empty {
+  display: none;
+}
+#contextGrid button {
   position: relative;
+  width: 76px;
+  height: 48px;
+  line-height: 11px;
+}
+#contextGrid span {
+  display: none;
+}
+#contextGrid small {
+  display: block;
+  font-size: 10px;
+}
+#contextGrid small small {
+  display: none;
+}
+#contextGrid .panel-cost {
+  display: block;
+}
+#contextGrid .panel-cost svg {
+  width: 11px;
+  height: 11px;
+  vertical-align: middle;
+}
+#contextGrid svg {
+  width: 28px;
+  height: 28px;
 }
 .panel-lock {
   position: absolute;
@@ -235,10 +154,244 @@ body:has(#contextPanel[data-mode='empty']) #toast {
   font-size: 9px;
   font-style: normal;
 }
-
-#contextGrid .panel-cost svg {
+#contextActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: start;
+  gap: 4px;
+  max-width: 180px;
+}
+#contextActions:empty {
+  display: none;
+}
+#contextActions .queue-label {
+  width: 100%;
+  height: 12px;
+}
+#contextActions .queue-cell {
+  width: 44px;
+  height: 38px;
+  min-height: 44px;
+  font-size: 9px;
+}
+.queue-cell span {
+  display: none;
+}
+.queue-cell progress {
+  display: block;
+  width: 32px;
+  height: 6px;
+}
+#contextPanel[data-mode='units'] {
+  width: 520px;
+}
+#contextPanel[data-mode='units'] #contextActions {
+  display: grid;
+  grid-template-columns: 140px 140px;
+  grid-auto-rows: 44px;
+  max-width: none;
+  gap: 6px;
+}
+#contextPanel[data-mode='units'] .context-center {
+  position: absolute;
+  left: 92px;
+  bottom: 8px;
+  max-width: 120px;
+}
+#contextPanel[data-mode='units'] #contextGrid {
+  gap: 1px;
+}
+#contextPanel[data-mode='units'] #contextGrid button {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+}
+#contextPanel[data-mode='units'] #contextGrid span {
+  display: block;
+  height: 27px;
+}
+#contextPanel[data-mode='units'] #contextGrid small {
+  font-size: 8px;
+  white-space: nowrap;
+}
+#contextPanel[data-mode='units']:has(#contextGrid button) #contextIdentity > div:last-child {
+  align-self: flex-start;
+  padding-top: 6px;
+}
+#contextPanel[data-mode='units']:has(#contextGrid button) #contextIdentity > div:last-child small {
+  display: none;
+}
+#contextPanel #retreat,
+#contextPanel #hold {
+  width: 140px;
+  height: 44px;
+  font-size: 12px;
+}
+#contextPanel #retreat span,
+#contextPanel #hold span {
+  display: inline;
+}
+#contextPanel #panelChevron {
+  position: absolute;
+  right: 0;
+  top: -32px;
+  width: 44px;
+  height: 44px;
+  background: #101d22d9;
+  z-index: 1;
+}
+#contextPanel #panelTab {
+  display: none;
+}
+#contextPanel[data-mode='empty'] {
+  width: 190px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  backdrop-filter: none;
+}
+#contextPanel[data-mode='empty'] #panelChevron {
+  display: none;
+}
+#contextPanel[data-mode='empty'] #contextIdentity,
+#contextPanel[data-mode='empty'] .context-center,
+#contextPanel[data-mode='empty'] #contextActions {
+  display: none;
+}
+#contextPanel[data-collapsed='true'] {
+  width: 44px;
+  height: 24px;
+  padding: 0;
+  bottom: 0;
+}
+#contextPanel[data-collapsed='true'] #contextIdentity,
+#contextPanel[data-collapsed='true'] .context-center,
+#contextPanel[data-collapsed='true'] #contextActions,
+#contextPanel[data-collapsed='true'] #panelChevron {
+  display: none;
+}
+#contextPanel[data-collapsed='true'] #contextGroups {
+  bottom: 48px;
+}
+#contextPanel[data-collapsed='true'] #panelTab {
+  display: block;
+  position: absolute;
+  bottom: 0;
+  width: 44px;
+  height: 24px;
+  min-height: 24px;
+}
+#panelTab::before {
+  content: '';
+  position: absolute;
+  inset: -20px 0 0;
+}
+#combatActions {
+  display: flex !important;
+  right: max(12px, env(safe-area-inset-right));
+  bottom: 8px;
+  gap: 8px;
+}
+#combatActions #attackAction {
+  width: 84px;
+  height: 84px;
+}
+#combatActions #baseAction {
+  width: 56px;
+  height: 56px;
+}
+#combatActions #selectionToggle {
+  position: static;
+  transform: none;
+  width: 56px;
+  height: 56px;
+  min-width: 56px;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 10px;
+}
+#joystick {
+  bottom: 172px !important;
+}
+#toast {
+  bottom: 174px;
+  left: 50%;
+  z-index: 26;
+  max-width: 50%;
+  transform: translateX(-50%);
+}
+#contextPanel[data-mode='base'] #contextGrid span,
+#contextPanel[data-mode='production'] #contextGrid span {
   display: inline-block;
-  width: 11px;
-  height: 11px;
-  vertical-align: middle;
+  float: left;
+  width: 24px;
+  height: 28px;
+}
+#contextPanel[data-mode='units'] #contextGrid svg {
+  display: block;
+  margin: auto;
+  width: 25px;
+  height: 25px;
+}
+#contextActions:has(.queue-cell) {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(4, 44px);
+  grid-auto-rows: 44px;
+  max-width: none;
+}
+#contextActions .queue-label {
+  position: absolute;
+  top: -24px;
+  right: 0;
+  width: auto;
+  height: 18px;
+  background: #101d22d9;
+  padding: 2px 5px;
+  border-radius: 4px;
+}
+#contextActions:not(:has(.queue-cell)) .queue-label {
+  position: static;
+}
+#contextPanel[data-mode='base'] #contextGrid span,
+#contextPanel[data-mode='production'] #contextGrid span {
+  width: 24px;
+  height: 24px;
+}
+#contextPanel[data-mode='base'] #contextGrid span svg,
+#contextPanel[data-mode='production'] #contextGrid span svg {
+  display: block;
+  width: 24px;
+  height: 24px;
+}
+#contextPanel[data-mode='base'] #contextGrid button {
+  width: 92px;
+}
+#contextPanel[data-mode='base'] #contextGrid small {
+  white-space: nowrap;
+}
+#contextPanel[data-mode='base'] #contextGrid button {
+  width: 104px;
+}
+#contextPanel:has(#contextGrid button:nth-child(6)) #contextIdentity {
+  width: 100px;
+}
+#contextPanel:has(#contextGrid button:nth-child(6)) #contextIdentity > div:first-child {
+  display: none;
+}
+#contextPanel:has(#contextGrid button:nth-child(6)) #contextGrid button {
+  width: 76px;
+}
+#contextPanel:has(#contextGrid button:nth-child(6)) #contextGrid span {
+  display: none;
+}
+#contextPanel[data-mode='units']:has(#contextGrid button:nth-child(3)) {
+  width: 600px;
+}
+#contextPanel[data-mode='units']:has(#contextGrid button:nth-child(3)) #contextIdentity {
+  width: 280px;
+}
+#contextPanel[data-mode='units']:has(#contextGrid button:nth-child(3)) .context-center {
+  max-width: 180px;
 }

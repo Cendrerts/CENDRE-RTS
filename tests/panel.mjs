@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { panelModel, panelCapacity } from '../public/game/panel.js';
+import { panelModel, panelCapacity, panelVisibility } from '../public/game/panel.js';
 import { CendreSim as S } from '../public/game/sim.js';
 import { command } from '../lib/match.mjs';
 
@@ -15,7 +15,8 @@ for (const player of [0, 1]) {
   const units = panelModel(state, player, selected);
   assert.equal(units.mode, 'units');
   assert.equal(units.left.count, 1);
-  assert.equal(units.actions.length, 4);
+  assert.deepEqual(units.actions, ['hold', 'patrol', 'ability', 'disengage']);
+  assert.deepEqual(baseQueue(state, player), []);
   const base = panelModel(state, player, new Set(), { baseId: 'main_' + player });
   assert.equal(base.mode, 'base');
   assert.deepEqual(base.tabs, ['production', 'buildings', 'bases']);
@@ -65,4 +66,12 @@ for (const player of [0, 1]) {
     assert(model.grid.length <= 1, 'Tout le contenu du contexte est visible');
   }
 }
+function baseQueue(state, player) {
+  return panelModel(state, player, new Set(), { baseId: 'main_' + player }).queue;
+}
+const collapsed = panelVisibility({}, 'collapse');
+assert.equal(panelVisibility(collapsed, 'selection').collapsed, true);
+assert.equal(panelVisibility(collapsed, 'expand').collapsed, false);
+assert.equal(panelModel(S.create(), 0, new Set(), { visibility: collapsed }).collapsed, true);
+
 console.log('Panneau : quatre contextes, deux factions, capacité et annulation OK');

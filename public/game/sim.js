@@ -459,6 +459,7 @@ function order(s, ids, x, y, target = null, retreat = !target) {
   destinations.sort(byOffset);
   units.forEach((u, index) => {
     const destination = destinations[index % destinations.length];
+    u.patrol = null;
     u.manual = null;
     u.harvest = null;
     u.path = route(u.x, u.y, destination.x, destination.y);
@@ -472,6 +473,19 @@ function order(s, ids, x, y, target = null, retreat = !target) {
     u.stuck = null;
   });
 }
+function patrol(s, ids, x, y) {
+  const origins = new Map(
+    s.units
+      .filter((unit) => ids.includes(unit.id))
+      .map((unit) => [unit.id, { x: unit.x, y: unit.y }]),
+  );
+  order(s, ids, x, y, null, false);
+  for (const unit of s.units) {
+    if (!origins.has(unit.id)) continue;
+    unit.patrol = { points: [origins.get(unit.id), { ...unit.path.at(-1) }], index: 1 };
+  }
+}
+
 function build(s, team, index) {
   let m = s.mines[index];
   if (
@@ -620,6 +634,12 @@ function tick(s, dt) {
     if (!target && !u.hold && u.chasing && u.attackDestination) {
       u.path = route(u.x, u.y, u.attackDestination.x, u.attackDestination.y);
       u.chasing = false;
+    }
+    if (!target && !u.hold && u.patrol && !u.path.length) {
+      u.patrol.index = 1 - u.patrol.index;
+      const destination = u.patrol.points[u.patrol.index];
+      u.attackDestination = destination;
+      u.path = route(u.x, u.y, destination.x, destination.y);
     }
     let d = target ? Math.hypot(target.x - u.x, target.y - u.y) : Infinity;
     if (target && d <= cfg.range + (target.base ? 45 : 0) && !u.retreat) {
@@ -790,6 +810,7 @@ function approachMine(s, u) {
 }
 function assignHarvest(s, u, index) {
   u.manual = null;
+  u.patrol = null;
   u.harvest = { mine: index, phase: u.cargo > 0 ? 'VERS_BASE' : 'VERS_GISEMENT', elapsed: 0 };
   u.target = null;
   u.hold = false;
@@ -924,6 +945,7 @@ export const CendreSim = {
   spawn,
   recruit,
   order,
+  patrol,
   build,
   visibleAt,
   canSee,
@@ -938,6 +960,7 @@ function steer(s, ids, dx, dy) {
     divisor = Math.max(1, length);
   for (const u of s.units)
     if (ids.includes(u.id)) {
+      u.patrol = null;
       u.harvest = null;
       u.attackDestination = null;
       u.chasing = false;

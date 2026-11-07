@@ -51,6 +51,12 @@ for (const player of [0, 1]) {
   assert.equal(resolveTap(state, player, army, site).kind, 'radial');
   assert.equal(resolveTap(state, player, empty, site).kind, 'radial');
 
+  // Without selection, an own unit wins even when the mine sprite is closer.
+  worker.x = mine.x + 14;
+  worker.y = mine.y;
+  assert.deepEqual(resolveTap(state, player, empty, { x: mine.x + 7, y: mine.y }),
+    { kind: 'select', id: worker.id });
+
   // Workers prioritize their mine when distances are equal.
   worker.x = mine.x;
   worker.y = mine.y;
