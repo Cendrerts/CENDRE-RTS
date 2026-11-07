@@ -395,3 +395,12 @@
 #contextPanel[data-mode='units']:has(#contextGrid button:nth-child(3)) .context-center {
   max-width: 180px;
 }
+/* Keep all eight queued jobs reachable beside the rally control. */
+#contextActions:has(.queue-cell):has(#rallyAction) {
+  grid-template-columns: 80px repeat(4, 44px);
+}
+#contextActions:has(.queue-cell) #rallyAction {
+  grid-column: 1;
+  grid-row: 1 / 3;
+  white-space: normal;
+}

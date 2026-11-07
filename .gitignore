@@ -45,4 +45,7 @@ yarn-error.log*
 .DS_Store
 
 # Captures et mesures produites par les agents
-/artifacts/
+/artifacts/*
+!/artifacts/issue-43/
+/artifacts/issue-43/*
+!/artifacts/issue-43/ralliement-844x390.png

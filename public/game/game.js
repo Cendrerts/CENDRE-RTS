@@ -20,7 +20,7 @@ import { ratSVG, ratSprites } from './rats.js';
 import { RatsGout } from './rats-config.js';
 import { cookSVG, cookSprites } from './cooks.js';
 import { drawMinimap } from './minimap.js';
-import { drawHealthBar, selectionRing, unitFeet, drawCargoRuby, drawMine } from './unit-overlays.js';
+import { TEAM_COLORS, drawHealthBar, selectionRing, unitFeet, drawCargoRuby, drawMine } from './unit-overlays.js';
 import { createRenderCache, prepareDrawList } from './render-cache.js';
 import { CendreSim as Sim } from './sim.js';
 import { createAI } from './ai.js';
@@ -244,6 +244,7 @@ function selectType(t, scope = 'all') {
 let panelContext = {};
 let panelRoot = null;
 let panelSignature = '';
+let rallyArmed = null;
 let panelVisibilityState = {};
 let patrolArmed = false;
 function updateUI() {
@@ -324,6 +325,7 @@ $('#hold').onclick = () => {
     .forEach((u) => {
       u.patrol = null;
       u.manual = null;
+      u.followId = null;
       u.harvest = null;
       u.retreat = false;
       u.path = [];
@@ -556,6 +558,21 @@ function handleFieldTap(e, duration) {
   }
   if (radial?.isGhost) {
     pickGhostSlot(p);
+    return;
+  }
+  const openedBuilding = openedRallyBuilding();
+  if (openedBuilding && (rallyArmed === openedBuilding.id ||
+      (duration >= 550 && isEmptyTap(state, player, p, scale)))) {
+    let target = null;
+    resolveTap(state, player, new Set(), p, scale, (candidate) => { target = candidate; });
+    const command = { kind: 'setRally', buildingId: openedBuilding.id, x: p.x, y: p.y };
+    if (target?.category === 'mine' && target.target.owner === player) {
+      command.mineIndex = state.mines.indexOf(target.target);
+    } else if (target?.action.kind === 'select') {
+      command.unitId = target.target.id;
+    }
+    rallyArmed = null;
+    panelCommand(command);
     return;
   }
   if (duration >= 550 && isEmptyTap(state, player, p, scale)) {
@@ -915,6 +932,7 @@ function draw() {
     }
   }
   drawSlots();
+  drawRally();
   preparedUnits.forEach(unit);
   for (let b of state.bases)
     if (Sim.canSee(state, player, b)) {
@@ -1315,6 +1333,39 @@ function drawCook(u) {
   const headY = y - size + bob;
   drawCargoRuby(ctx, x, headY, scale, u);
   drawHealthBar(ctx, u, x, headY, scale, player, selected.has(u.id));
+}
+
+function openedRallyBuilding() {
+  if (panelVisibilityState.collapsed) return null;
+  const id = panelContext.producerId || (!panelContext.slotId && panelContext.baseId);
+  const building = id && Sim.rallyBuilding(state, player, id);
+  return building ? { id, building } : null;
+}
+function drawRally() {
+  const opened = openedRallyBuilding();
+  const point = Sim.rallyPoint(state, opened?.building.rally);
+  if (!opened || !point) return;
+  ctx.save();
+  ctx.strokeStyle = TEAM_COLORS[player];
+  ctx.fillStyle = ctx.strokeStyle;
+  ctx.lineWidth = 1 / scale;
+  ctx.setLineDash([4 / scale, 4 / scale]);
+  ctx.beginPath();
+  ctx.moveTo(opened.building.x, opened.building.y);
+  ctx.lineTo(point.x, point.y);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.lineWidth = 2 / scale;
+  ctx.beginPath();
+  ctx.moveTo(point.x, point.y);
+  ctx.lineTo(point.x, point.y - 23 / scale);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(point.x, point.y - 23 / scale);
+  ctx.lineTo(point.x + 14 / scale, point.y - 18 / scale);
+  ctx.lineTo(point.x, point.y - 13 / scale);
+  ctx.fill();
+  ctx.restore();
 }
 
 function drawSlots() {
@@ -1780,6 +1831,7 @@ $('#baseAction').onclick = () => {
 function panelCommand(command) {
   if (!running || paused) return;
   if (net) sendCommand(command);
+  else if (command.kind === 'setRally') Sim.setRally(state, player, command);
   else if (command.kind === 'recruit') Sim.recruit(state, command.type, player, command.producerId);
   else if (command.kind === 'construct')
     Sim.construct(state, player, command.type, command.baseId, command.slotId);
@@ -1796,6 +1848,7 @@ function renderContextPanel() {
     panelVisibilityState = panelVisibility(panelVisibilityState, 'building');
   }
   panelVisibilityState = panelVisibility(panelVisibilityState);
+  if (rallyArmed && openedRallyBuilding()?.id !== rallyArmed) rallyArmed = null;
   const model = panelModel(state, player, selected, {
     ...panelContext,
     width: innerWidth,
@@ -1815,7 +1868,7 @@ function renderContextPanel() {
   const currentHealthText = $('#contextIdentity .health-text');
   if (currentHealthText)
     currentHealthText.textContent = `${Math.ceil(model.left.hp)}/${Math.ceil(model.left.max)}`;
-  const signature = JSON.stringify([model, paused, patrolArmed], (key, value) =>
+  const signature = JSON.stringify([model, paused, patrolArmed, rallyArmed], (key, value) =>
     ['remaining', 'hp', 'status'].includes(key) ? undefined : value,
   );
   if (signature === panelSignature) return;
@@ -1978,6 +2031,22 @@ function renderContextPanel() {
     $('#hold').innerHTML = '⛨ <span>Tenir position</span>';
     actions.append($('#hold'), patrol, ability, $('#retreat'));
   } else {
+    const opened = openedRallyBuilding();
+    if (opened) {
+      const rally = document.createElement('button');
+      rally.id = 'rallyAction';
+      rally.textContent = '⚑ Ralliement';
+      rally.style.minHeight = '44px';
+      rally.style.minWidth = '44px';
+      rally.setAttribute('aria-pressed', String(rallyArmed === opened.id));
+      rally.disabled = paused;
+      rally.onclick = () => {
+        rallyArmed = rallyArmed === opened.id ? null : opened.id;
+        notify(rallyArmed ? 'Ralliement · Touchez le sol, une mine ou une unité alliée' : 'Ralliement annulé');
+        updateUI();
+      };
+      actions.append(rally);
+    }
     if (model.mode === 'base' && model.activeTab !== 'production') {
       const close = document.createElement('button');
       close.textContent = 'Retour carte';

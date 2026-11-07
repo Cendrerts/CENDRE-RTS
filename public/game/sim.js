@@ -268,6 +268,51 @@ function create() {
   visibility(s);
   return s;
 }
+// Resolve the persistent structure, since producers() returns presentation copies.
+function rallyBuilding(s, team, buildingId) {
+  if (buildingId === 'main_' + team) return s.bases[team];
+  const mine = s.mines.find((mine, index) =>
+    buildingId === 'mine_' + index && mine.depot && mine.owner === team);
+  if (mine) return mine.site;
+  return s.slots?.[team]?.find((slot) => slot.id === buildingId && slot.occupe);
+}
+function setRally(s, team, command) {
+  const building = rallyBuilding(s, team, command.buildingId);
+  if (s.winner !== null || !building) return false;
+  let rally;
+  if (command.mineIndex !== undefined) {
+    const mine = s.mines[command.mineIndex];
+    if (!Number.isInteger(command.mineIndex) || !mine || mine.owner !== team) return false;
+    rally = { mineIndex: command.mineIndex };
+  } else if (command.unitId !== undefined) {
+    const unit = s.units.find((unit) => unit.id === command.unitId && unit.team === team && unit.hp > 0);
+    if (!unit) return false;
+    rally = { unitId: unit.id };
+  } else {
+    if (!Number.isFinite(command.x) || !Number.isFinite(command.y)) return false;
+    rally = { x: Math.max(0, Math.min(W, command.x)), y: Math.max(0, Math.min(H, command.y)) };
+  }
+  building.rally = rally;
+  return true;
+}
+function rallyPoint(s, rally) {
+  if (!rally) return null;
+  if (rally.mineIndex !== undefined) return s.mines[rally.mineIndex];
+  if (rally.unitId !== undefined) return s.units.find((unit) => unit.id === rally.unitId && unit.hp > 0);
+  return rally;
+}
+function applyRally(s, unit, origin) {
+  const rally = rallyBuilding(s, unit.team, origin?.id)?.rally;
+  const point = rallyPoint(s, rally);
+  if (!point) return;
+  order(s, [unit.id], point.x, point.y, null, false);
+  if (rally.mineIndex !== undefined && unit.type === 'commis' && point.owner === unit.team) {
+    assignHarvest(s, unit, rally.mineIndex);
+  } else if (rally.unitId !== undefined && point.team === unit.team) {
+    unit.followId = point.id;
+    unit.attackDestination = null;
+  }
+}
 function spawn(s, type, team, origin = null) {
   let b = origin || s.bases[team],
     n = s.units.filter((u) => u.team === team).length,
@@ -301,6 +346,7 @@ function spawn(s, type, team, origin = null) {
         )[0]?.i ?? -1;
     if (mine >= 0) assignHarvest(s, s.units.at(-1), mine);
   }
+  applyRally(s, s.units.at(-1), origin);
 }
 // Shared migration for saved solo states and persisted server matches.
 function migrateState(s) {
@@ -461,6 +507,7 @@ function order(s, ids, x, y, target = null, retreat = !target) {
   destinations.sort(byOffset);
   units.forEach((u, index) => {
     const destination = destinations[index % destinations.length];
+    u.followId = null;
     u.patrol = null;
     u.manual = null;
     u.harvest = null;
@@ -665,6 +712,17 @@ function tick(s, dt) {
     if (u.harvest) {
       harvestTick(s, u, dt);
       continue;
+    }
+    if (u.followId) {
+      const leader = entities.get(u.followId);
+      if (!leader || leader.hp <= 0 || leader.team !== u.team) {
+        u.followId = null;
+        u.path = [];
+      } else if (u.repath <= 0) {
+        u.path = Math.hypot(leader.x - u.x, leader.y - u.y) > 45
+          ? route(u.x, u.y, leader.x, leader.y) : [];
+        u.repath = 0.3;
+      }
     }
     let cfg = stats(u.type, u.team),
       target = u.target;
@@ -896,6 +954,7 @@ function approachMine(s, u) {
 function assignHarvest(s, u, index) {
   u.manual = null;
   u.patrol = null;
+  u.followId = null;
   u.harvest = { mine: index, phase: u.cargo > 0 ? 'VERS_BASE' : 'VERS_GISEMENT', elapsed: 0 };
   u.target = null;
   u.hold = false;
@@ -1003,6 +1062,9 @@ function predictMotion(state, unit, command, dt) {
 }
 
 export const CendreSim = {
+  setRally,
+  rallyBuilding,
+  rallyPoint,
   predictMotion,
   steer,
   disengage,
@@ -1045,6 +1107,7 @@ function steer(s, ids, dx, dy) {
     divisor = Math.max(1, length);
   for (const u of s.units)
     if (ids.includes(u.id)) {
+      u.followId = null;
       u.patrol = null;
       u.harvest = null;
       u.attackDestination = null;
