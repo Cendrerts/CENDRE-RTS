@@ -466,6 +466,8 @@ function order(s, ids, x, y, target = null, retreat = !target) {
     u.attackDestination = !retreat && !target ? destination : null;
     u.chasing = false;
     u.target = target;
+    u.autoTargetId = null;
+    u.lastRetargetAt = null;
     u.hold = false;
     u.retreat = retreat;
     u.repath = 0;
@@ -559,6 +561,50 @@ function recordDamageEvent(s, entity) {
     s.damageEvents.splice(0, s.damageEvents.length - 24);
   }
 }
+// Workers can defend themselves but are not combat threats.
+function targetPriority(entity) {
+  if (entity.base || !entity.type) return 3;
+  if (entity.type === 'commis' || !(stats(entity.type, entity.team).damage > 0)) return 2;
+  return 1;
+}
+function targetKey(entity) {
+  return entity.base ? `base${entity.team}` : entity.id;
+}
+function automaticTarget(s, unit, range, retaliating = false) {
+  let priority = Infinity;
+  let nearestDistance = Infinity;
+  const candidates = [];
+  for (let index = 0; index <= s.units.length; index++) {
+    const candidate = index < s.units.length ? s.units[index] : s.bases[1 - unit.team];
+    if (candidate.team === unit.team || candidate.hp <= 0) continue;
+    const distanceSquared = (candidate.x - unit.x) ** 2 + (candidate.y - unit.y) ** 2;
+    if (distanceSquared > range * range || !canSee(s, unit.team, candidate)) continue;
+    const candidatePriority = targetPriority(candidate);
+    if (retaliating && (candidatePriority !== 1 || candidate.lastAttackTargetId !== unit.id ||
+        s.time - candidate.lastAttackAt > stats(candidate.type, candidate.team).rate + 0.1)) continue;
+    if (candidatePriority > priority) continue;
+    if (candidatePriority < priority) {
+      candidates.length = 0;
+      nearestDistance = Infinity;
+      priority = candidatePriority;
+    }
+    const distance = Math.sqrt(distanceSquared);
+    nearestDistance = Math.min(nearestDistance, distance);
+    candidates.push({ entity: candidate, distance });
+  }
+  // Anchor the 10 px band to the nearest enemy: pairwise comparisons can drift.
+  let selected = null;
+  let selectedDistance = Infinity;
+  for (const candidate of candidates) {
+    if (candidate.distance > nearestDistance + 10) continue;
+    if (!selected || candidate.entity.hp < selected.hp ||
+        (candidate.entity.hp === selected.hp && candidate.distance < selectedDistance)) {
+      selected = candidate.entity;
+      selectedDistance = candidate.distance;
+    }
+  }
+  return selected;
+}
 function tick(s, dt) {
   migrateState(s);
   if (s.winner !== null) return;
@@ -585,6 +631,8 @@ function tick(s, dt) {
     s.fogClock = 0;
   }
   const fighting = new Set();
+  const entities = new Map(s.units.map((unit) => [unit.id, unit]));
+  for (const base of s.bases) entities.set(targetKey(base), base);
   for (let u of s.units) {
     if (u.hp <= 0) continue;
     u.cool -= dt;
@@ -606,16 +654,20 @@ function tick(s, dt) {
       target = u.target;
     if (target && (target.hp <= 0 || !canSee(s, u.team, target))) target = u.target = null;
     if (!target && !u.retreat) {
-      let nearestDistanceSquared = (cfg.range + 75) ** 2;
-      // Stable iteration preserves the previous sort's tie order.
-      for (let index = 0; index <= s.units.length; index++) {
-        const candidate = index < s.units.length ? s.units[index] : s.bases[1 - u.team];
-        if (candidate.team === u.team || candidate.hp <= 0) continue;
-        const distanceSquared = (candidate.x - u.x) ** 2 + (candidate.y - u.y) ** 2;
-        if (distanceSquared >= nearestDistanceSquared || !canSee(s, u.team, candidate)) continue;
-        nearestDistanceSquared = distanceSquared;
-        target = candidate;
+      target = entities.get(u.autoTargetId);
+      if (target && (target.hp <= 0 || !canSee(s, u.team, target))) target = null;
+      if (!target) {
+        target = automaticTarget(s, u, cfg.range + 75);
+      } else if (s.time - (u.lastRetargetAt ?? -Infinity) >= 0.5 &&
+          (targetPriority(target) > 1 || Math.hypot(target.x - u.x, target.y - u.y) > cfg.range)) {
+        const attacker = automaticTarget(s, u, cfg.range, true);
+        if (attacker && attacker !== target) {
+          target = attacker;
+          u.lastRetargetAt = s.time;
+          u.repath = 0;
+        }
       }
+      u.autoTargetId = target ? targetKey(target) : null;
     }
     if (!target && !u.hold && u.chasing && u.attackDestination) {
       u.path = route(u.x, u.y, u.attackDestination.x, u.attackDestination.y);
@@ -626,6 +678,8 @@ function tick(s, dt) {
       fighting.add(u.id);
       if (u.cool <= 0) {
         u.cool = cfg.rate;
+        u.lastAttackTargetId = target.id ?? null;
+        u.lastAttackAt = s.time;
         target.hp -= cfg.damage;
         recordDamageEvent(s, target);
         if (cfg.splash) {
@@ -942,6 +996,7 @@ function steer(s, ids, dx, dy) {
       u.attackDestination = null;
       u.chasing = false;
       u.target = null;
+      u.autoTargetId = null;
       u.path = [];
       u.retreat = false;
       u.hold = true;
