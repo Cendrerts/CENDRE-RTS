@@ -50,7 +50,8 @@ for (let team = 0; team < 2; team++) {
   while (u.cargo && s.time < 90) S.tick(s, 0.05);
   assert.equal(u.cargo, 0);
   assert.equal(s.rubies[0], 120);
-  assert.equal(u.harvest, null);
+  assert.equal(u.harvest.mine, 0);
+  assert.equal(u.harvest.phase, 'VERS_GISEMENT');
 }
 {
   const s = S.create(),

@@ -404,3 +404,18 @@
   grid-row: 1 / 3;
   white-space: normal;
 }
+
+#contextPanel #idleWorkers {
+  position: absolute;
+  left: 192px;
+  bottom: 116px;
+  width: 148px;
+  height: 44px;
+  background: #101d22ef;
+}
+#contextPanel #idleWorkers[hidden] {
+  display: none;
+}
+#contextPanel[data-collapsed='true'] #idleWorkers {
+  bottom: 48px;
+}

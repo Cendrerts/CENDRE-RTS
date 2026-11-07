@@ -24,6 +24,7 @@ const RULES = {
   forestDamage: 2,
   forestReveal: 80,
   mineCost: 120,
+  mineReserve: 30000,
   harvestCapacity: 10,
   harvestTime: 3,
   harvestSpeed: 60,
@@ -262,6 +263,7 @@ function create() {
     visible: [new Uint8Array(walk.length), new Uint8Array(walk.length)],
     explored: [new Uint8Array(walk.length), new Uint8Array(walk.length)],
   };
+  for (const mine of s.mines) mine.remaining = RULES.mineReserve;
   spawn(s, 'commis', 0);
   spawn(s, 'commis', 1);
   ensureSlots(s);
@@ -306,7 +308,7 @@ function applyRally(s, unit, origin) {
   const point = rallyPoint(s, rally);
   if (!point) return;
   order(s, [unit.id], point.x, point.y, null, false);
-  if (rally.mineIndex !== undefined && unit.type === 'commis' && point.owner === unit.team) {
+  if (rally.mineIndex !== undefined && unit.type === 'commis' && availableMine(point, unit.team)) {
     assignHarvest(s, unit, rally.mineIndex);
   } else if (rally.unitId !== undefined && point.team === unit.team) {
     unit.followId = point.id;
@@ -340,7 +342,7 @@ function spawn(s, type, team, origin = null) {
     const mine =
       s.mines
         .map((m, i) => ({ m, i }))
-        .filter((v) => v.m.owner === team)
+        .filter((v) => availableMine(v.m, team))
         .sort(
           (a, c) => Math.hypot(a.m.x - b.x, a.m.y - b.y) - Math.hypot(c.m.x - b.x, c.m.y - b.y),
         )[0]?.i ?? -1;
@@ -355,6 +357,7 @@ function migrateState(s) {
     delete s.gold;
   }
   for (const mine of s.mines || []) {
+    if (mine.remaining === undefined) mine.remaining = RULES.mineReserve;
     if (mine.boost) mine.name = 'Veine riche';
   }
   return s;
@@ -911,6 +914,40 @@ function separate(units, fighting, dt) {
   }
 }
 
+export function idleWorkers(s, team) {
+  return s.units.filter((unit) =>
+    unit.team === team && unit.type === 'commis' && unit.hp > 0 &&
+    (s.idleWorkerIds ? s.idleWorkerIds.includes(unit.id) :
+      !unit.harvest && !unit.path.length && !unit.manual && !unit.patrol &&
+      !unit.followId && !unit.target && !unit.autoTargetId && !unit.hold &&
+      !unit.attackDestination),
+  ).sort((a, b) => a.id - b.id);
+}
+
+function availableMine(mine, team) {
+  return mine && mine.owner === team && mine.remaining > 0 && !(mine.hp <= 0);
+}
+
+function reassignHarvest(s, unit) {
+  const base = s.bases[unit.team];
+  let closest = -1;
+  let distance = Infinity;
+  for (let index = 0; index < s.mines.length; index++) {
+    const mine = s.mines[index];
+    if (!availableMine(mine, unit.team)) continue;
+    const candidate = (mine.x - base.x) ** 2 + (mine.y - base.y) ** 2;
+    if (candidate < distance) {
+      closest = index;
+      distance = candidate;
+    }
+  }
+  if (closest >= 0) assignHarvest(s, unit, closest);
+  else {
+    unit.harvest = null;
+    unit.path = [];
+  }
+}
+
 function harvestPath(u, x, y) {
   const cell = nearest(x, y),
     dest = { x: (cell % COLS) * CELL + 10, y: Math.floor(cell / COLS) * CELL + 10 };
@@ -957,6 +994,9 @@ function assignHarvest(s, u, index) {
   u.followId = null;
   u.harvest = { mine: index, phase: u.cargo > 0 ? 'VERS_BASE' : 'VERS_GISEMENT', elapsed: 0 };
   u.target = null;
+  u.autoTargetId = null;
+  u.attackDestination = null;
+  u.chasing = false;
   u.hold = false;
   u.retreat = false;
   if (u.cargo > 0) returnToDepot(s, u);
@@ -966,7 +1006,7 @@ function assignHarvest(s, u, index) {
 }
 function gather(s, team, ids, index) {
   const m = s.mines[index];
-  if (s.winner !== null || !Number.isInteger(index) || !m || m.owner !== team) return false;
+  if (s.winner !== null || !Number.isInteger(index) || !availableMine(m, team)) return false;
   const workers = s.units.filter(
     (u) => u.team === team && u.type === 'commis' && u.hp > 0 && ids.includes(u.id),
   );
@@ -976,9 +1016,8 @@ function gather(s, team, ids, index) {
 function harvestTick(s, u, dt) {
   let h = u.harvest,
     m = s.mines[h.mine];
-  if ((!m || m.owner !== u.team) && h.phase !== 'VERS_BASE') {
-    u.harvest = null;
-    u.path = [];
+  if (!availableMine(m, u.team) && h.phase !== 'VERS_BASE') {
+    reassignHarvest(s, u);
     return;
   }
   if (
@@ -995,7 +1034,8 @@ function harvestTick(s, u, dt) {
       h.elapsed += step;
       left -= step;
       if (h.elapsed < RULES.harvestTime - 1e-8) break;
-      u.cargo = RULES.harvestCapacity * (m.boost ? 2 : 1);
+      u.cargo = Math.min(m.remaining, RULES.harvestCapacity * (m.boost ? 2 : 1));
+      m.remaining -= u.cargo;
       h.phase = 'VERS_BASE';
       returnToDepot(s, u);
       continue;
@@ -1023,8 +1063,8 @@ function harvestTick(s, u, dt) {
     } else {
       s.rubies[u.team] += u.cargo || 0;
       u.cargo = 0;
-      if (!m || m.owner !== u.team) {
-        u.harvest = null;
+      if (!availableMine(m, u.team)) {
+        reassignHarvest(s, u);
         break;
       }
       h.phase = 'VERS_GISEMENT';
@@ -1062,6 +1102,7 @@ function predictMotion(state, unit, command, dt) {
 }
 
 export const CendreSim = {
+  idleWorkers,
   setRally,
   rallyBuilding,
   rallyPoint,
