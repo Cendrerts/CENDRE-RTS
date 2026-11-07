@@ -2,14 +2,14 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { CendreSim as S } from '../public/game/sim.js';
 import { createAI } from '../public/game/ai.js';
-import { DIFFICULTIES } from '../public/game/ai-config.js';
+import { BUILD_ORDERS, DIFFICULTIES } from '../public/game/ai-config.js';
 import { pack, unpack } from '../lib/match.mjs';
 
 assert.deepEqual(DIFFICULTIES.impitoyable, { ...DIFFICULTIES.brutal, incomeBonus: 0.25 });
 for (const [difficulty, settings] of Object.entries(DIFFICULTIES)) {
   assert.equal(settings.incomeBonus, difficulty === 'impitoyable' ? 0.25 : 0);
 }
-// With identical resources and observations, every decision is Brutal's.
+// Without banked surplus, decisions remain Brutal's with identical observations.
 for (const team of [0, 1]) {
   const brutalState = S.create();
   const ruthlessState = S.create();
@@ -23,6 +23,39 @@ for (const team of [0, 1]) {
     assert.deepEqual({ ...ruthlessState, incomeMultiplier: [1, 1] }, brutalState);
   }
 }
+// Income is configured at creation, even before the first decision, and never reset by update.
+for (const team of [0, 1]) {
+  const state = S.create();
+  const controller = createAI(team, 'impitoyable', state);
+  assert.equal(state.incomeMultiplier[team], 1.25);
+  S.configureIncome(state, team, 0);
+  controller.update(state);
+  state.time = 1;
+  controller.update(state);
+  assert.equal(state.incomeMultiplier[team], 1);
+}
+
+// A banked surplus funds all three idle military producers beyond Brutal's economy reserve.
+for (const team of [0, 1]) {
+  for (const difficulty of ['brutal', 'impitoyable']) {
+    const state = S.create();
+    while (state.units.filter((unit) => unit.team === team && unit.type === 'commis').length < 6) {
+      S.spawn(state, 'commis', team);
+    }
+    for (let index = 0; index < 20; index++) {
+      S.spawn(state, 'knight', team);
+    }
+    state.rubies[team] = 2000;
+    for (const building of BUILD_ORDERS[team]) {
+      assert(S.construct(state, team, building.id));
+    }
+    createAI(team, difficulty, state).update(state);
+    const militaryJobs = state.queues[team].filter((job) => job.type !== 'commis');
+    assert.equal(militaryJobs.length, difficulty === 'impitoyable' ? 3 : 0);
+    assert(state.units.filter((unit) => unit.team === team).length + state.queues[team].length <= 30);
+  }
+}
+
 const humanMatch = unpack(pack(S.create()));
 assert.deepEqual(humanMatch.incomeMultiplier, [1, 1]);
 const legacy = S.create();
@@ -34,7 +67,7 @@ assert.deepEqual(unpack(pack(legacy)).incomeMultiplier, [1, 1]);
 for (const strongTeam of [0, 1]) {
   for (const cargo of [10, 20, 1]) {
     const state = S.create();
-    createAI(strongTeam, 'impitoyable').update(state);
+    createAI(strongTeam, 'impitoyable', state).update(state);
     createAI(1 - strongTeam, 'brutal').update(state);
     assert.deepEqual(state.incomeMultiplier, strongTeam ? [1, 1.25] : [1.25, 1]);
     state.queues = [[], []];
@@ -55,7 +88,7 @@ for (const strongTeam of [0, 1]) {
 // Follow real worker trips and check every completed deposit independently.
 {
   const state = S.create();
-  createAI(0, 'impitoyable').update(state);
+  createAI(0, 'impitoyable', state).update(state);
   createAI(1, 'brutal').update(state);
   state.queues = [[], []];
   const deposits = [0, 0];
@@ -78,6 +111,7 @@ assert.match(menu, /id="aiDifficulty" style="min-height:44px"/);
 
 // Ten reproducible seeds, alternating factions and controller update order.
 let victories = 0;
+const victoriesByTeam = [0, 0];
 for (let game = 0; game < 10; game++) {
   let seed = game + 1;
   const random = () => {
@@ -92,14 +126,23 @@ for (let game = 0; game < 10; game++) {
   }
   S.visibility(state);
   const strongTeam = game % 2;
-  const controllers = [0, 1].map((team) => createAI(team, team === strongTeam ? 'impitoyable' : 'brutal'));
+  const controllers = [0, 1].map((team) => createAI(team, team === strongTeam ? 'impitoyable' : 'brutal', state));
   for (let step = 0; step < 9000 && state.winner === null; step++) {
     for (const team of strongTeam ? [1, 0] : [0, 1]) controllers[team].update(state);
     S.tick(state, 0.1);
+    if (game === 1 && [120, 200, 300].some((time) => Math.abs(state.time - time) < 0.01)) {
+      const armies = [0, 1].map((team) => state.units.filter((unit) => unit.team === team && unit.hp > 0 && unit.type !== 'commis').length);
+      console.log(`Seed 2 at ${Math.round(state.time)}s: Impitoyable bank ${state.rubies[1]}, armies Brutal/Impitoyable ${armies.join('/')}`);
+    }
   }
   assert.notEqual(state.winner, null, `Seed ${game + 1}: no winner after 15 minutes`);
-  if (state.winner === strongTeam) victories++;
+  if (state.winner === strongTeam) {
+    victories++;
+    victoriesByTeam[strongTeam]++;
+  }
   console.log(`Seed ${game + 1}: ${state.winner === strongTeam ? 'Impitoyable' : 'Brutal'} (${state.time.toFixed(1)}s)`);
 }
+console.log(`Impitoyable victories by team: ${victoriesByTeam.join('/5, ')}/5`);
+assert(victoriesByTeam.every((wins) => wins >= 4), `Wins by team: ${victoriesByTeam}`);
 assert(victories >= 8, `Impitoyable won ${victories}/10 against Brutal`);
 console.log(`PASS: exact deposit bonus, default human income, persistence, menu and ${victories}/10 victories.`);

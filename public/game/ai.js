@@ -3,10 +3,11 @@ import { BUILD_ORDERS, DIFFICULTIES } from './ai-config.js';
 
 // A deterministic controller: no DOM, wall clock or randomness.
 // All mutations go through the shared simulation's public actions.
-export function createAI(team, difficulty = 'normal') {
+export function createAI(team, difficulty = 'normal', state = null) {
   const settings = DIFFICULTIES[difficulty];
   if (!settings || ![0, 1].includes(team)) throw new Error('Invalid AI configuration');
   const brutal = difficulty === 'brutal' || difficulty === 'impitoyable';
+  if (state) Sim.configureIncome(state, team, settings.incomeBonus);
   let nextReaction = 0;
   let emergencyUntil = 0;
   const evacuated = new Set();
@@ -33,7 +34,6 @@ export function createAI(team, difficulty = 'normal') {
     metrics,
     update(state) {
       if (state.winner !== null || state.time < nextReaction) return 0;
-      Sim.configureIncome(state, team, settings.incomeBonus);
       nextReaction = state.time + settings.reaction;
       let actions = 0;
       const own = state.units.filter((unit) => unit.team === team && unit.hp > 0);
@@ -172,7 +172,11 @@ export function createAI(team, difficulty = 'normal') {
                 // Reserve population for the next mine and the surviving scout.
                 const militaryPopulation = army.length + state.queues[team].filter((job) => job.type !== 'commis').length;
                 const economyCapacity = Number(brutal) + settings.workers * (brutal ? Math.min(3, owned.length + 1) : 3) + Number(workers.some((worker) => worker.id === scout));
-                if (militaryPopulation >= 30 - economyCapacity) break;
+                // Spend surplus using current population instead of reserving hypothetical workers.
+                const spendSurplus = difficulty === 'impitoyable' && state.rubies[team] >= 150;
+                const queuedWorkers = state.queues[team].filter((job) => job.type === 'commis').length;
+                const reservedPopulation = spendSurplus ? workers.length + queuedWorkers : economyCapacity;
+                if (militaryPopulation >= 30 - reservedPopulation) break;
                 if (state.queues[team].some((job) => job.producerId === producer.id)) continue;
                 if (Sim.recruit(state, building.unit, team, producer.id)) actions++;
                 else affordable = false;
