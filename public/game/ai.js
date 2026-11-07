@@ -1,12 +1,12 @@
 import { CendreSim as Sim } from './sim.js';
 import { BUILD_ORDERS, DIFFICULTIES } from './ai-config.js';
 
-// A deterministic controller: no DOM, wall clock, randomness or resource bonuses.
+// A deterministic controller: no DOM, wall clock or randomness.
 // All mutations go through the shared simulation's public actions.
 export function createAI(team, difficulty = 'normal') {
   const settings = DIFFICULTIES[difficulty];
   if (!settings || ![0, 1].includes(team)) throw new Error('Invalid AI configuration');
-  const brutal = difficulty === 'brutal';
+  const brutal = difficulty === 'brutal' || difficulty === 'impitoyable';
   let nextReaction = 0;
   let emergencyUntil = 0;
   const evacuated = new Set();
@@ -33,6 +33,7 @@ export function createAI(team, difficulty = 'normal') {
     metrics,
     update(state) {
       if (state.winner !== null || state.time < nextReaction) return 0;
+      Sim.configureIncome(state, team, settings.incomeBonus);
       nextReaction = state.time + settings.reaction;
       let actions = 0;
       const own = state.units.filter((unit) => unit.team === team && unit.hp > 0);
@@ -118,7 +119,7 @@ export function createAI(team, difficulty = 'normal') {
             if (assigned.has(index)) assigned.set(index, assigned.get(index) - 1);
           }
         }
-        if ((!brutal || !emergency && army.length >= (team ? 12 : 8)) && state.time >= settings.expansion && owned.length < (state.time >= (difficulty === 'brutal' ? 240 : 300) ? 3 : 2) && !expedition && workers.length) {
+        if ((!brutal || !emergency && army.length >= (team ? 12 : 8)) && state.time >= settings.expansion && owned.length < (state.time >= (brutal ? 240 : 300) ? 3 : 2) && !expedition && workers.length) {
           // Mine locations are public terrain; ownership is checked only after scouting.
           const priority = (mine) => distance(mine, state.bases[team]) * (established.has(mine.index) ? 0.1 : settings.micro && mine.boost ? 0.6 : 1);
           const destination = mines.filter((mine) => mine.index >= 2 && mine.owner !== team)
@@ -147,7 +148,7 @@ export function createAI(team, difficulty = 'normal') {
         const built = new Set(state.slots[team].filter((slot) => slot.occupe).map((slot) => slot.batiment.type));
         const composition = intelligence.composition;
         const clustered = settings.micro ? intelligence.clustered : enemies.some((enemy) => enemies.filter((other) => distance(enemy, other) < 80).length >= 4);
-        const earlyMages = difficulty === 'brutal' && army.filter((unit) => unit.type === 'archer').length >= 2;
+        const earlyMages = brutal && army.filter((unit) => unit.type === 'archer').length >= 2;
         const massedArchers = (composition.archer || 0) >= 4 && !composition.knight;
         const preferred = clustered || earlyMages ? 'mage' : massedArchers ? 'knight' : 'archer';
         const order = [...BUILD_ORDERS[team]].sort((a, b) => Number(b.unit === preferred) - Number(a.unit === preferred));
@@ -163,7 +164,7 @@ export function createAI(team, difficulty = 'normal') {
           const population = (type) => army.filter((unit) => unit.type === type).length + state.queues[team].filter((job) => job.type === type).length;
           const available = order.filter((building) => Sim.producers(state, team, building.unit).some((producer) => !state.queues[team].some((job) => job.producerId === producer.id)));
           available.sort((a, b) => population(a.unit) / weights[a.unit] - population(b.unit) / weights[b.unit]);
-          const unlocking = !emergency && settings.micro && ((!built.has(BUILD_ORDERS[team][1].id) && army.length >= (difficulty === 'brutal' ? 1 : 2)) || (!built.has(BUILD_ORDERS[team][2].id) && army.length >= 3));
+          const unlocking = !emergency && settings.micro && ((!built.has(BUILD_ORDERS[team][1].id) && army.length >= (brutal ? 1 : 2)) || (!built.has(BUILD_ORDERS[team][2].id) && army.length >= 3));
           if (!unlocking) {
             for (const building of available) {
               let affordable = true;
@@ -281,19 +282,19 @@ export function createAI(team, difficulty = 'normal') {
         const targets = [...enemies, ...(visibleBase ? [visibleBase] : [])]
           .filter((enemy) => distance(unit, enemy) <= range + (enemy.base ? 45 : 0))
           .sort((a, b) => (raiders.has(unit.id) || unit.id === scout ? Number(b.type === 'commis') - Number(a.type === 'commis') : 0) || a.hp - b.hp || a.id - b.id);
-        if (difficulty === 'brutal' && unit.type === 'mage') {
+        if (brutal && unit.type === 'mage') {
           const splash = Sim.stats(unit.type, team).splash;
           const impact = (target) => enemies.reduce((sum, enemy) => sum + Number(distance(target, enemy) <= splash), 0);
           targets.sort((a, b) => impact(b) - impact(a) || a.hp - b.hp);
         }
         const threat = enemies.find((enemy) => distance(unit, enemy) < 180);
         const cover = army.some((ally) => ally.id !== unit.id && ally.hp >= ally.max * 0.25 && threat && distance(ally, threat) <= Sim.stats(ally.type, team).range + 75);
-        const close = enemies.filter((enemy) => enemy.type !== 'commis' && distance(unit, enemy) < (unit.type === 'mage' ? 65 : difficulty === 'brutal' ? 100 : 90) && (unit.type === 'mage' || Sim.stats(enemy.type, enemy.team).range < range))
+        const close = enemies.filter((enemy) => enemy.type !== 'commis' && distance(unit, enemy) < (unit.type === 'mage' ? 65 : brutal ? 100 : 90) && (unit.type === 'mage' || Sim.stats(enemy.type, enemy.team).range < range))
           .sort((a, b) => distance(unit, a) - distance(unit, b))[0];
         const wounded = unit.hp < unit.max * 0.25;
         if (settings.micro && range >= 100 && close && unit.cool > settings.reaction && !unit.retreat) {
           const gap = distance(unit, close) || 1;
-          const step = difficulty === 'brutal' ? 30 : 65;
+          const step = brutal ? 30 : 65;
           Sim.order(state, [unit.id], unit.x + (unit.x - close.x) / gap * step, unit.y + (unit.y - close.y) / gap * step, null, true);
           actions++;
         } else if ((settings.micro || difficulty === 'normal') && wounded && threat && cover) {

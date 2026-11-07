@@ -3,7 +3,7 @@ import { CendreSim as S } from '../public/game/sim.js';
 import { createAI } from '../public/game/ai.js';
 import { BUILD_ORDERS, DIFFICULTIES } from '../public/game/ai-config.js';
 
-assert.deepEqual(Object.keys(DIFFICULTIES), ['facile', 'normal', 'difficile', 'brutal']);
+assert.deepEqual(Object.keys(DIFFICULTIES), ['facile', 'normal', 'difficile', 'brutal', 'impitoyable']);
 assert.throws(() => createAI(0, 'unknown'));
 for (const order of BUILD_ORDERS) {
   const available = new Set();
