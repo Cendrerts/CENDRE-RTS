@@ -405,6 +405,36 @@
   white-space: normal;
 }
 
+#controlGroups .group-add {
+  display: none;
+  pointer-events: none;
+}
+#contextPanel #controlGroups button.can-assign {
+  opacity: 1;
+}
+#contextPanel #controlGroups button.can-assign .group-add {
+  display: inline;
+  margin-left: 3px;
+  color: #e6c47e;
+  font: 18px/1 Arial;
+}
+#controlGroupHint {
+  position: fixed;
+  z-index: 26;
+  box-sizing: border-box;
+  width: 310px;
+  max-width: calc(100vw - 180px);
+  padding: 9px 12px;
+  border: 1px solid #bca574;
+  border-radius: 8px;
+  background: #101d22f5;
+  color: #f7e7c8;
+  font: 13px/1.4 Arial;
+  pointer-events: none;
+}
+#controlGroupHint[hidden] {
+  display: none;
+}
 #contextPanel #idleWorkers {
   position: absolute;
   left: 192px;
