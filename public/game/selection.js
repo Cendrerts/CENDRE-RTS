@@ -48,3 +48,7 @@ export function filterSelection(selection, units, type, remove = false) {
     selection.has(unit.id) && unit.hp > 0 && (remove ? unit.type !== type : unit.type === type),
   ).map((unit) => unit.id));
 }
+
+export function armyUnits(units, team) {
+  return units.filter((unit) => unit.team === team && unit.hp > 0 && unit.type !== 'commis');
+}

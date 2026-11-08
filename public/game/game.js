@@ -2,13 +2,14 @@ import { initProduction } from './production.js';
 import { panelModel, panelVisibility } from './panel.js';
 import { readSettings, writeSettings } from './settings.js';
 import { bindAudioUnlock } from './audio-unlock.js';
+import { shouldAutoPause } from './auto-pause.js';
 import { minimapToWorld, clampCamera, attackDirection, groupAttackAlerts } from './camera.js';
 'use strict';
 import { CuistotsAmbience } from './cuistots-ambience.js';
 import { orderFeedback, drawOrderFeedback, vibrateOrder } from './order-feedback.js';
 import { UnitVoices, selectionVoice } from './unit-voices.js';
 import { createRadialMenu } from './radial.js';
-import { filterSelection, cameraBounds, unitsOfType, createPortraitTap, unitsInBox, boxSelection } from './selection.js';
+import { armyUnits, filterSelection, cameraBounds, unitsOfType, createPortraitTap, unitsInBox, boxSelection } from './selection.js';
 import { createGestures } from './gestures.js';
 import { resolveTap, isEmptyTap } from './tap.js';
 import { installMobileDisplay } from './mobile-display.js';
@@ -280,11 +281,25 @@ function choose(t) {
   $('#chooseHuman').setAttribute('aria-pressed', String(t === 0));
   $('#chooseGhost').setAttribute('aria-pressed', String(t === 1));
 }
-$('#start').onclick = () => {
+const welcomeTitle = $('#modalTitle').textContent;
+const welcomeText = $('#modalText').textContent;
+const startLabel = $('#start').innerHTML;
+$('#matchMenu').onclick = async () => {
+  if (net?.finished) await leaveRoom();
+  $('#veil').classList.remove('match-ended');
+  $('#matchStats')?.remove();
+  $('#modalTitle').textContent = welcomeTitle;
+  $('#modalText').textContent = welcomeText;
+  $('#start').innerHTML = startLabel;
+  $('#veil').style.display = 'flex';
+};
+$('#start').onclick = async () => {
+  if (net?.finished) await leaveRoom();
   if (net) {
     notify('Quittez le salon avant de lancer le solo.');
     return;
   }
+  $('#veil').classList.remove('match-ended');
   state = Sim.create();
   controlGroupsUI?.reset();
   selected.clear();
@@ -370,11 +385,7 @@ function closePauseMenu() {
   updateAmbience();
   $('#pause').focus();
 }
-$('#pause').onclick = () => {
-  if (!$('#pauseMenu').hidden) {
-    closePauseMenu();
-    return;
-  }
+function openPauseMenu() {
   if (!running) return;
   touchUI?.stop();
   radial?.close();
@@ -387,7 +398,21 @@ $('#pause').onclick = () => {
   if (!net) paused = true;
   updateAmbience();
   $('#resumeGame').focus();
+}
+$('#pause').onclick = () => {
+  if (!$('#pauseMenu').hidden) {
+    closePauseMenu();
+    return;
+  }
+  openPauseMenu();
 };
+function autoPause(hidden) {
+  if (shouldAutoPause({ multiplayer: !!net, hidden, running, paused })) {
+    openPauseMenu();
+  }
+}
+document.addEventListener('visibilitychange', () => autoPause(document.visibilityState === 'hidden'));
+window.addEventListener('pagehide', () => autoPause(true));
 $('#closePause').onclick = closePauseMenu;
 $('#resumeGame').onclick = closePauseMenu;
 $('#pauseMenu').onclick = (event) => {
@@ -781,6 +806,40 @@ function finish() {
   $('#modalTitle').textContent = state.winner === player ? 'Victoire !' : 'Votre base est tombée';
   $('#modalText').textContent =
     'La bataille est terminée. Changez de camp ou relancez pour essayer une autre stratégie.';
+  const result = Sim.matchStats(state);
+  const minutes = Math.floor(result.duration / 60);
+  const seconds = Math.floor(result.duration % 60);
+  const table = document.createElement('table');
+  table.id = 'matchStats';
+  const caption = table.createCaption();
+  caption.textContent = 'Durée : ' + String(minutes).padStart(2, '0') + ':' + String(seconds).padStart(2, '0');
+  const header = table.createTHead().insertRow();
+  for (const label of ['Statistiques', 'Vous', 'Adversaire']) {
+    const cell = document.createElement('th');
+    cell.scope = 'col';
+    cell.textContent = label;
+    header.append(cell);
+  }
+  const body = table.createTBody();
+  for (const [key, label] of [
+    ['rubiesCollected', 'Rubis récoltés'],
+    ['unitsProduced', 'Unités produites'],
+    ['unitsLost', 'Unités perdues'],
+    ['unitsKilled', 'Unités tuées'],
+    ['buildingsDestroyed', 'Bâtiments détruits'],
+  ]) {
+    const row = body.insertRow();
+    const heading = document.createElement('th');
+    heading.scope = 'row';
+    heading.textContent = label;
+    row.append(heading);
+    for (const team of [player, 1 - player]) {
+      row.insertCell().textContent = result.teams[team][key];
+    }
+  }
+  $('#matchStats')?.remove();
+  $('#modalTitle').after(table);
+  $('#veil').classList.add('match-ended');
   $('#start').innerHTML = 'Nouvelle escarmouche →';
   $('#veil').style.display = 'flex';
 }
@@ -1287,6 +1346,7 @@ async function leaveRoom() {
   running = false;
   paused = false;
   $('#veil').style.display = 'flex';
+  $('#veil').classList.remove('match-ended');
   $('#modalTitle').textContent = 'Explorez. Occupez. Conquérez.';
   $('#modalText').textContent = 'Créez un nouveau duel ou lancez une escarmouche solo.';
   try {
@@ -1604,9 +1664,9 @@ controlGroupsUI = initControlGroups({
   enabled: () => running && !paused,
   units: (index) => groupUnits(controlGroups(), index, state.units, player),
   icon: portraitFor,
-  assign: (index) => {
+  assign: (index, { quiet = false } = {}) => {
     const units = assignGroup(controlGroups(), index, selected, state.units, player);
-    notify('Groupe ' + (index + 1) + ' assigné · ' + units.length + ' unités');
+    if (!quiet) notify('Groupe ' + (index + 1) + ' assigné · ' + units.length + ' unités');
   },
   select: (index, center) => {
     const units = groupUnits(controlGroups(), index, state.units, player);
@@ -1622,6 +1682,28 @@ controlGroupsUI = initControlGroups({
     updateUI();
   },
 });
+
+const armyButton = document.createElement('button');
+armyButton.id = 'armySelect';
+armyButton.type = 'button';
+armyButton.textContent = 'Armée';
+armyButton.onclick = () => {
+  if (!running || paused) return;
+  const units = armyUnits(state.units, player);
+  if (!units.length) {
+    notify('Aucune unité de combat');
+    return;
+  }
+  panelContext = {};
+  buildGhost = null;
+  selected = new Set(units.map((unit) => unit.id));
+  selectedMine = null;
+  portraitTap.reset();
+  playSelectionVoice(units);
+  updateUI();
+  notify(units.length + " unités · Toute l'armée");
+};
+$('#controlGroups').append(armyButton);
 
 function openRadial(e, context) {
   radial.open(e.clientX, e.clientY, { ...context, team: player });

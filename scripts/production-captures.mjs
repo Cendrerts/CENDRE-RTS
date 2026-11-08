@@ -64,7 +64,7 @@ try {
     }
     const bar = await page.locator('#productionBar').boundingBox();
     assert.equal(bar.x + bar.width, 832);
-    for (const selector of ['#baseAction', '#selectionToggle', '#attackAction', '.camera', '#controlGroups', '#minimap']) {
+    for (const selector of ['#baseAction', '#selectionToggle', '#attackAction', '.camera', '#controlGroups', '#armySelect', '#minimap']) {
       const other = await page.locator(selector).boundingBox();
       if (!other) continue;
       assert(bar.x + bar.width <= other.x || other.x + other.width <= bar.x ||
