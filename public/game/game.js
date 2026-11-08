@@ -1,3 +1,4 @@
+import { initProduction } from './production.js';
 import { panelModel, panelVisibility } from './panel.js';
 import { readSettings, writeSettings } from './settings.js';
 import { bindAudioUnlock } from './audio-unlock.js';
@@ -247,6 +248,8 @@ let panelSignature = '';
 let rallyArmed = null;
 let panelVisibilityState = {};
 let patrolArmed = false;
+let productionUI = null;
+
 function updateUI() {
   let army = state.units.filter((u) => u.team === player);
   selected = new Set([...selected].filter((id) => army.some((u) => u.id === id)));
@@ -263,6 +266,7 @@ function updateUI() {
         ? '◉ Tour : occupée par l’adversaire'
         : '◉ Tour : non contrôlée';
   renderContextPanel();
+  productionUI?.refresh(state, player, running);
   touchUI?.refresh();
   controlGroupsUI?.refresh();
   radial?.refresh();
@@ -2136,3 +2140,8 @@ function renderContextPanel() {
   }
 }
 renderContextPanel();
+
+productionUI = initProduction({
+  enabled: () => running && !paused,
+  command: panelCommand,
+});
