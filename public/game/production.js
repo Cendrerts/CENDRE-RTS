@@ -1,18 +1,15 @@
-import { CendreSim as Sim } from './sim.js';
+import { CendreSim as Sim, canRecruit } from './sim.js';
 
 export function productionModel(state, player) {
   const queue = state.queues[player];
-  const population = state.units.filter((unit) => unit.team === player).length + queue.length;
   return ['commis', 'knight', 'archer', 'mage'].map((type) => {
     const stats = Sim.stats(type, player);
-    const producers = Sim.producers(state, player, type);
     return {
       type,
       name: stats.name,
       cost: stats.cost,
       queued: queue.filter((job) => job.type === type).length,
-      disabled: state.rubies[player] < stats.cost || population >= 30 ||
-        !producers.some((producer) => queue.filter((job) => job.producerId === producer.id).length < 8),
+      disabled: !canRecruit(state, player, type),
     };
   });
 }
@@ -33,11 +30,21 @@ export function initProduction(api) {
   for (const type of ['commis', 'knight', 'archer', 'mage']) {
     const button = document.createElement('button');
     button.dataset.type = type;
+    const name = document.createElement('span');
+    name.className = 'productionName';
+    const cost = document.createElement('span');
+    cost.className = 'productionCost';
+    const badge = document.createElement('span');
+    badge.className = 'productionBadge';
+    badge.hidden = true;
+    button.append(name, cost, badge);
+    button.title = 'Appui long : recruter jusqu’à 5 unités';
     let press = null;
     let suppressClick = false;
     function cancel() {
       if (press) clearTimeout(press.timer);
       press = null;
+      button.classList.remove('productionHolding');
     }
     button.addEventListener('pointerdown', (event) => {
       if (press || event.button !== 0 || button.disabled || !api.enabled()) return;
@@ -45,10 +52,12 @@ export function initProduction(api) {
       suppressClick = false;
       button.setPointerCapture(event.pointerId);
       press = { id: event.pointerId, x: event.clientX, y: event.clientY };
+      button.classList.add('productionHolding');
       press.timer = setTimeout(() => {
         suppressClick = true;
         cancel();
         if (bar.hidden || root.hidden || !api.enabled()) return;
+        api.vibrate();
         for (let index = 0; index < 5; index++) api.command({ kind: 'recruit', type });
       }, 450);
     });
@@ -81,9 +90,16 @@ export function initProduction(api) {
       }
       for (const item of productionModel(state, player)) {
         const button = buttons.get(item.type);
-        button.disabled = item.disabled || !api.enabled();
-        button.textContent = `${item.name} · ${item.cost} ♦ · File : ${item.queued}`;
-        button.title = 'Appui long : recruter jusqu’à 5 unités';
+        const disabled = item.disabled || !api.enabled();
+        const signature = JSON.stringify([item.name, item.cost, item.queued, disabled]);
+        if (button.dataset.signature === signature) continue;
+        button.dataset.signature = signature;
+        button.disabled = disabled;
+        button.querySelector('.productionName').textContent = item.name;
+        button.querySelector('.productionCost').textContent = `${item.cost} ♦`;
+        const badge = button.querySelector('.productionBadge');
+        badge.textContent = String(item.queued);
+        badge.hidden = item.queued <= 0;
       }
     },
   };

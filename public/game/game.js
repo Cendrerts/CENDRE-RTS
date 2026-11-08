@@ -2144,4 +2144,5 @@ renderContextPanel();
 productionUI = initProduction({
   enabled: () => running && !paused,
   command: panelCommand,
+  vibrate: () => vibrateOrder(settings.vibration),
 });

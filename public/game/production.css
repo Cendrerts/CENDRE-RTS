@@ -38,7 +38,55 @@
 #productionBar button {
   flex: 1;
   min-height: 64px;
-  overflow-wrap: anywhere;
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  isolation: isolate;
+}
+.productionName, .productionCost {
+  position: relative;
+  display: block;
+}
+.productionName {
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.productionCost {
+  margin-top: 6px;
+}
+.productionBadge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 8px;
+  background: #f7e7c8;
+  color: #14252b;
+  font-size: 11px;
+  line-height: 16px;
+}
+.productionBadge[hidden] {
+  display: none;
+}
+#productionBar button::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: #bca57466;
+  transform: scaleX(0);
+  transform-origin: left;
+}
+#productionBar button.productionHolding::before {
+  animation: productionHold 450ms linear forwards;
+}
+@keyframes productionHold {
+  to {
+    transform: scaleX(1);
+  }
 }
 #productionBar button:disabled {
   opacity: 0.45;
