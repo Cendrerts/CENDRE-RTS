@@ -407,7 +407,7 @@
 
 #contextPanel #idleWorkers {
   position: absolute;
-  left: 192px;
+  left: 260px;
   bottom: 116px;
   width: 148px;
   height: 44px;
@@ -418,4 +418,9 @@
 }
 #contextPanel[data-collapsed='true'] #idleWorkers {
   bottom: 48px;
+}
+
+#contextPanel #controlGroups #armySelect {
+  width: 60px;
+  background: #142229dc;
 }
