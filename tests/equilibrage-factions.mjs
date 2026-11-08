@@ -42,39 +42,53 @@ try {
   await writeFile(join(directory, 'package.json'), '{"type":"module"}');
   const { CendreSim: reversedSim } = await import(pathToFileURL(join(directory, 'sim.js')));
   const { createAI: reversedAI } = await import(pathToFileURL(join(directory, 'ai.js')));
-  const wins = { cooks: 0, rats: 0 };
-  for (let game = 0; game < 10; game++) {
+  const wins = { cooks: 0, rats: 0, timeout: 0 };
+  const outcomes = new Set();
+  const timeoutSeeds = [];
+  for (let game = 0; game < 20; game++) {
     const reversed = game % 2 === 1;
     const sim = reversed ? reversedSim : S;
     const ai = reversed ? reversedAI : createAI;
     const ratsTeam = reversed ? 0 : 1;
     assert.equal(sim.unitLimit(ratsTeam), 45);
     assert.equal(sim.unitLimit(1 - ratsTeam), 30);
-    let seed = 18 + game;
+    const initialSeed = 18 + game;
+    let seed = initialSeed;
     const random = () => {
       seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
       return seed / 4294967296;
     };
     const state = sim.create();
-    for (const unit of state.units) {
-      const cell = sim.nearest(unit.x + random() * 40 - 20, unit.y + random() * 40 - 20);
+    const startDelays = [random() * 4, random() * 4];
+    for (const unit of state.units.filter((unit) => unit.type === 'commis')) {
+      const cell = sim.nearest(unit.x + random() * 120 - 60, unit.y + random() * 120 - 60);
       unit.x = (cell % sim.COLS) * sim.CELL + 10;
       unit.y = Math.floor(cell / sim.COLS) * sim.CELL + 10;
     }
     sim.visibility(state);
     const controllers = [0, 1].map((team) => ai(team, 'brutal'));
     for (let step = 0; step < 12000 && state.winner === null; step++) {
-      for (const team of reversed ? [1, 0] : [0, 1]) controllers[team].update(state);
+      for (const team of reversed ? [1, 0] : [0, 1]) {
+        if (state.time >= startDelays[team]) {
+          controllers[team].update(state);
+        }
+      }
       sim.tick(state, 0.1);
     }
     const winner = state.winner === null ? 'timeout' : state.winner === ratsTeam ? 'rats' : 'cooks';
     console.log(`Seed ${18 + game}: ${winner}, ${state.time.toFixed(1)}s, rats team ${ratsTeam}, rubies ${state.rubies.map(Math.round).join('/')}`);
-    assert.notEqual(state.winner, null, `Seed ${18 + game}: no winner within 20 simulated minutes`);
+    outcomes.add(`${winner}:${Math.round(state.time)}`);
+    if (state.winner === null) {
+      timeoutSeeds.push(initialSeed);
+    }
     assert(state.time <= 1200 + 1e-6);
     wins[winner]++;
   }
-  assert(wins.rats >= 4 && wins.rats <= 6, `Rats win ${wins.rats}/10; expected 4–6 (${JSON.stringify(wins)})`);
-  console.log('PASS: Brutal tournament balanced 4–6, faction population caps and military costs.');
+  console.log(`Tournament: rats ${wins.rats}/20, cooks ${wins.cooks}/20, timeouts ${wins.timeout}, distinct outcomes ${outcomes.size}/20, timeout seeds: ${timeoutSeeds.join(', ') || 'none'}`);
+  assert(outcomes.size >= 16, `Only ${outcomes.size}/20 distinct (winner, rounded duration) pairs; expected at least 16`);
+  assert.equal(wins.timeout, 0, `No winner within 20 minutes for seeds: ${timeoutSeeds.join(', ')}`);
+  assert(wins.rats >= 8 && wins.rats <= 12, `Rats win ${wins.rats}/20; expected 8–12 (${JSON.stringify(wins)})`);
+  console.log('PASS: Brutal tournament balanced 8–12, faction population caps and military costs.');
 } finally {
   await rm(directory, { recursive: true, force: true });
 }
