@@ -248,6 +248,8 @@ let panelSignature = '';
 let rallyArmed = null;
 let panelVisibilityState = {};
 let patrolArmed = false;
+let queueArmed = false;
+let queueSelection = '';
 function updateUI() {
   let army = state.units.filter((u) => u.team === player);
   selected = new Set([...selected].filter((id) => army.some((u) => u.id === id)));
@@ -338,6 +340,8 @@ $('#hold').onclick = () => {
   state.units
     .filter((u) => selected.has(u.id))
     .forEach((u) => {
+      u.orderQueue = [];
+      u.queueActive = false;
       u.patrol = null;
       u.manual = null;
       u.followId = null;
@@ -670,10 +674,11 @@ function handleFieldTap(e, duration) {
         ids: [...selected],
         x: p.x,
         y: p.y,
+        queue: queueArmed && !patrolArmed && !target,
         target: target ? (target.base ? { base: true } : { id: target.id }) : null,
       });
     } else if (patrolArmed) Sim.patrol(state, [...selected], p.x, p.y);
-    else Sim.order(state, [...selected], p.x, p.y, target, !target && !attackMoveArmed);
+    else Sim.order(state, [...selected], p.x, p.y, target, !target && !attackMoveArmed, queueArmed && !target);
     patrolArmed = false;
     attackMoveArmed = false;
     $('#attackAction').setAttribute('aria-pressed', 'false');
@@ -1001,6 +1006,7 @@ function draw() {
     if (Sim.visibleAt(state, player, s.x, s.y) && Sim.visibleAt(state, player, s.tx, s.ty))
       line(s.x, s.y, s.tx, s.ty, s.team ? '#8ef1ce' : '#ffd388', 2);
   drawFog();
+  drawOrderQueues();
   if (marker) {
     const elapsed = (performance.now() - marker.started) / 1000;
     const target = marker.base ? state.bases[1 - player] : state.units.find((unit) => unit.id === marker.targetId);
@@ -1401,6 +1407,32 @@ function openedRallyBuilding() {
   const building = id && Sim.rallyBuilding(state, player, id);
   return building ? { id, building } : null;
 }
+function drawOrderQueues() {
+  ctx.save();
+  ctx.strokeStyle = TEAM_COLORS[player];
+  ctx.lineWidth = 1.5 / scale;
+  ctx.setLineDash([6 / scale, 5 / scale]);
+  for (const unit of state.units) {
+    if (!selected.has(unit.id) || unit.team !== player || !unit.orderQueue?.length) continue;
+    ctx.beginPath();
+    ctx.moveTo(unit.x, unit.y);
+    if (!unit.queueActive && unit.path.length) {
+      const destination = unit.path.at(-1);
+      ctx.lineTo(destination.x, destination.y);
+    }
+    for (const point of unit.orderQueue) ctx.lineTo(point.x, point.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    for (const point of unit.orderQueue) {
+      ctx.beginPath();
+      ctx.arc(point.x, point.y, 4 / scale, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.setLineDash([6 / scale, 5 / scale]);
+  }
+  ctx.restore();
+}
+
 function drawRally() {
   const opened = openedRallyBuilding();
   const point = Sim.rallyPoint(state, opened?.building.rally);
@@ -1975,6 +2007,9 @@ function renderContextPanel() {
   }
   panelVisibilityState = panelVisibility(panelVisibilityState);
   if (rallyArmed && openedRallyBuilding()?.id !== rallyArmed) rallyArmed = null;
+  const selectionKey = [...selected].sort((a, b) => a - b).join(',');
+  if (selectionKey !== queueSelection || !selectionKey) queueArmed = false;
+  queueSelection = selectionKey;
   const model = panelModel(state, player, selected, {
     ...panelContext,
     width: innerWidth,
@@ -1998,7 +2033,7 @@ function renderContextPanel() {
   const currentHealthText = $('#contextIdentity .health-text');
   if (currentHealthText)
     currentHealthText.textContent = `${Math.ceil(model.left.hp)}/${Math.ceil(model.left.max)}`;
-  const signature = JSON.stringify([model, paused, patrolArmed, rallyArmed], (key, value) =>
+  const signature = JSON.stringify([model, paused, patrolArmed, rallyArmed, queueArmed], (key, value) =>
     ['remaining', 'hp', 'status'].includes(key) ? undefined : value,
   );
   if (signature === panelSignature) return;
@@ -2159,7 +2194,18 @@ function renderContextPanel() {
       updateUI();
     };
     $('#hold').innerHTML = '⛨ <span>Tenir position</span>';
-    actions.append($('#hold'), patrol, ability, $('#retreat'));
+    const queue = document.createElement('button');
+    queue.id = 'queueOrders';
+    queue.textContent = '⇢ Enchaîner';
+    queue.style.minHeight = '44px';
+    queue.style.minWidth = '44px';
+    queue.setAttribute('aria-pressed', String(queueArmed));
+    queue.disabled = paused;
+    queue.onclick = () => {
+      queueArmed = !queueArmed;
+      updateUI();
+    };
+    actions.append($('#hold'), patrol, queue, ability, $('#retreat'));
   } else {
     const opened = openedRallyBuilding();
     if (opened) {
