@@ -15,6 +15,7 @@ for (const multiplayer of [false, true]) {
     $, running: true, paused: false, net: multiplayer ? {} : null,
     touchUI: { stop() { stops++; } }, radial: { close() {} },
     updateAmbience() {}, window: { addEventListener() {} },
+    document: { addEventListener() {} },
   });
   vm.runInContext(handlers, context);
   $('#pause').onclick();

@@ -1,6 +1,7 @@
 import { panelModel, panelVisibility } from './panel.js';
 import { readSettings, writeSettings } from './settings.js';
 import { bindAudioUnlock } from './audio-unlock.js';
+import { shouldAutoPause } from './auto-pause.js';
 import { minimapToWorld, clampCamera, attackDirection, groupAttackAlerts } from './camera.js';
 'use strict';
 import { CuistotsAmbience } from './cuistots-ambience.js';
@@ -366,11 +367,7 @@ function closePauseMenu() {
   updateAmbience();
   $('#pause').focus();
 }
-$('#pause').onclick = () => {
-  if (!$('#pauseMenu').hidden) {
-    closePauseMenu();
-    return;
-  }
+function openPauseMenu() {
   if (!running) return;
   touchUI?.stop();
   radial?.close();
@@ -383,7 +380,21 @@ $('#pause').onclick = () => {
   if (!net) paused = true;
   updateAmbience();
   $('#resumeGame').focus();
+}
+$('#pause').onclick = () => {
+  if (!$('#pauseMenu').hidden) {
+    closePauseMenu();
+    return;
+  }
+  openPauseMenu();
 };
+function autoPause(hidden) {
+  if (shouldAutoPause({ multiplayer: !!net, hidden, running, paused })) {
+    openPauseMenu();
+  }
+}
+document.addEventListener('visibilitychange', () => autoPause(document.visibilityState === 'hidden'));
+window.addEventListener('pagehide', () => autoPause(true));
 $('#closePause').onclick = closePauseMenu;
 $('#resumeGame').onclick = closePauseMenu;
 $('#pauseMenu').onclick = (event) => {
