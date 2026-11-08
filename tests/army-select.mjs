@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { armyUnits } from '../public/game/selection.js';
+import { armyUnits, armyToastText } from '../public/game/selection.js';
 
 const units = [
   { id: 1, team: 0, type: 'knight', hp: 100, x: 10, y: 10 },
@@ -15,4 +15,6 @@ const units = [
 assert.deepEqual(armyUnits(units, 0), units.slice(0, 3));
 assert.deepEqual(armyUnits(units.filter((unit) => unit.type === 'commis' || unit.hp <= 0), 0), []);
 assert.deepEqual(armyUnits([], 0), []);
+assert.equal(armyToastText(1), "1 unité · Toute l'armée");
+assert.equal(armyToastText(3), "3 unités · Toute l'armée");
 console.log('PASS: army selection includes off-screen combat units, excludes workers, enemies and dead units.');
