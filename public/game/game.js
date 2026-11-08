@@ -276,11 +276,25 @@ function choose(t) {
   $('#chooseHuman').setAttribute('aria-pressed', String(t === 0));
   $('#chooseGhost').setAttribute('aria-pressed', String(t === 1));
 }
-$('#start').onclick = () => {
+const welcomeTitle = $('#modalTitle').textContent;
+const welcomeText = $('#modalText').textContent;
+const startLabel = $('#start').innerHTML;
+$('#matchMenu').onclick = async () => {
+  if (net?.finished) await leaveRoom();
+  $('#veil').classList.remove('match-ended');
+  $('#matchStats')?.remove();
+  $('#modalTitle').textContent = welcomeTitle;
+  $('#modalText').textContent = welcomeText;
+  $('#start').innerHTML = startLabel;
+  $('#veil').style.display = 'flex';
+};
+$('#start').onclick = async () => {
+  if (net?.finished) await leaveRoom();
   if (net) {
     notify('Quittez le salon avant de lancer le solo.');
     return;
   }
+  $('#veil').classList.remove('match-ended');
   state = Sim.create();
   controlGroupsUI?.reset();
   selected.clear();
@@ -777,6 +791,40 @@ function finish() {
   $('#modalTitle').textContent = state.winner === player ? 'Victoire !' : 'Votre base est tombée';
   $('#modalText').textContent =
     'La bataille est terminée. Changez de camp ou relancez pour essayer une autre stratégie.';
+  const result = Sim.matchStats(state);
+  const minutes = Math.floor(result.duration / 60);
+  const seconds = Math.floor(result.duration % 60);
+  const table = document.createElement('table');
+  table.id = 'matchStats';
+  const caption = table.createCaption();
+  caption.textContent = 'Durée : ' + String(minutes).padStart(2, '0') + ':' + String(seconds).padStart(2, '0');
+  const header = table.createTHead().insertRow();
+  for (const label of ['Statistiques', 'Vous', 'Adversaire']) {
+    const cell = document.createElement('th');
+    cell.scope = 'col';
+    cell.textContent = label;
+    header.append(cell);
+  }
+  const body = table.createTBody();
+  for (const [key, label] of [
+    ['rubiesCollected', 'Rubis récoltés'],
+    ['unitsProduced', 'Unités produites'],
+    ['unitsLost', 'Unités perdues'],
+    ['unitsKilled', 'Unités tuées'],
+    ['buildingsDestroyed', 'Bâtiments détruits'],
+  ]) {
+    const row = body.insertRow();
+    const heading = document.createElement('th');
+    heading.scope = 'row';
+    heading.textContent = label;
+    row.append(heading);
+    for (const team of [player, 1 - player]) {
+      row.insertCell().textContent = result.teams[team][key];
+    }
+  }
+  $('#matchStats')?.remove();
+  $('#modalTitle').after(table);
+  $('#veil').classList.add('match-ended');
   $('#start').innerHTML = 'Nouvelle escarmouche →';
   $('#veil').style.display = 'flex';
 }
@@ -1283,6 +1331,7 @@ async function leaveRoom() {
   running = false;
   paused = false;
   $('#veil').style.display = 'flex';
+  $('#veil').classList.remove('match-ended');
   $('#modalTitle').textContent = 'Explorez. Occupez. Conquérez.';
   $('#modalText').textContent = 'Créez un nouveau duel ou lancez une escarmouche solo.';
   try {
