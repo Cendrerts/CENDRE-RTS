@@ -7,7 +7,7 @@ import { CuistotsAmbience } from './cuistots-ambience.js';
 import { orderFeedback, drawOrderFeedback, vibrateOrder } from './order-feedback.js';
 import { UnitVoices, selectionVoice } from './unit-voices.js';
 import { createRadialMenu } from './radial.js';
-import { filterSelection, cameraBounds, unitsOfType, createPortraitTap, unitsInBox, boxSelection } from './selection.js';
+import { armyUnits, filterSelection, cameraBounds, unitsOfType, createPortraitTap, unitsInBox, boxSelection } from './selection.js';
 import { createGestures } from './gestures.js';
 import { resolveTap, isEmptyTap } from './tap.js';
 import { installMobileDisplay } from './mobile-display.js';
@@ -1618,6 +1618,28 @@ controlGroupsUI = initControlGroups({
     updateUI();
   },
 });
+
+const armyButton = document.createElement('button');
+armyButton.id = 'armySelect';
+armyButton.type = 'button';
+armyButton.textContent = 'Armée';
+armyButton.onclick = () => {
+  if (!running || paused) return;
+  const units = armyUnits(state.units, player);
+  if (!units.length) {
+    notify('Aucune unité de combat');
+    return;
+  }
+  panelContext = {};
+  buildGhost = null;
+  selected = new Set(units.map((unit) => unit.id));
+  selectedMine = null;
+  portraitTap.reset();
+  playSelectionVoice(units);
+  updateUI();
+  notify(units.length + " unités · Toute l'armée");
+};
+$('#controlGroups').append(armyButton);
 
 function openRadial(e, context) {
   radial.open(e.clientX, e.clientY, { ...context, team: player });
