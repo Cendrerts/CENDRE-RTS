@@ -171,7 +171,7 @@ export function createAI(team, difficulty = 'normal') {
                 // Reserve population for the next mine and the surviving scout.
                 const militaryPopulation = army.length + state.queues[team].filter((job) => job.type !== 'commis').length;
                 const economyCapacity = Number(brutal) + settings.workers * (brutal ? Math.min(3, owned.length + 1) : 3) + Number(workers.some((worker) => worker.id === scout));
-                if (militaryPopulation >= 30 - economyCapacity) break;
+                if (militaryPopulation >= Sim.unitLimit(team) - economyCapacity) break;
                 if (state.queues[team].some((job) => job.producerId === producer.id)) continue;
                 if (Sim.recruit(state, building.unit, team, producer.id)) actions++;
                 else affordable = false;
@@ -240,7 +240,7 @@ export function createAI(team, difficulty = 'normal') {
       const waveStrength = attackers.reduce((strength, unit) => strength + unit.hp / Sim.stats(unit.type, 0).hp, 0);
       const counterattack = brutal && (state.time < counterUntil || threats.length >= Math.max(3, knownArmy.size) && army.length > threats.length * 1.5) && attackers.length >= 5;
       const enoughTroops = counterattack || waveStrength >= (brutal ? Math.min(12, settings.wave + metrics.waves * 2) : settings.wave) && attackWindow;
-      const saturated = own.length + state.queues[team].length >= 30;
+      const saturated = own.length + state.queues[team].length >= Sim.unitLimit(team);
       const overdue = lastWave > 0 && state.time - lastWave > 90;
       const assembly = brutal ? attackers : reserve;
       const assembled = assembly.filter((unit) => distance(unit, rally) < 240).length >= assembly.length * 0.7;
