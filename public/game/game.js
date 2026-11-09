@@ -9,7 +9,7 @@ import { CuistotsAmbience } from './cuistots-ambience.js';
 import { orderFeedback, drawOrderFeedback, vibrateOrder } from './order-feedback.js';
 import { UnitVoices, selectionVoice } from './unit-voices.js';
 import { createRadialMenu } from './radial.js';
-import { armyUnits, filterSelection, cameraBounds, unitsOfType, createPortraitTap, unitsInBox, boxSelection } from './selection.js';
+import { armyUnits, armyToastText, filterSelection, cameraBounds, unitsOfType, createPortraitTap, unitsInBox, boxSelection } from './selection.js';
 import { createGestures } from './gestures.js';
 import { resolveTap, isEmptyTap } from './tap.js';
 import { installMobileDisplay } from './mobile-display.js';
@@ -1701,7 +1701,7 @@ armyButton.onclick = () => {
   portraitTap.reset();
   playSelectionVoice(units);
   updateUI();
-  notify(units.length + " unités · Toute l'armée");
+  notify(armyToastText(units.length));
 };
 $('#controlGroups').append(armyButton);
 

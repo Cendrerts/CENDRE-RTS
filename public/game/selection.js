@@ -52,3 +52,7 @@ export function filterSelection(selection, units, type, remove = false) {
 export function armyUnits(units, team) {
   return units.filter((unit) => unit.team === team && unit.hp > 0 && unit.type !== 'commis');
 }
+
+export function armyToastText(count) {
+  return count + (count === 1 ? " unité · Toute l'armée" : " unités · Toute l'armée");
+}
