@@ -1,3 +1,4 @@
+import { unitLabel } from './selection.js';
 import { CendreSim as Sim, canRecruit } from './sim.js';
 
 export function recruitToastText(launched, message) {
@@ -10,11 +11,12 @@ export function productionModel(state, player) {
   const queue = state.queues[player];
   return ['commis', 'knight', 'archer', 'mage'].map((type) => {
     const stats = Sim.stats(type, player);
+    const queued = queue.filter((job) => job.type === type).length;
     return {
       type,
-      name: stats.name,
+      name: unitLabel(type, queued || 1, player),
       cost: stats.cost,
-      queued: queue.filter((job) => job.type === type).length,
+      queued,
       disabled: !canRecruit(state, player, type),
     };
   });

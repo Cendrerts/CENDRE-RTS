@@ -1,3 +1,27 @@
+import { BrigadeCuisine } from './cooks-config.js';
+import { RatsGout } from './rats-config.js';
+
+const unitPlurals = [
+  {
+    commis: 'Commis',
+    knight: 'Gardes-Manger',
+    archer: 'Bouchers-Tireurs',
+    mage: 'Chefs de Brigade',
+  },
+  {
+    commis: 'Rats-Essuyeurs',
+    knight: 'Rats-Éboueurs',
+    archer: 'Rats-Balance-Déchets',
+    mage: 'Chamans de la Poubelle',
+  },
+];
+
+export function unitLabel(type, count, faction = 0) {
+  if (type === 'unit') return count === 1 ? 'unité' : 'unités';
+  const units = faction === 1 ? RatsGout.unites : BrigadeCuisine.unites;
+  return count === 1 ? units[type].name : unitPlurals[faction][type];
+}
+
 // This 2D engine uses world (x,y), equivalent to ground-plane (x,z).
 export function cameraBounds(ox, oy, scale, width, height) {
   return {
@@ -70,9 +94,9 @@ export function armyUnits(units, team) {
 }
 
 export function armyToastText(count) {
-  return count + (count === 1 ? " unité · Toute l'armée" : " unités · Toute l'armée");
+  return `${count} ${unitLabel('unit', count)} · Toute l'armée`;
 }
 
 export function groupToastText(index, count) {
-  return 'Groupe ' + (index + 1) + ' assigné · ' + count + (count === 1 ? ' unité' : ' unités');
+  return `Groupe ${index + 1} assigné · ${count} ${unitLabel('unit', count)}`;
 }

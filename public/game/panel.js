@@ -1,3 +1,4 @@
+import { unitLabel } from './selection.js';
 import { CendreSim as Sim } from './sim.js';
 
 export function panelCapacity(width = 844) {
@@ -44,7 +45,7 @@ export function panelModel(state, player, selection, context = {}) {
   const left = {
     name:
       mode === 'units'
-        ? counts.length > 1 ? 'unités' : Sim.stats(main, player).name
+        ? counts.length > 1 ? unitLabel('unit', units.length) : unitLabel(main, units.length, player)
         : producer?.name ||
           Sim.baseSites(state, player).find((base) => base.id === context.baseId)?.name ||
           'Votre armée',
@@ -72,7 +73,7 @@ export function panelModel(state, player, selection, context = {}) {
     items = counts.map((item) => ({
       ...item,
       kind: 'filter',
-      name: Sim.stats(item.type, player).name,
+      name: unitLabel(item.type, item.count, player),
     }));
   if (recruitmentProducer)
     items = [
