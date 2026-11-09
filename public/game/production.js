@@ -14,7 +14,7 @@ export function productionModel(state, player) {
     const queued = queue.filter((job) => job.type === type).length;
     return {
       type,
-      name: unitLabel(type, queued || 1, player),
+      name: unitLabel(type, 1, player),
       cost: stats.cost,
       queued,
       disabled: !canRecruit(state, player, type),

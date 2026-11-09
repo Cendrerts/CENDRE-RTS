@@ -30,8 +30,13 @@ for (const [faction, config] of [BrigadeCuisine, RatsGout].entries()) {
       const model = panelModel(state, faction, new Set(state.units.map((unit) => unit.id)));
       assert.equal(model.left.name, unitLabel(type, count, faction));
       assert.equal(model.grid[0][0].name, unitLabel(type, count, faction));
+    }
+    for (const count of [0, 1, 2, 7]) {
+      const state = Sim.create();
       state.queues[faction] = Array.from({ length: count }, () => ({ type }));
-      assert.equal(productionModel(state, faction).find((item) => item.type === type).name, unitLabel(type, count, faction));
+      const item = productionModel(state, faction).find((item) => item.type === type);
+      assert.equal(item.name, singular);
+      assert.equal(item.queued, count);
     }
   }
 }
