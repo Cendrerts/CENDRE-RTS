@@ -14,6 +14,22 @@ export function unitsOfType(units, team, type, bounds) {
   );
   return { total, visible };
 }
+export function createFieldDoubleTap() {
+  let previous = null;
+  return {
+    reset() {
+      previous = null;
+    },
+    tap(unitType, screenX, screenY, now) {
+      const double = previous?.unitType === unitType &&
+        now >= previous.time && now - previous.time < 350 &&
+        Math.hypot(screenX - previous.x, screenY - previous.y) < 40;
+      previous = double ? null : { unitType, x: screenX, y: screenY, time: now };
+      return double ? 'double' : 'single';
+    },
+  };
+}
+
 export function createPortraitTap() {
   let previous = null;
   return {
