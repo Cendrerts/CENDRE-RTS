@@ -430,6 +430,20 @@ export function canRecruit(s, team, type, producerId = null) {
       (!producerId || producer.id === producerId) &&
       queue.filter((job) => job.producerId === producer.id).length < 8);
 }
+// Evaluate on a copy because canRecruit also migrates older states.
+export function recruitBlockReason(state, team, type, producerId = null) {
+  const snapshot = structuredClone(state);
+  if (canRecruit(snapshot, team, type, producerId)) return null;
+  const queue = snapshot.queues[team];
+  const population = snapshot.units.filter((unit) => unit.team === team).length + queue.length;
+  if (population >= 30) return 'population';
+  const buildings = producers(snapshot, team, type).filter((producer) =>
+    !producerId || producer.id === producerId);
+  if (buildings.length && buildings.every((producer) =>
+    queue.filter((job) => job.producerId === producer.id).length >= 8)) return 'queues';
+  if (Object.hasOwn(TYPES, type) && snapshot.rubies[team] < stats(type, team).cost) return 'rubies';
+  return 'producer';
+}
 function recruit(s, type, team, producerId = null) {
   if (!canRecruit(s, team, type, producerId)) return false;
   const cfg = stats(type, team);
@@ -1164,6 +1178,7 @@ export const CendreSim = {
   spawn,
   recruit,
   canRecruit,
+  recruitBlockReason,
   order,
   patrol,
   build,

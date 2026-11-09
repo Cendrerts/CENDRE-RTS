@@ -58,7 +58,7 @@ export function initProduction(api) {
         cancel();
         if (bar.hidden || root.hidden || !api.enabled()) return;
         api.vibrate();
-        for (let index = 0; index < 5; index++) api.command({ kind: 'recruit', type });
+        api.recruitBatch({ kind: 'recruit', type }, 5);
       }, 450);
     });
     button.addEventListener('pointermove', (event) => {
@@ -91,10 +91,12 @@ export function initProduction(api) {
       for (const item of productionModel(state, player)) {
         const button = buttons.get(item.type);
         const disabled = item.disabled || !api.enabled();
-        const signature = JSON.stringify([item.name, item.cost, item.queued, disabled]);
+        const signature = JSON.stringify([item.name, item.cost, item.queued, disabled, api.enabled()]);
         if (button.dataset.signature === signature) continue;
         button.dataset.signature = signature;
-        button.disabled = disabled;
+        button.disabled = !api.enabled();
+        button.setAttribute('aria-disabled', String(disabled));
+        button.style.opacity = disabled ? '0.45' : '';
         button.querySelector('.productionName').textContent = item.name;
         button.querySelector('.productionCost').textContent = `${item.cost} ♦`;
         const badge = button.querySelector('.productionBadge');

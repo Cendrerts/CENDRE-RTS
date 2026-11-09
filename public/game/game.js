@@ -1958,11 +1958,40 @@ $('#baseAction').onclick = () => {
   layout();
   updateUI();
 };
+function requestRecruit(command, count = 1) {
+  if (!running || paused) return;
+  const preview = net ? structuredClone(state) : state;
+  let launched = 0;
+  let reason = null;
+  for (let index = 0; index < count; index++) {
+    reason = Sim.recruitBlockReason(preview, player, command.type, command.producerId);
+    if (reason) break;
+    if (net && !sendCommand(command)) break;
+    if (!Sim.recruit(preview, command.type, player, command.producerId)) break;
+    launched++;
+  }
+  if (reason) {
+    const population = preview.units.filter((unit) => unit.team === player).length + preview.queues[player].length;
+    const missing = Math.max(0, Sim.stats(command.type, player).cost - preview.rubies[player]);
+    const messages = {
+      population: `Population pleine (${population} / 30)`,
+      queues: 'Files pleines',
+      rubies: `Rubis insuffisants : il manque ${missing}`,
+      producer: 'Aucun bâtiment pour cette unité',
+    };
+    notify(launched ? `${launched} lancées · ${messages[reason]}` : messages[reason]);
+    toastTime = 3;
+  }
+  updateUI();
+}
 function panelCommand(command) {
   if (!running || paused) return;
+  if (command.kind === 'recruit') {
+    requestRecruit(command);
+    return;
+  }
   if (net) sendCommand(command);
   else if (command.kind === 'setRally') Sim.setRally(state, player, command);
-  else if (command.kind === 'recruit') Sim.recruit(state, command.type, player, command.producerId);
   else if (command.kind === 'construct')
     Sim.construct(state, player, command.type, command.baseId, command.slotId);
   else if (command.kind === 'build') Sim.build(state, player, command.index);
@@ -2076,7 +2105,8 @@ function renderContextPanel() {
       ? item.prerequisite || 'Rubis insuffisants ou file pleine'
       : item.name;
     button.setAttribute('aria-label', button.title);
-    button.disabled = paused || item.locked;
+    button.disabled = paused || (item.locked && item.kind !== 'recruit');
+    if (item.kind === 'recruit' && item.locked) button.style.opacity = '0.45';
     let timer;
     let removed = false;
     if (item.kind === 'filter') {
@@ -2226,5 +2256,6 @@ renderContextPanel();
 productionUI = initProduction({
   enabled: () => running && !paused,
   command: panelCommand,
+  recruitBatch: requestRecruit,
   vibrate: () => vibrateOrder(settings.vibration),
 });
