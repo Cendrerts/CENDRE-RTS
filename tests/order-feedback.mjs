@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
+import { createFieldDoubleTap } from '../public/game/selection.js';
 import { orderFeedback, drawOrderFeedback, vibrateOrder } from '../public/game/order-feedback.js';
 
 for (const [kind, shape, color] of [
@@ -44,6 +45,8 @@ for (const kind of ['move', 'attackMove', 'patrol', 'attack', 'gather']) {
     world: () => point,
     radial: null,
     buildGhost: null,
+    rallyArmed: null,
+    fieldDoubleTap: createFieldDoubleTap(),
     openedRallyBuilding: () => null,
     isEmptyTap: () => false,
     attackMoveArmed: kind === 'attackMove',

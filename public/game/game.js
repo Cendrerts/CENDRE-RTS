@@ -9,7 +9,7 @@ import { CuistotsAmbience } from './cuistots-ambience.js';
 import { orderFeedback, drawOrderFeedback, vibrateOrder } from './order-feedback.js';
 import { UnitVoices, selectionVoice } from './unit-voices.js';
 import { createRadialMenu } from './radial.js';
-import { armyUnits, armyToastText, filterSelection, cameraBounds, unitsOfType, createPortraitTap, unitsInBox, boxSelection } from './selection.js';
+import { armyUnits, armyToastText, filterSelection, cameraBounds, unitsOfType, createFieldDoubleTap, createPortraitTap, unitsInBox, boxSelection } from './selection.js';
 import { createGestures } from './gestures.js';
 import { resolveTap, isEmptyTap } from './tap.js';
 import { installMobileDisplay } from './mobile-display.js';
@@ -66,6 +66,7 @@ let state = Sim.create(),
   attackMoveArmed = false,
   selectedMine = null;
 const portraitTap = createPortraitTap();
+const fieldDoubleTap = createFieldDoubleTap();
 let networkGroups = createControlGroups();
 let controlGroupsUI;
 function controlGroups() {
@@ -166,10 +167,12 @@ function portraitFor(type) {
 function setupPortraits() {
   voices.reset();
   portraitTap.reset();
+  fieldDoubleTap.reset();
   panelContext = {};
   unitNames = player ? ghostNames : cookNames;
 }
 function layout() {
+  fieldDoubleTap.reset();
   scale = Math.max(viewWidth / W, viewHeight / H) * zoom;
   const center = clampCamera(cameraX, cameraY, viewWidth, viewHeight, scale, W, H);
   cameraX = center.x;
@@ -203,6 +206,7 @@ installMobileDisplay({
     }
     fieldPointers.clear();
     portraitTap.reset();
+    fieldDoubleTap.reset();
   },
 });
 function notify(text) {
@@ -218,10 +222,12 @@ function clearSelection() {
   selected.clear();
   selectedMine = null;
   portraitTap.reset();
+  fieldDoubleTap.reset();
   updateUI();
   notify('Sélection vidée');
 }
 function selectType(t, scope = 'all') {
+  fieldDoubleTap.reset();
   panelContext = {};
   buildGhost = null;
   const groups = viewportUnits(t),
@@ -318,6 +324,7 @@ $('#start').onclick = async () => {
   notify('Explorez avec vos unités. Glisser : caméra · Maintenir + glisser : sélection · 2 doigts : zoom');
 };
 $('#all').onclick = () => {
+  fieldDoubleTap.reset();
   panelContext = {};
   const units = state.units.filter((u) => u.team === player);
   selected = new Set(units.map((u) => u.id));
@@ -506,6 +513,7 @@ function world(e) {
 function handleFieldPointer(e, type) {
   if (type === 'down') {
     if (!running || paused) return;
+    if ($('#selectionToggle')?.getAttribute('aria-pressed') === 'true') fieldDoubleTap.reset();
     fieldPointers.add(e.pointerId);
     canvas.setPointerCapture(e.pointerId);
   } else if (!fieldPointers.has(e.pointerId)) return;
@@ -526,11 +534,15 @@ function applyFieldGesture(action) {
   if (!action) return;
   if (action.kind === 'hold') {
     holdIndicator = action;
-    if (action.ready) vibrateOrder(settings.vibration);
+    if (action.ready) {
+      fieldDoubleTap.reset();
+      vibrateOrder(settings.vibration);
+    }
     return;
   }
   holdIndicator = null;
   if (action.kind === 'camera') {
+    fieldDoubleTap.reset();
     selectionBox = null;
     if (!action.from) return;
     const anchorX = (action.from.x - ox) / scale;
@@ -544,6 +556,7 @@ function applyFieldGesture(action) {
     return;
   }
   if (action.kind === 'select-box') {
+    fieldDoubleTap.reset();
     selectionBox = action;
     if (action.final) {
       const start = { x: (action.start.x - ox) / scale, y: (action.start.y - oy) / scale };
@@ -557,6 +570,7 @@ function applyFieldGesture(action) {
       selected = nextSelection;
       selectedMine = null;
       portraitTap.reset();
+      fieldDoubleTap.reset();
       playSelectionVoice(units);
       selectionBox = null;
       updateUI();
@@ -576,6 +590,7 @@ for (const [event, type] of Object.entries({
 }
 let tapFlash = null;
 function handleFieldTap(e, duration) {
+  if (buildGhost || radial?.isGhost || rallyArmed) fieldDoubleTap.reset();
   let p = world(e);
   if (buildGhost && !radial?.isGhost) {
     const slot = state.slots[player].find((item) => !item.occupe && item.baseId === buildGhost.context.baseId && Math.hypot(item.x - p.x, item.y - p.y) < 30);
@@ -617,6 +632,7 @@ function handleFieldTap(e, duration) {
     !['select', 'radial', 'production', 'enemyBase'].includes(resolved.kind)
       ? { kind: 'move' }
       : resolved;
+  if (action.kind !== 'select') fieldDoubleTap.reset();
   if (action.kind === 'radial') {
     if (action.context.mine !== undefined) selectedMine = action.context.mine;
     selected.clear();
@@ -638,6 +654,20 @@ function handleFieldTap(e, duration) {
     return;
   }
   if (action.kind === 'select') {
+    const unit = state.units.find((candidate) => candidate.id === action.id);
+    const tap = fieldDoubleTap.tap(unit.type, e.clientX, e.clientY, performance.now());
+    if (tap === 'double') {
+      selectType(unit.type, 'visible');
+      const singularNames = player
+        ? ghostNames
+        : { commis: 'Commis', knight: 'Garde-Manger', archer: 'Boucher-Tireur', mage: 'Chef de Brigade' };
+      const pluralNames = player
+        ? { commis: 'Rats-Essuyeurs', knight: 'Rats-Éboueurs', archer: 'Rats-Balance-Déchets', mage: 'Chamans de la Poubelle' }
+        : unitNames;
+      const name = selected.size === 1 ? singularNames[unit.type] : pluralNames[unit.type];
+      notify(selected.size + ' ' + name + ' · Vue actuelle');
+      return;
+    }
     panelContext = {};
     buildGhost = null;
     selected = new Set([action.id]);
@@ -1655,6 +1685,7 @@ selectionToggle.setAttribute('aria-pressed', 'false');
 selectionToggle.onclick = () => {
   const active = selectionToggle.getAttribute('aria-pressed') !== 'true';
   selectionToggle.setAttribute('aria-pressed', String(active));
+  fieldDoubleTap.reset();
   gestures.setSelectionMode(active);
   selectionBox = null;
   holdIndicator = null;
@@ -1669,6 +1700,7 @@ controlGroupsUI = initControlGroups({
     if (!quiet) notify('Groupe ' + (index + 1) + ' assigné · ' + units.length + ' unités');
   },
   select: (index, center) => {
+    fieldDoubleTap.reset();
     const units = groupUnits(controlGroups(), index, state.units, player);
     panelContext = {};
     selected = new Set(units.map((unit) => unit.id));
@@ -1699,6 +1731,7 @@ armyButton.onclick = () => {
   selected = new Set(units.map((unit) => unit.id));
   selectedMine = null;
   portraitTap.reset();
+  fieldDoubleTap.reset();
   playSelectionVoice(units);
   updateUI();
   notify(armyToastText(units.length));
@@ -2087,6 +2120,7 @@ function renderContextPanel() {
         button.setPointerCapture(event.pointerId);
         timer = setTimeout(() => {
           removed = true;
+          fieldDoubleTap.reset();
           selected = filterSelection(selected, state.units, item.type, true);
           updateUI();
         }, 550);
@@ -2110,6 +2144,7 @@ function renderContextPanel() {
     button.onclick = () => {
       if (removed) return;
       if (item.kind === 'filter') {
+        fieldDoubleTap.reset();
         selected = filterSelection(selected, state.units, item.type);
         updateUI();
       } else if (item.kind === 'main') {
