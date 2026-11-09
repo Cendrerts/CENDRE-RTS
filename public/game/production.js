@@ -1,5 +1,11 @@
 import { CendreSim as Sim, canRecruit } from './sim.js';
 
+export function recruitToastText(launched, message) {
+  if (!launched) return message;
+  const agreement = launched === 1 ? 'lancée' : 'lancées';
+  return `${launched} ${agreement} · ${message}`;
+}
+
 export function productionModel(state, player) {
   const queue = state.queues[player];
   return ['commis', 'knight', 'archer', 'mage'].map((type) => {

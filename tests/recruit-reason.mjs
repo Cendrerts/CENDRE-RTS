@@ -1,5 +1,11 @@
 import assert from 'node:assert/strict';
 import { CendreSim as Sim, canRecruit, recruitBlockReason } from '../public/game/sim.js';
+import { recruitToastText } from '../public/game/production.js';
+
+assert.equal(recruitToastText(0, 'Files pleines'), 'Files pleines');
+assert.equal(recruitToastText(1, 'Files pleines'), '1 lancée · Files pleines');
+assert.equal(recruitToastText(2, 'Files pleines'), '2 lancées · Files pleines');
+assert.equal(recruitToastText(3, 'Files pleines'), '3 lancées · Files pleines');
 
 for (const team of [0, 1]) {
   function check(state, type, expected, producerId = null) {

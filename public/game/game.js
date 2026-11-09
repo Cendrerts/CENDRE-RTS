@@ -1,4 +1,4 @@
-import { initProduction } from './production.js';
+import { initProduction, recruitToastText } from './production.js';
 import { panelModel, panelVisibility } from './panel.js';
 import { readSettings, writeSettings } from './settings.js';
 import { bindAudioUnlock } from './audio-unlock.js';
@@ -1979,7 +1979,7 @@ function requestRecruit(command, count = 1) {
       rubies: `Rubis insuffisants : il manque ${missing}`,
       producer: 'Aucun bâtiment pour cette unité',
     };
-    notify(launched ? `${launched} lancées · ${messages[reason]}` : messages[reason]);
+    notify(recruitToastText(launched, messages[reason]));
     toastTime = 3;
   }
   updateUI();
