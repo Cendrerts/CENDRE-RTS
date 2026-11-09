@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { CendreSim as S } from '../public/game/sim.js';
 import { command, pack, unpack, view } from '../lib/match.mjs';
 import { RealtimeMotion } from '../public/game/realtime.js';
+import { orderQueuePoints } from '../public/game/order-queue.js';
 function fixture() {
   const state = S.create();
   state.units = [state.units[0]];
@@ -151,5 +152,30 @@ for (const throughServer of [false, true]) {
     assert.equal(unit.path.length, 0, outcome);
     assert(Math.hypot(unit.x - 350, unit.y - 650) < 2, `${outcome}: reaches the final move`);
   }
+}
+// Queue rendering follows only visible targets, including enemy bases.
+for (const base of [false, true]) {
+  ({ state, unit } = fixture());
+  S.spawn(state, 'commis', 1, { x: 350, y: 750 });
+  const target = base ? state.bases[1] : state.units.find((candidate) => candidate.team === 1);
+  Object.assign(target, { x: 350, y: 750 });
+  const point = {
+    x: 300,
+    y: 750,
+    target: base ? { base: true, team: 1 } : { id: target.id },
+  };
+  const queue = [point];
+  const originalQueue = structuredClone(queue);
+  S.visibility(state);
+  assert(S.canSee(state, 0, target));
+  assert.deepEqual(orderQueuePoints(state, 0, queue), [{ ...point, x: 350, y: 750 }]);
+  target.x = 1400;
+  S.visibility(state);
+  assert.equal(S.canSee(state, 0, target), false);
+  assert.deepEqual(orderQueuePoints(state, 0, queue), originalQueue, 'hidden target uses the recorded position');
+  assert.deepEqual(queue, originalQueue, 'rendering never changes the queued orders');
+  if (base) state.bases[1] = null;
+  else state.units = [unit];
+  assert.deepEqual(orderQueuePoints(state, 0, queue), originalQueue, 'missing target uses the recorded position');
 }
 console.log('order queue OK');

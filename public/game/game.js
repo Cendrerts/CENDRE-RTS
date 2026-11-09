@@ -7,6 +7,7 @@ import { minimapToWorld, clampCamera, attackDirection, groupAttackAlerts } from 
 'use strict';
 import { CuistotsAmbience } from './cuistots-ambience.js';
 import { orderFeedback, drawOrderFeedback, vibrateOrder } from './order-feedback.js';
+import { orderQueuePoints } from './order-queue.js';
 import { UnitVoices, selectionVoice } from './unit-voices.js';
 import { createRadialMenu } from './radial.js';
 import { armyUnits, armyToastText, groupToastText, filterSelection, cameraBounds, unitsOfType, createPortraitTap, unitsInBox, boxSelection } from './selection.js';
@@ -1418,25 +1419,21 @@ function drawOrderQueues() {
   ctx.setLineDash([6 / scale, 5 / scale]);
   for (const unit of state.units) {
     if (!selected.has(unit.id) || unit.team !== player || !unit.orderQueue?.length) continue;
+    ctx.strokeStyle = TEAM_COLORS[player];
     ctx.beginPath();
     ctx.moveTo(unit.x, unit.y);
     if (!unit.queueActive && unit.path.length) {
       const destination = unit.path.at(-1);
       ctx.lineTo(destination.x, destination.y);
     }
-    const points = unit.orderQueue.map((point) => {
-      if (!point.target) return point;
-      const target = point.target.base
-        ? state.bases[point.target.team]
-        : state.units.find((candidate) => candidate.id === point.target.id);
-      return target || point;
-    });
+    const points = orderQueuePoints(state, player, unit.orderQueue);
     for (const point of points) ctx.lineTo(point.x, point.y);
     ctx.stroke();
     ctx.setLineDash([]);
     for (const point of points) {
+      ctx.strokeStyle = point.target ? orderFeedback({ kind: 'attack' }).color : TEAM_COLORS[player];
       ctx.beginPath();
-      ctx.arc(point.x, point.y, 4 / scale, 0, Math.PI * 2);
+      ctx.arc(point.x, point.y, (point.target ? 6 : 4) / scale, 0, Math.PI * 2);
       ctx.stroke();
     }
     ctx.setLineDash([6 / scale, 5 / scale]);
