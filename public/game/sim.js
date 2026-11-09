@@ -419,16 +419,34 @@ function construct(s, team, type, baseId, slotId = null) {
   ensureSlots(s);
   return placeBuilding(s, team, type, baseId, slotId);
 }
+export function populationCap(state, team) {
+  return 30;
+}
 export function canRecruit(s, team, type, producerId = null) {
   s.queues ??= [[], []];
   if (s.winner !== null || !Object.hasOwn(TYPES, type)) return false;
   ensureSlots(s);
   const queue = s.queues[team];
   return s.rubies[team] >= stats(type, team).cost &&
-    s.units.filter((unit) => unit.team === team).length + queue.length < 30 &&
+    s.units.filter((unit) => unit.team === team).length + queue.length < populationCap(s, team) &&
     producers(s, team, type).some((producer) =>
       (!producerId || producer.id === producerId) &&
       queue.filter((job) => job.producerId === producer.id).length < 8);
+}
+// Evaluate on a copy because canRecruit also migrates older states.
+export function recruitBlockReason(state, team, type, producerId = null) {
+  const snapshot = structuredClone(state);
+  if (canRecruit(snapshot, team, type, producerId)) return null;
+  const queue = snapshot.queues[team];
+  const population = snapshot.units.filter((unit) => unit.team === team).length + queue.length;
+  if (population >= populationCap(snapshot, team)) return 'population';
+  const buildings = producers(snapshot, team, type).filter((producer) =>
+    !producerId || producer.id === producerId);
+  if (!buildings.length) return 'producer';
+  if (buildings.every((producer) =>
+    queue.filter((job) => job.producerId === producer.id).length >= 8)) return 'queues';
+  if (Object.hasOwn(TYPES, type) && snapshot.rubies[team] < stats(type, team).cost) return 'rubies';
+  return 'producer';
 }
 function recruit(s, type, team, producerId = null) {
   if (!canRecruit(s, team, type, producerId)) return false;
@@ -501,7 +519,21 @@ function productionTick(s, dt) {
   }
 }
 
-function order(s, ids, x, y, target = null, retreat = !target) {
+function startWaypoint(unit, point) {
+  unit.path = route(unit.x, unit.y, point.x, point.y);
+  if (!unit.path.length) unit.path = [{ x: point.x, y: point.y }];
+  unit.attackDestination = point.attackMove ? point : null;
+  unit.retreat = !point.attackMove;
+  unit.chasing = false;
+  unit.target = null;
+  unit.autoTargetId = null;
+  unit.lastRetargetAt = null;
+  unit.hold = false;
+  unit.repath = 0;
+  unit.stuck = null;
+}
+
+function order(s, ids, x, y, target = null, retreat = !target, queue = false) {
   const units = s.units.filter((u) => ids.includes(u.id));
   if (!units.length) return;
   const centerX = units.reduce((sum, unit) => sum + unit.x, 0) / units.length;
@@ -542,6 +574,24 @@ function order(s, ids, x, y, target = null, retreat = !target) {
   destinations.sort(byOffset);
   units.forEach((u, index) => {
     const destination = destinations[index % destinations.length];
+    if (queue === true && !target) {
+      u.orderQueue ??= [];
+      if (u.orderQueue.length >= 8) return;
+      const point = { x: destination.x, y: destination.y, attackMove: !retreat };
+      u.orderQueue.push(point);
+      if (u.orderQueue.length === 1 &&
+          (u.harvest || u.manual || u.patrol || u.followId || (!u.path.length && !u.target && !u.chasing))) {
+        u.followId = null;
+        u.patrol = null;
+        u.manual = null;
+        u.harvest = null;
+        u.queueActive = true;
+        startWaypoint(u, point);
+      }
+      return;
+    }
+    u.orderQueue = [];
+    u.queueActive = false;
     u.followId = null;
     u.patrol = null;
     u.manual = null;
@@ -788,6 +838,18 @@ function tick(s, dt) {
       u.path = route(u.x, u.y, u.attackDestination.x, u.attackDestination.y);
       u.chasing = false;
     }
+    if (!target && !u.path.length && !u.chasing && u.orderQueue?.length) {
+      if (u.queueActive) u.orderQueue.shift();
+      u.queueActive = u.orderQueue.length > 0;
+      if (u.queueActive) {
+        u.followId = null;
+        u.patrol = null;
+        startWaypoint(u, u.orderQueue[0]);
+      } else {
+        u.retreat = false;
+        u.attackDestination = null;
+      }
+    }
     if (!target && !u.hold && u.patrol && !u.path.length) {
       u.patrol.index = 1 - u.patrol.index;
       const destination = u.patrol.points[u.patrol.index];
@@ -858,7 +920,7 @@ function tick(s, dt) {
           if (Math.hypot(point.x - u.x, point.y - u.y) >= 0.01) break;
           u.path.shift();
         }
-        if (!u.path.length) u.retreat = false;
+        if (!u.path.length && !u.orderQueue?.length) u.retreat = false;
       }
     }
   }
@@ -1021,6 +1083,8 @@ function assignHarvest(s, u, index) {
   u.manual = null;
   u.patrol = null;
   u.followId = null;
+  u.orderQueue = [];
+  u.queueActive = false;
   u.harvest = { mine: index, phase: u.cargo > 0 ? 'VERS_BASE' : 'VERS_GISEMENT', elapsed: 0 };
   u.target = null;
   u.autoTargetId = null;
@@ -1164,6 +1228,8 @@ export const CendreSim = {
   spawn,
   recruit,
   canRecruit,
+  populationCap,
+  recruitBlockReason,
   order,
   patrol,
   build,
@@ -1180,6 +1246,8 @@ function steer(s, ids, dx, dy) {
     divisor = Math.max(1, length);
   for (const u of s.units)
     if (ids.includes(u.id)) {
+      u.orderQueue = [];
+      u.queueActive = false;
       u.followId = null;
       u.patrol = null;
       u.harvest = null;

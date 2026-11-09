@@ -1,4 +1,4 @@
-import { initProduction } from './production.js';
+import { initProduction, recruitToastText } from './production.js';
 import { panelModel, panelVisibility } from './panel.js';
 import { readSettings, writeSettings } from './settings.js';
 import { bindAudioUnlock } from './audio-unlock.js';
@@ -9,7 +9,7 @@ import { CuistotsAmbience } from './cuistots-ambience.js';
 import { orderFeedback, drawOrderFeedback, vibrateOrder } from './order-feedback.js';
 import { UnitVoices, selectionVoice } from './unit-voices.js';
 import { createRadialMenu } from './radial.js';
-import { armyUnits, armyToastText, filterSelection, cameraBounds, unitsOfType, createFieldDoubleTap, createPortraitTap, unitsInBox, boxSelection } from './selection.js';
+import { armyUnits, armyToastText, groupToastText, filterSelection, cameraBounds, unitsOfType, createFieldDoubleTap, createPortraitTap, unitsInBox, boxSelection } from './selection.js';
 import { createGestures } from './gestures.js';
 import { resolveTap, isEmptyTap } from './tap.js';
 import { installMobileDisplay } from './mobile-display.js';
@@ -255,6 +255,8 @@ let panelSignature = '';
 let rallyArmed = null;
 let panelVisibilityState = {};
 let patrolArmed = false;
+let queueArmed = false;
+let queueSelection = '';
 let productionUI = null;
 
 function updateUI() {
@@ -349,6 +351,8 @@ $('#hold').onclick = () => {
   state.units
     .filter((u) => selected.has(u.id))
     .forEach((u) => {
+      u.orderQueue = [];
+      u.queueActive = false;
       u.patrol = null;
       u.manual = null;
       u.followId = null;
@@ -704,10 +708,11 @@ function handleFieldTap(e, duration) {
         ids: [...selected],
         x: p.x,
         y: p.y,
+        queue: queueArmed && !patrolArmed && !target,
         target: target ? (target.base ? { base: true } : { id: target.id }) : null,
       });
     } else if (patrolArmed) Sim.patrol(state, [...selected], p.x, p.y);
-    else Sim.order(state, [...selected], p.x, p.y, target, !target && !attackMoveArmed);
+    else Sim.order(state, [...selected], p.x, p.y, target, !target && !attackMoveArmed, queueArmed && !target);
     patrolArmed = false;
     attackMoveArmed = false;
     $('#attackAction').setAttribute('aria-pressed', 'false');
@@ -1035,6 +1040,7 @@ function draw() {
     if (Sim.visibleAt(state, player, s.x, s.y) && Sim.visibleAt(state, player, s.tx, s.ty))
       line(s.x, s.y, s.tx, s.ty, s.team ? '#8ef1ce' : '#ffd388', 2);
   drawFog();
+  drawOrderQueues();
   if (marker) {
     const elapsed = (performance.now() - marker.started) / 1000;
     const target = marker.base ? state.bases[1 - player] : state.units.find((unit) => unit.id === marker.targetId);
@@ -1435,6 +1441,32 @@ function openedRallyBuilding() {
   const building = id && Sim.rallyBuilding(state, player, id);
   return building ? { id, building } : null;
 }
+function drawOrderQueues() {
+  ctx.save();
+  ctx.strokeStyle = TEAM_COLORS[player];
+  ctx.lineWidth = 1.5 / scale;
+  ctx.setLineDash([6 / scale, 5 / scale]);
+  for (const unit of state.units) {
+    if (!selected.has(unit.id) || unit.team !== player || !unit.orderQueue?.length) continue;
+    ctx.beginPath();
+    ctx.moveTo(unit.x, unit.y);
+    if (!unit.queueActive && unit.path.length) {
+      const destination = unit.path.at(-1);
+      ctx.lineTo(destination.x, destination.y);
+    }
+    for (const point of unit.orderQueue) ctx.lineTo(point.x, point.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    for (const point of unit.orderQueue) {
+      ctx.beginPath();
+      ctx.arc(point.x, point.y, 4 / scale, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.setLineDash([6 / scale, 5 / scale]);
+  }
+  ctx.restore();
+}
+
 function drawRally() {
   const opened = openedRallyBuilding();
   const point = Sim.rallyPoint(state, opened?.building.rally);
@@ -1697,7 +1729,7 @@ controlGroupsUI = initControlGroups({
   icon: portraitFor,
   assign: (index, { quiet = false } = {}) => {
     const units = assignGroup(controlGroups(), index, selected, state.units, player);
-    if (!quiet) notify('Groupe ' + (index + 1) + ' assigné · ' + units.length + ' unités');
+    if (!quiet) notify(groupToastText(index, units.length));
   },
   select: (index, center) => {
     fieldDoubleTap.reset();
@@ -1991,11 +2023,40 @@ $('#baseAction').onclick = () => {
   layout();
   updateUI();
 };
+function requestRecruit(command, count = 1) {
+  if (!running || paused) return;
+  const preview = net ? structuredClone(state) : state;
+  let launched = 0;
+  let reason = null;
+  for (let index = 0; index < count; index++) {
+    reason = Sim.recruitBlockReason(preview, player, command.type, command.producerId);
+    if (reason) break;
+    if (net && !sendCommand(command)) break;
+    if (!Sim.recruit(preview, command.type, player, command.producerId)) break;
+    launched++;
+  }
+  if (reason) {
+    const population = preview.units.filter((unit) => unit.team === player).length + preview.queues[player].length;
+    const missing = Math.max(0, Sim.stats(command.type, player).cost - preview.rubies[player]);
+    const messages = {
+      population: `Population pleine (${population} / ${Sim.populationCap(preview, player)})`,
+      queues: 'Files pleines',
+      rubies: `Rubis insuffisants : il manque ${missing}`,
+      producer: 'Aucun bâtiment pour cette unité',
+    };
+    notify(recruitToastText(launched, messages[reason]));
+    toastTime = 3;
+  }
+  updateUI();
+}
 function panelCommand(command) {
   if (!running || paused) return;
+  if (command.kind === 'recruit') {
+    requestRecruit(command);
+    return;
+  }
   if (net) sendCommand(command);
   else if (command.kind === 'setRally') Sim.setRally(state, player, command);
-  else if (command.kind === 'recruit') Sim.recruit(state, command.type, player, command.producerId);
   else if (command.kind === 'construct')
     Sim.construct(state, player, command.type, command.baseId, command.slotId);
   else if (command.kind === 'build') Sim.build(state, player, command.index);
@@ -2012,6 +2073,9 @@ function renderContextPanel() {
   }
   panelVisibilityState = panelVisibility(panelVisibilityState);
   if (rallyArmed && openedRallyBuilding()?.id !== rallyArmed) rallyArmed = null;
+  const selectionKey = [...selected].sort((a, b) => a - b).join(',');
+  if (selectionKey !== queueSelection || !selectionKey) queueArmed = false;
+  queueSelection = selectionKey;
   const model = panelModel(state, player, selected, {
     ...panelContext,
     width: innerWidth,
@@ -2035,7 +2099,7 @@ function renderContextPanel() {
   const currentHealthText = $('#contextIdentity .health-text');
   if (currentHealthText)
     currentHealthText.textContent = `${Math.ceil(model.left.hp)}/${Math.ceil(model.left.max)}`;
-  const signature = JSON.stringify([model, paused, patrolArmed, rallyArmed], (key, value) =>
+  const signature = JSON.stringify([model, paused, patrolArmed, rallyArmed, queueArmed], (key, value) =>
     ['remaining', 'hp', 'status'].includes(key) ? undefined : value,
   );
   if (signature === panelSignature) return;
@@ -2109,7 +2173,8 @@ function renderContextPanel() {
       ? item.prerequisite || 'Rubis insuffisants ou file pleine'
       : item.name;
     button.setAttribute('aria-label', button.title);
-    button.disabled = paused || item.locked;
+    button.disabled = paused || (item.locked && item.kind !== 'recruit');
+    if (item.kind === 'recruit' && item.locked) button.style.opacity = '0.45';
     let timer;
     let removed = false;
     if (item.kind === 'filter') {
@@ -2198,7 +2263,18 @@ function renderContextPanel() {
       updateUI();
     };
     $('#hold').innerHTML = '⛨ <span>Tenir position</span>';
-    actions.append($('#hold'), patrol, ability, $('#retreat'));
+    const queue = document.createElement('button');
+    queue.id = 'queueOrders';
+    queue.textContent = '⇢ Enchaîner';
+    queue.style.minHeight = '44px';
+    queue.style.minWidth = '44px';
+    queue.setAttribute('aria-pressed', String(queueArmed));
+    queue.disabled = paused;
+    queue.onclick = () => {
+      queueArmed = !queueArmed;
+      updateUI();
+    };
+    actions.append($('#hold'), patrol, queue, ability, $('#retreat'));
   } else {
     const opened = openedRallyBuilding();
     if (opened) {
@@ -2261,5 +2337,6 @@ renderContextPanel();
 productionUI = initProduction({
   enabled: () => running && !paused,
   command: panelCommand,
+  recruitBatch: requestRecruit,
   vibrate: () => vibrateOrder(settings.vibration),
 });

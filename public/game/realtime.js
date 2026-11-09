@@ -191,7 +191,7 @@ export class RealtimeMotion {
     }
   }
   predict(command, state, team, now) {
-    if (!['move', 'attackMove', 'steer'].includes(command.kind)) {
+    if (command.queue === true || !['move', 'attackMove', 'steer'].includes(command.kind)) {
       for (const id of command.ids || []) this.predictions.delete(id);
       return;
     }

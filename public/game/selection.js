@@ -72,3 +72,7 @@ export function armyUnits(units, team) {
 export function armyToastText(count) {
   return count + (count === 1 ? " unité · Toute l'armée" : " unités · Toute l'armée");
 }
+
+export function groupToastText(index, count) {
+  return 'Groupe ' + (index + 1) + ' assigné · ' + count + (count === 1 ? ' unité' : ' unités');
+}

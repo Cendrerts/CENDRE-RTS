@@ -51,6 +51,7 @@ for (const kind of ['move', 'attackMove', 'patrol', 'attack', 'gather']) {
     isEmptyTap: () => false,
     attackMoveArmed: kind === 'attackMove',
     patrolArmed: kind === 'patrol',
+    queueArmed: false,
     selected: new Set([1]),
     resolveTap: () => ({
       kind: kind === 'patrol' ? 'move' : kind,
