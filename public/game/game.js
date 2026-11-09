@@ -1974,7 +1974,7 @@ function requestRecruit(command, count = 1) {
     const population = preview.units.filter((unit) => unit.team === player).length + preview.queues[player].length;
     const missing = Math.max(0, Sim.stats(command.type, player).cost - preview.rubies[player]);
     const messages = {
-      population: `Population pleine (${population} / 30)`,
+      population: `Population pleine (${population} / ${Sim.populationCap(preview, player)})`,
       queues: 'Files pleines',
       rubies: `Rubis insuffisants : il manque ${missing}`,
       producer: 'Aucun bâtiment pour cette unité',

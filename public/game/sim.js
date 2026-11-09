@@ -419,13 +419,16 @@ function construct(s, team, type, baseId, slotId = null) {
   ensureSlots(s);
   return placeBuilding(s, team, type, baseId, slotId);
 }
+export function populationCap(state, team) {
+  return 30;
+}
 export function canRecruit(s, team, type, producerId = null) {
   s.queues ??= [[], []];
   if (s.winner !== null || !Object.hasOwn(TYPES, type)) return false;
   ensureSlots(s);
   const queue = s.queues[team];
   return s.rubies[team] >= stats(type, team).cost &&
-    s.units.filter((unit) => unit.team === team).length + queue.length < 30 &&
+    s.units.filter((unit) => unit.team === team).length + queue.length < populationCap(s, team) &&
     producers(s, team, type).some((producer) =>
       (!producerId || producer.id === producerId) &&
       queue.filter((job) => job.producerId === producer.id).length < 8);
@@ -436,10 +439,11 @@ export function recruitBlockReason(state, team, type, producerId = null) {
   if (canRecruit(snapshot, team, type, producerId)) return null;
   const queue = snapshot.queues[team];
   const population = snapshot.units.filter((unit) => unit.team === team).length + queue.length;
-  if (population >= 30) return 'population';
+  if (population >= populationCap(snapshot, team)) return 'population';
   const buildings = producers(snapshot, team, type).filter((producer) =>
     !producerId || producer.id === producerId);
-  if (buildings.length && buildings.every((producer) =>
+  if (!buildings.length) return 'producer';
+  if (buildings.every((producer) =>
     queue.filter((job) => job.producerId === producer.id).length >= 8)) return 'queues';
   if (Object.hasOwn(TYPES, type) && snapshot.rubies[team] < stats(type, team).cost) return 'rubies';
   return 'producer';
@@ -1178,6 +1182,7 @@ export const CendreSim = {
   spawn,
   recruit,
   canRecruit,
+  populationCap,
   recruitBlockReason,
   order,
   patrol,

@@ -14,8 +14,18 @@ for (const team of [0, 1]) {
   check(state, 'archer', 'producer');
   state.rubies[team] = 0;
   check(state, 'commis', 'rubies');
-  check(state, 'archer', 'rubies');
-  state.units = Array.from({ length: 30 }, () => ({ team }));
+  check(state, 'archer', 'producer');
+  check(state, 'commis', 'producer', 'missing_producer');
+  const cap = Sim.populationCap(state, team);
+  assert.equal(cap, 30);
+  for (const population of [cap - 1, cap, cap + 1]) {
+    state.units = Array.from({ length: population }, () => ({ team }));
+    assert.equal(
+      recruitBlockReason(state, team, 'commis') === 'population',
+      population >= Sim.populationCap(state, team),
+    );
+  }
+  state.units = Array.from({ length: cap }, () => ({ team }));
   check(state, 'commis', 'population');
   state.units = [];
   state.queues[team] = Array.from({ length: 8 }, () => ({
@@ -28,7 +38,7 @@ for (const team of [0, 1]) {
   check(state, 'commis', 'queues');
   state.queues[team].pop();
   check(state, 'commis', null);
-  state.units = Array.from({ length: 23 }, () => ({ team }));
+  state.units = Array.from({ length: cap - state.queues[team].length }, () => ({ team }));
   check(state, 'commis', 'population');
   state.units = [];
   state.queues[team] = [];
