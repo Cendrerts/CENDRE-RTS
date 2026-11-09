@@ -93,6 +93,24 @@ export function selectedProducers(state, player, ids) {
     .filter((producer) => ids.includes(producer.id));
 }
 
+export function buildingSelectionVisuals(state, player, panelContext) {
+  const ids = panelContext.producerIds || [panelContext.producerId ||
+    (!panelContext.slotId && panelContext.baseId)].filter(Boolean);
+  const buildings = selectedProducers(state, player, ids);
+  const rallyLines = [];
+  const rallyFlags = [];
+  for (const building of buildings) {
+    const structure = Sim.rallyBuilding(state, player, building.id);
+    const point = Sim.rallyPoint(state, structure?.rally);
+    if (!point) continue;
+    rallyLines.push({ building, point });
+    if (!rallyFlags.some((flag) => flag.x === point.x && flag.y === point.y)) {
+      rallyFlags.push(point);
+    }
+  }
+  return { buildings, rallyLines, rallyFlags };
+}
+
 export function selectedRecruitCommand(state, player, type, ids) {
   const producers = selectedProducers(state, player, ids).filter((producer) => producer.unit === type);
   const producer = Sim.leastLoadedProducer(state, player, producers);

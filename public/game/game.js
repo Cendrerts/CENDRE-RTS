@@ -9,7 +9,7 @@ import { CuistotsAmbience } from './cuistots-ambience.js';
 import { orderFeedback, drawOrderFeedback, vibrateOrder } from './order-feedback.js';
 import { UnitVoices, selectionVoice } from './unit-voices.js';
 import { createRadialMenu } from './radial.js';
-import { buildingsOfType, selectedProducers, selectedRecruitCommand, selectedRallyCommands, armyUnits, armyToastText, groupToastText, filterSelection, cameraBounds, unitsOfType, createFieldDoubleTap, createPortraitTap, unitsInBox, boxSelection } from './selection.js';
+import { buildingSelectionVisuals, buildingsOfType, selectedProducers, selectedRecruitCommand, selectedRallyCommands, armyUnits, armyToastText, groupToastText, filterSelection, cameraBounds, unitsOfType, createFieldDoubleTap, createPortraitTap, unitsInBox, boxSelection } from './selection.js';
 import { createGestures } from './gestures.js';
 import { resolveTap, isEmptyTap } from './tap.js';
 import { installMobileDisplay } from './mobile-display.js';
@@ -1476,33 +1476,41 @@ function drawOrderQueues() {
 }
 
 function drawRally() {
-  const opened = openedRallyBuilding();
-  const point = Sim.rallyPoint(state, opened?.building.rally);
-  if (!opened || !point) return;
+  if (panelVisibilityState.collapsed) return;
+  const { buildings, rallyLines, rallyFlags } = buildingSelectionVisuals(state, player, panelContext);
   ctx.save();
   ctx.strokeStyle = TEAM_COLORS[player];
   ctx.fillStyle = ctx.strokeStyle;
-  ctx.lineWidth = 4 / scale;
-  ctx.strokeStyle = '#101819';
-  ctx.setLineDash([6 / scale, 5 / scale]);
-  ctx.beginPath();
-  ctx.moveTo(opened.building.x, opened.building.y);
-  ctx.lineTo(point.x, point.y);
-  ctx.stroke();
-  ctx.strokeStyle = TEAM_COLORS[player];
   ctx.lineWidth = 2 / scale;
-  ctx.stroke();
+  for (const building of buildings) {
+    ctx.beginPath();
+    ctx.ellipse(building.x, building.y + 5, 29, 15, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  for (const { building, point } of rallyLines) {
+    ctx.lineWidth = 4 / scale;
+    ctx.strokeStyle = '#101819';
+    ctx.setLineDash([6 / scale, 5 / scale]);
+    ctx.beginPath();
+    ctx.moveTo(building.x, building.y);
+    ctx.lineTo(point.x, point.y);
+    ctx.stroke();
+    ctx.strokeStyle = TEAM_COLORS[player];
+    ctx.lineWidth = 2 / scale;
+    ctx.stroke();
+  }
   ctx.setLineDash([]);
-  ctx.lineWidth = 2 / scale;
-  ctx.beginPath();
-  ctx.moveTo(point.x, point.y);
-  ctx.lineTo(point.x, point.y - 23 / scale);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(point.x, point.y - 23 / scale);
-  ctx.lineTo(point.x + 14 / scale, point.y - 18 / scale);
-  ctx.lineTo(point.x, point.y - 13 / scale);
-  ctx.fill();
+  for (const point of rallyFlags) {
+    ctx.beginPath();
+    ctx.moveTo(point.x, point.y);
+    ctx.lineTo(point.x, point.y - 23 / scale);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(point.x, point.y - 23 / scale);
+    ctx.lineTo(point.x + 14 / scale, point.y - 18 / scale);
+    ctx.lineTo(point.x, point.y - 13 / scale);
+    ctx.fill();
+  }
   ctx.restore();
 }
 
