@@ -49,3 +49,7 @@ yarn-error.log*
 !/artifacts/issue-43/
 /artifacts/issue-43/*
 !/artifacts/issue-43/ralliement-844x390.png
+
+!/artifacts/issue-64/
+/artifacts/issue-64/*
+!/artifacts/issue-64/enchainer-844x390.png

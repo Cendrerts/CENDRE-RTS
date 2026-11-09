@@ -1,13 +1,15 @@
+import { initProduction, recruitToastText } from './production.js';
 import { panelModel, panelVisibility } from './panel.js';
 import { readSettings, writeSettings } from './settings.js';
 import { bindAudioUnlock } from './audio-unlock.js';
+import { shouldAutoPause } from './auto-pause.js';
 import { minimapToWorld, clampCamera, attackDirection, groupAttackAlerts } from './camera.js';
 'use strict';
 import { CuistotsAmbience } from './cuistots-ambience.js';
 import { orderFeedback, drawOrderFeedback, vibrateOrder } from './order-feedback.js';
 import { UnitVoices, selectionVoice } from './unit-voices.js';
 import { createRadialMenu } from './radial.js';
-import { filterSelection, cameraBounds, unitsOfType, createPortraitTap, unitsInBox, boxSelection } from './selection.js';
+import { armyUnits, armyToastText, groupToastText, filterSelection, cameraBounds, unitsOfType, createFieldDoubleTap, createPortraitTap, unitsInBox, boxSelection } from './selection.js';
 import { createGestures } from './gestures.js';
 import { resolveTap, isEmptyTap } from './tap.js';
 import { installMobileDisplay } from './mobile-display.js';
@@ -64,6 +66,7 @@ let state = Sim.create(),
   attackMoveArmed = false,
   selectedMine = null;
 const portraitTap = createPortraitTap();
+const fieldDoubleTap = createFieldDoubleTap();
 let networkGroups = createControlGroups();
 let controlGroupsUI;
 function controlGroups() {
@@ -164,10 +167,12 @@ function portraitFor(type) {
 function setupPortraits() {
   voices.reset();
   portraitTap.reset();
+  fieldDoubleTap.reset();
   panelContext = {};
   unitNames = player ? ghostNames : cookNames;
 }
 function layout() {
+  fieldDoubleTap.reset();
   scale = Math.max(viewWidth / W, viewHeight / H) * zoom;
   const center = clampCamera(cameraX, cameraY, viewWidth, viewHeight, scale, W, H);
   cameraX = center.x;
@@ -201,6 +206,7 @@ installMobileDisplay({
     }
     fieldPointers.clear();
     portraitTap.reset();
+    fieldDoubleTap.reset();
   },
 });
 function notify(text) {
@@ -216,10 +222,12 @@ function clearSelection() {
   selected.clear();
   selectedMine = null;
   portraitTap.reset();
+  fieldDoubleTap.reset();
   updateUI();
   notify('Sélection vidée');
 }
 function selectType(t, scope = 'all') {
+  fieldDoubleTap.reset();
   panelContext = {};
   buildGhost = null;
   const groups = viewportUnits(t),
@@ -247,6 +255,10 @@ let panelSignature = '';
 let rallyArmed = null;
 let panelVisibilityState = {};
 let patrolArmed = false;
+let queueArmed = false;
+let queueSelection = '';
+let productionUI = null;
+
 function updateUI() {
   let army = state.units.filter((u) => u.team === player);
   selected = new Set([...selected].filter((id) => army.some((u) => u.id === id)));
@@ -263,6 +275,7 @@ function updateUI() {
         ? '◉ Tour : occupée par l’adversaire'
         : '◉ Tour : non contrôlée';
   renderContextPanel();
+  productionUI?.refresh(state, player, running);
   touchUI?.refresh();
   controlGroupsUI?.refresh();
   radial?.refresh();
@@ -276,11 +289,25 @@ function choose(t) {
   $('#chooseHuman').setAttribute('aria-pressed', String(t === 0));
   $('#chooseGhost').setAttribute('aria-pressed', String(t === 1));
 }
-$('#start').onclick = () => {
+const welcomeTitle = $('#modalTitle').textContent;
+const welcomeText = $('#modalText').textContent;
+const startLabel = $('#start').innerHTML;
+$('#matchMenu').onclick = async () => {
+  if (net?.finished) await leaveRoom();
+  $('#veil').classList.remove('match-ended');
+  $('#matchStats')?.remove();
+  $('#modalTitle').textContent = welcomeTitle;
+  $('#modalText').textContent = welcomeText;
+  $('#start').innerHTML = startLabel;
+  $('#veil').style.display = 'flex';
+};
+$('#start').onclick = async () => {
+  if (net?.finished) await leaveRoom();
   if (net) {
     notify('Quittez le salon avant de lancer le solo.');
     return;
   }
+  $('#veil').classList.remove('match-ended');
   state = Sim.create();
   controlGroupsUI?.reset();
   selected.clear();
@@ -299,6 +326,7 @@ $('#start').onclick = () => {
   notify('Explorez avec vos unités. Glisser : caméra · Maintenir + glisser : sélection · 2 doigts : zoom');
 };
 $('#all').onclick = () => {
+  fieldDoubleTap.reset();
   panelContext = {};
   const units = state.units.filter((u) => u.team === player);
   selected = new Set(units.map((u) => u.id));
@@ -323,6 +351,8 @@ $('#hold').onclick = () => {
   state.units
     .filter((u) => selected.has(u.id))
     .forEach((u) => {
+      u.orderQueue = [];
+      u.queueActive = false;
       u.patrol = null;
       u.manual = null;
       u.followId = null;
@@ -366,11 +396,7 @@ function closePauseMenu() {
   updateAmbience();
   $('#pause').focus();
 }
-$('#pause').onclick = () => {
-  if (!$('#pauseMenu').hidden) {
-    closePauseMenu();
-    return;
-  }
+function openPauseMenu() {
   if (!running) return;
   touchUI?.stop();
   radial?.close();
@@ -383,7 +409,21 @@ $('#pause').onclick = () => {
   if (!net) paused = true;
   updateAmbience();
   $('#resumeGame').focus();
+}
+$('#pause').onclick = () => {
+  if (!$('#pauseMenu').hidden) {
+    closePauseMenu();
+    return;
+  }
+  openPauseMenu();
 };
+function autoPause(hidden) {
+  if (shouldAutoPause({ multiplayer: !!net, hidden, running, paused })) {
+    openPauseMenu();
+  }
+}
+document.addEventListener('visibilitychange', () => autoPause(document.visibilityState === 'hidden'));
+window.addEventListener('pagehide', () => autoPause(true));
 $('#closePause').onclick = closePauseMenu;
 $('#resumeGame').onclick = closePauseMenu;
 $('#pauseMenu').onclick = (event) => {
@@ -477,6 +517,7 @@ function world(e) {
 function handleFieldPointer(e, type) {
   if (type === 'down') {
     if (!running || paused) return;
+    if ($('#selectionToggle')?.getAttribute('aria-pressed') === 'true') fieldDoubleTap.reset();
     fieldPointers.add(e.pointerId);
     canvas.setPointerCapture(e.pointerId);
   } else if (!fieldPointers.has(e.pointerId)) return;
@@ -497,11 +538,15 @@ function applyFieldGesture(action) {
   if (!action) return;
   if (action.kind === 'hold') {
     holdIndicator = action;
-    if (action.ready) vibrateOrder(settings.vibration);
+    if (action.ready) {
+      fieldDoubleTap.reset();
+      vibrateOrder(settings.vibration);
+    }
     return;
   }
   holdIndicator = null;
   if (action.kind === 'camera') {
+    fieldDoubleTap.reset();
     selectionBox = null;
     if (!action.from) return;
     const anchorX = (action.from.x - ox) / scale;
@@ -515,6 +560,7 @@ function applyFieldGesture(action) {
     return;
   }
   if (action.kind === 'select-box') {
+    fieldDoubleTap.reset();
     selectionBox = action;
     if (action.final) {
       const start = { x: (action.start.x - ox) / scale, y: (action.start.y - oy) / scale };
@@ -528,6 +574,7 @@ function applyFieldGesture(action) {
       selected = nextSelection;
       selectedMine = null;
       portraitTap.reset();
+      fieldDoubleTap.reset();
       playSelectionVoice(units);
       selectionBox = null;
       updateUI();
@@ -547,6 +594,7 @@ for (const [event, type] of Object.entries({
 }
 let tapFlash = null;
 function handleFieldTap(e, duration) {
+  if (buildGhost || radial?.isGhost || rallyArmed) fieldDoubleTap.reset();
   let p = world(e);
   if (buildGhost && !radial?.isGhost) {
     const slot = state.slots[player].find((item) => !item.occupe && item.baseId === buildGhost.context.baseId && Math.hypot(item.x - p.x, item.y - p.y) < 30);
@@ -588,6 +636,7 @@ function handleFieldTap(e, duration) {
     !['select', 'radial', 'production', 'enemyBase'].includes(resolved.kind)
       ? { kind: 'move' }
       : resolved;
+  if (action.kind !== 'select') fieldDoubleTap.reset();
   if (action.kind === 'radial') {
     if (action.context.mine !== undefined) selectedMine = action.context.mine;
     selected.clear();
@@ -609,6 +658,20 @@ function handleFieldTap(e, duration) {
     return;
   }
   if (action.kind === 'select') {
+    const unit = state.units.find((candidate) => candidate.id === action.id);
+    const tap = fieldDoubleTap.tap(unit.type, e.clientX, e.clientY, performance.now());
+    if (tap === 'double') {
+      selectType(unit.type, 'visible');
+      const singularNames = player
+        ? ghostNames
+        : { commis: 'Commis', knight: 'Garde-Manger', archer: 'Boucher-Tireur', mage: 'Chef de Brigade' };
+      const pluralNames = player
+        ? { commis: 'Rats-Essuyeurs', knight: 'Rats-Éboueurs', archer: 'Rats-Balance-Déchets', mage: 'Chamans de la Poubelle' }
+        : unitNames;
+      const name = selected.size === 1 ? singularNames[unit.type] : pluralNames[unit.type];
+      notify(selected.size + ' ' + name + ' · Vue actuelle');
+      return;
+    }
     panelContext = {};
     buildGhost = null;
     selected = new Set([action.id]);
@@ -645,10 +708,11 @@ function handleFieldTap(e, duration) {
         ids: [...selected],
         x: p.x,
         y: p.y,
+        queue: queueArmed && !patrolArmed && !target,
         target: target ? (target.base ? { base: true } : { id: target.id }) : null,
       });
     } else if (patrolArmed) Sim.patrol(state, [...selected], p.x, p.y);
-    else Sim.order(state, [...selected], p.x, p.y, target, !target && !attackMoveArmed);
+    else Sim.order(state, [...selected], p.x, p.y, target, !target && !attackMoveArmed, queueArmed && !target);
     patrolArmed = false;
     attackMoveArmed = false;
     $('#attackAction').setAttribute('aria-pressed', 'false');
@@ -777,6 +841,40 @@ function finish() {
   $('#modalTitle').textContent = state.winner === player ? 'Victoire !' : 'Votre base est tombée';
   $('#modalText').textContent =
     'La bataille est terminée. Changez de camp ou relancez pour essayer une autre stratégie.';
+  const result = Sim.matchStats(state);
+  const minutes = Math.floor(result.duration / 60);
+  const seconds = Math.floor(result.duration % 60);
+  const table = document.createElement('table');
+  table.id = 'matchStats';
+  const caption = table.createCaption();
+  caption.textContent = 'Durée : ' + String(minutes).padStart(2, '0') + ':' + String(seconds).padStart(2, '0');
+  const header = table.createTHead().insertRow();
+  for (const label of ['Statistiques', 'Vous', 'Adversaire']) {
+    const cell = document.createElement('th');
+    cell.scope = 'col';
+    cell.textContent = label;
+    header.append(cell);
+  }
+  const body = table.createTBody();
+  for (const [key, label] of [
+    ['rubiesCollected', 'Rubis récoltés'],
+    ['unitsProduced', 'Unités produites'],
+    ['unitsLost', 'Unités perdues'],
+    ['unitsKilled', 'Unités tuées'],
+    ['buildingsDestroyed', 'Bâtiments détruits'],
+  ]) {
+    const row = body.insertRow();
+    const heading = document.createElement('th');
+    heading.scope = 'row';
+    heading.textContent = label;
+    row.append(heading);
+    for (const team of [player, 1 - player]) {
+      row.insertCell().textContent = result.teams[team][key];
+    }
+  }
+  $('#matchStats')?.remove();
+  $('#modalTitle').after(table);
+  $('#veil').classList.add('match-ended');
   $('#start').innerHTML = 'Nouvelle escarmouche →';
   $('#veil').style.display = 'flex';
 }
@@ -942,6 +1040,7 @@ function draw() {
     if (Sim.visibleAt(state, player, s.x, s.y) && Sim.visibleAt(state, player, s.tx, s.ty))
       line(s.x, s.y, s.tx, s.ty, s.team ? '#8ef1ce' : '#ffd388', 2);
   drawFog();
+  drawOrderQueues();
   if (marker) {
     const elapsed = (performance.now() - marker.started) / 1000;
     const target = marker.base ? state.bases[1 - player] : state.units.find((unit) => unit.id === marker.targetId);
@@ -1283,6 +1382,7 @@ async function leaveRoom() {
   running = false;
   paused = false;
   $('#veil').style.display = 'flex';
+  $('#veil').classList.remove('match-ended');
   $('#modalTitle').textContent = 'Explorez. Occupez. Conquérez.';
   $('#modalText').textContent = 'Créez un nouveau duel ou lancez une escarmouche solo.';
   try {
@@ -1341,6 +1441,32 @@ function openedRallyBuilding() {
   const building = id && Sim.rallyBuilding(state, player, id);
   return building ? { id, building } : null;
 }
+function drawOrderQueues() {
+  ctx.save();
+  ctx.strokeStyle = TEAM_COLORS[player];
+  ctx.lineWidth = 1.5 / scale;
+  ctx.setLineDash([6 / scale, 5 / scale]);
+  for (const unit of state.units) {
+    if (!selected.has(unit.id) || unit.team !== player || !unit.orderQueue?.length) continue;
+    ctx.beginPath();
+    ctx.moveTo(unit.x, unit.y);
+    if (!unit.queueActive && unit.path.length) {
+      const destination = unit.path.at(-1);
+      ctx.lineTo(destination.x, destination.y);
+    }
+    for (const point of unit.orderQueue) ctx.lineTo(point.x, point.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    for (const point of unit.orderQueue) {
+      ctx.beginPath();
+      ctx.arc(point.x, point.y, 4 / scale, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.setLineDash([6 / scale, 5 / scale]);
+  }
+  ctx.restore();
+}
+
 function drawRally() {
   const opened = openedRallyBuilding();
   const point = Sim.rallyPoint(state, opened?.building.rally);
@@ -1591,6 +1717,7 @@ selectionToggle.setAttribute('aria-pressed', 'false');
 selectionToggle.onclick = () => {
   const active = selectionToggle.getAttribute('aria-pressed') !== 'true';
   selectionToggle.setAttribute('aria-pressed', String(active));
+  fieldDoubleTap.reset();
   gestures.setSelectionMode(active);
   selectionBox = null;
   holdIndicator = null;
@@ -1600,11 +1727,12 @@ controlGroupsUI = initControlGroups({
   enabled: () => running && !paused,
   units: (index) => groupUnits(controlGroups(), index, state.units, player),
   icon: portraitFor,
-  assign: (index) => {
+  assign: (index, { quiet = false } = {}) => {
     const units = assignGroup(controlGroups(), index, selected, state.units, player);
-    notify('Groupe ' + (index + 1) + ' assigné · ' + units.length + ' unités');
+    if (!quiet) notify(groupToastText(index, units.length));
   },
   select: (index, center) => {
+    fieldDoubleTap.reset();
     const units = groupUnits(controlGroups(), index, state.units, player);
     panelContext = {};
     selected = new Set(units.map((unit) => unit.id));
@@ -1618,6 +1746,29 @@ controlGroupsUI = initControlGroups({
     updateUI();
   },
 });
+
+const armyButton = document.createElement('button');
+armyButton.id = 'armySelect';
+armyButton.type = 'button';
+armyButton.textContent = 'Armée';
+armyButton.onclick = () => {
+  if (!running || paused) return;
+  const units = armyUnits(state.units, player);
+  if (!units.length) {
+    notify('Aucune unité de combat');
+    return;
+  }
+  panelContext = {};
+  buildGhost = null;
+  selected = new Set(units.map((unit) => unit.id));
+  selectedMine = null;
+  portraitTap.reset();
+  fieldDoubleTap.reset();
+  playSelectionVoice(units);
+  updateUI();
+  notify(armyToastText(units.length));
+};
+$('#controlGroups').append(armyButton);
 
 function openRadial(e, context) {
   radial.open(e.clientX, e.clientY, { ...context, team: player });
@@ -1872,11 +2023,40 @@ $('#baseAction').onclick = () => {
   layout();
   updateUI();
 };
+function requestRecruit(command, count = 1) {
+  if (!running || paused) return;
+  const preview = net ? structuredClone(state) : state;
+  let launched = 0;
+  let reason = null;
+  for (let index = 0; index < count; index++) {
+    reason = Sim.recruitBlockReason(preview, player, command.type, command.producerId);
+    if (reason) break;
+    if (net && !sendCommand(command)) break;
+    if (!Sim.recruit(preview, command.type, player, command.producerId)) break;
+    launched++;
+  }
+  if (reason) {
+    const population = preview.units.filter((unit) => unit.team === player).length + preview.queues[player].length;
+    const missing = Math.max(0, Sim.stats(command.type, player).cost - preview.rubies[player]);
+    const messages = {
+      population: `Population pleine (${population} / ${Sim.populationCap(preview, player)})`,
+      queues: 'Files pleines',
+      rubies: `Rubis insuffisants : il manque ${missing}`,
+      producer: 'Aucun bâtiment pour cette unité',
+    };
+    notify(recruitToastText(launched, messages[reason]));
+    toastTime = 3;
+  }
+  updateUI();
+}
 function panelCommand(command) {
   if (!running || paused) return;
+  if (command.kind === 'recruit') {
+    requestRecruit(command);
+    return;
+  }
   if (net) sendCommand(command);
   else if (command.kind === 'setRally') Sim.setRally(state, player, command);
-  else if (command.kind === 'recruit') Sim.recruit(state, command.type, player, command.producerId);
   else if (command.kind === 'construct')
     Sim.construct(state, player, command.type, command.baseId, command.slotId);
   else if (command.kind === 'build') Sim.build(state, player, command.index);
@@ -1893,6 +2073,9 @@ function renderContextPanel() {
   }
   panelVisibilityState = panelVisibility(panelVisibilityState);
   if (rallyArmed && openedRallyBuilding()?.id !== rallyArmed) rallyArmed = null;
+  const selectionKey = [...selected].sort((a, b) => a - b).join(',');
+  if (selectionKey !== queueSelection || !selectionKey) queueArmed = false;
+  queueSelection = selectionKey;
   const model = panelModel(state, player, selected, {
     ...panelContext,
     width: innerWidth,
@@ -1916,7 +2099,7 @@ function renderContextPanel() {
   const currentHealthText = $('#contextIdentity .health-text');
   if (currentHealthText)
     currentHealthText.textContent = `${Math.ceil(model.left.hp)}/${Math.ceil(model.left.max)}`;
-  const signature = JSON.stringify([model, paused, patrolArmed, rallyArmed], (key, value) =>
+  const signature = JSON.stringify([model, paused, patrolArmed, rallyArmed, queueArmed], (key, value) =>
     ['remaining', 'hp', 'status'].includes(key) ? undefined : value,
   );
   if (signature === panelSignature) return;
@@ -1990,7 +2173,8 @@ function renderContextPanel() {
       ? item.prerequisite || 'Rubis insuffisants ou file pleine'
       : item.name;
     button.setAttribute('aria-label', button.title);
-    button.disabled = paused || item.locked;
+    button.disabled = paused || (item.locked && item.kind !== 'recruit');
+    if (item.kind === 'recruit' && item.locked) button.style.opacity = '0.45';
     let timer;
     let removed = false;
     if (item.kind === 'filter') {
@@ -2001,6 +2185,7 @@ function renderContextPanel() {
         button.setPointerCapture(event.pointerId);
         timer = setTimeout(() => {
           removed = true;
+          fieldDoubleTap.reset();
           selected = filterSelection(selected, state.units, item.type, true);
           updateUI();
         }, 550);
@@ -2024,6 +2209,7 @@ function renderContextPanel() {
     button.onclick = () => {
       if (removed) return;
       if (item.kind === 'filter') {
+        fieldDoubleTap.reset();
         selected = filterSelection(selected, state.units, item.type);
         updateUI();
       } else if (item.kind === 'main') {
@@ -2077,7 +2263,18 @@ function renderContextPanel() {
       updateUI();
     };
     $('#hold').innerHTML = '⛨ <span>Tenir position</span>';
-    actions.append($('#hold'), patrol, ability, $('#retreat'));
+    const queue = document.createElement('button');
+    queue.id = 'queueOrders';
+    queue.textContent = '⇢ Enchaîner';
+    queue.style.minHeight = '44px';
+    queue.style.minWidth = '44px';
+    queue.setAttribute('aria-pressed', String(queueArmed));
+    queue.disabled = paused;
+    queue.onclick = () => {
+      queueArmed = !queueArmed;
+      updateUI();
+    };
+    actions.append($('#hold'), patrol, queue, ability, $('#retreat'));
   } else {
     const opened = openedRallyBuilding();
     if (opened) {
@@ -2136,3 +2333,10 @@ function renderContextPanel() {
   }
 }
 renderContextPanel();
+
+productionUI = initProduction({
+  enabled: () => running && !paused,
+  command: panelCommand,
+  recruitBatch: requestRecruit,
+  vibrate: () => vibrateOrder(settings.vibration),
+});

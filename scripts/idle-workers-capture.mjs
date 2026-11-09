@@ -88,6 +88,30 @@ try {
     assert(rect.x + rect.width <= other.x || other.x + other.width <= rect.x ||
       rect.y + rect.height <= other.y || other.y + other.height <= rect.y, selector);
   }
+  for (const collapsed of ['true', 'false']) {
+    await page.locator('#contextPanel').evaluate((panel, value) => {
+      panel.dataset.collapsed = value;
+    }, collapsed);
+    const idleRect = await button.boundingBox();
+    const groupButtons = page.locator('#controlGroups button');
+    assert.equal(await groupButtons.count(), 4);
+    const targets = [idleRect];
+    for (const groupButton of await groupButtons.all()) {
+      targets.push(await groupButton.boundingBox());
+    }
+    for (const [index, target] of targets.entries()) {
+      assert(target.width >= 44 && target.height >= 44);
+      assert(target.x >= 0 && target.y >= 0);
+      assert(target.x + target.width <= 844 && target.y + target.height <= 390);
+      for (const other of targets.slice(index + 1)) {
+        assert(
+          target.x + target.width <= other.x || other.x + other.width <= target.x ||
+          target.y + target.height <= other.y || other.y + other.height <= target.y,
+          `Touch targets overlap with collapsed=${collapsed}`,
+        );
+      }
+    }
+  }
   await button.click();
   assert.equal((await page.evaluate(() => window.panelProbe())).selected, 1);
   const first = await page.evaluate(() => window.panelProbe());

@@ -27,7 +27,10 @@ export function initTouchUI(api) {
     $('#touchControls').hidden = !game.running;
     document.body.classList.toggle('playing', game.running);
     stick.hidden = !$('#joystickEnabled').checked || !game.running || game.paused || !game.selected.size;
-    $('#attackAction').disabled = game.paused || !game.selected.size;
+    const hasOwnSelection = game.state.units.some(
+      (unit) => game.selected.has(unit.id) && unit.team === game.player && unit.hp > 0,
+    );
+    $('#attackAction').disabled = game.paused || !hasOwnSelection;
     $('#baseAction').disabled = game.paused;
   }
   $('#joystickEnabled').onchange = () => {

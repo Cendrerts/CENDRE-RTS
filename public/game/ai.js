@@ -25,6 +25,7 @@ export function createAI(team, difficulty = 'normal') {
   let expedition = null;
   const deployed = new Set();
   const remembered = new Map();
+  const knownBuildings = new Map();
   const established = new Set();
   const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
   const power = (units) => units.reduce((sum, unit) => sum + unit.hp * Sim.stats(unit.type, unit.team).damage / Sim.stats(unit.type, unit.team).rate * (unit.type === 'mage' ? 3 : 1), 0);
@@ -72,6 +73,22 @@ export function createAI(team, difficulty = 'normal') {
         depot: mine.owner === team && mine.depot,
       }));
       const owned = mines.filter((mine) => mine.owner === team);
+      const populationLimit = Sim.unitLimit?.(team) ?? 30;
+      const economyCapacity = Number(brutal) + settings.workers * (brutal ? Math.min(3, owned.length + 1) : 3) + Number(workers.some((worker) => worker.id === scout));
+      const militaryLimit = populationLimit - economyCapacity;
+      const saturated = own.length + state.queues[team].length >= populationLimit;
+      const surplus = state.rubies[team] > 800;
+      const forceWave = state.time - lastWave >= 120 && (state.rubies[team] >= 800 || army.length >= populationLimit * 0.9);
+      for (const [id, building] of knownBuildings) {
+        if (Sim.visibleAt(state, team, building.x, building.y) && !state.slots[1 - team].some((slot) => slot.id === id && slot.occupe)) {
+          knownBuildings.delete(id);
+        }
+      }
+      for (const slot of state.slots[1 - team]) {
+        if (!Sim.visibleAt(state, team, slot.x, slot.y)) continue;
+        if (slot.occupe) knownBuildings.set(slot.id, { x: slot.x, y: slot.y });
+        else knownBuildings.delete(slot.id);
+      }
       for (const mine of owned) {
         if (mine.index >= 2 && mine.depot) established.add(mine.index);
       }
@@ -99,7 +116,7 @@ export function createAI(team, difficulty = 'normal') {
       if (state.time >= nextMacro) {
         nextMacro = state.time + settings.macro;
         const saturation = (mine) => settings.workers + Number(brutal && mine.index === team);
-        const workerTarget = owned.reduce((sum, mine) => sum + saturation(mine), 0);
+        const workerTarget = Math.min(owned.reduce((sum, mine) => sum + saturation(mine), 0), settings.workers * 3 + Number(brutal));
         const queued = state.queues[team].filter((job) => job.type === 'commis').length;
         if (workers.filter((worker) => worker.id !== scout).length + queued < workerTarget && Sim.recruit(state, 'commis', team)) actions++;
         // Rebalance only surplus or idle workers, preserving harvest trips.
@@ -118,16 +135,17 @@ export function createAI(team, difficulty = 'normal') {
             if (assigned.has(index)) assigned.set(index, assigned.get(index) - 1);
           }
         }
-        if ((!brutal || !emergency && army.length >= (team ? 12 : 8)) && state.time >= settings.expansion && owned.length < (state.time >= (difficulty === 'brutal' ? 240 : 300) ? 3 : 2) && !expedition && workers.length) {
+        const needsProductionSite = state.rubies[team] >= Sim.RULES.mineCost && state.slots[team].every((slot) => slot.occupe);
+        if ((needsProductionSite || !brutal || !emergency && army.length >= (team ? 12 : 8)) && state.time >= settings.expansion && (needsProductionSite || owned.length < (state.time >= (difficulty === 'brutal' ? 240 : 300) ? 3 : 2)) && !expedition && workers.length) {
           // Mine locations are public terrain; ownership is checked only after scouting.
           const priority = (mine) => distance(mine, state.bases[team]) * (established.has(mine.index) ? 0.1 : settings.micro && mine.boost ? 0.6 : 1);
           const destination = mines.filter((mine) => mine.index >= 2 && mine.owner !== team)
-            .sort((a, b) => priority(a) - priority(b))[0];
+            .sort((a, b) => (needsProductionSite ? Number(a.owner === 1 - team) - Number(b.owner === 1 - team) : 0) || priority(a) - priority(b))[0];
           if (destination) {
             expedition = { worker: workers.find((worker) => worker.id !== scout)?.id, index: destination.index };
           }
         }
-        if (emergency && expedition) {
+        if (emergency && expedition && !needsProductionSite) {
           expedition = null;
         }
         if (expedition) {
@@ -169,9 +187,8 @@ export function createAI(team, difficulty = 'normal') {
               let affordable = true;
               for (const producer of Sim.producers(state, team, building.unit)) {
                 // Reserve population for the next mine and the surviving scout.
-                const militaryPopulation = army.length + state.queues[team].filter((job) => job.type !== 'commis').length;
-                const economyCapacity = Number(brutal) + settings.workers * (brutal ? Math.min(3, owned.length + 1) : 3) + Number(workers.some((worker) => worker.id === scout));
-                if (militaryPopulation >= Sim.unitLimit(team) - economyCapacity) break;
+                const reservedMilitary = army.length + state.queues[team].filter((job) => job.type !== 'commis').length;
+                if (reservedMilitary >= militaryLimit) break;
                 if (state.queues[team].some((job) => job.producerId === producer.id)) continue;
                 if (Sim.recruit(state, building.unit, team, producer.id)) actions++;
                 else affordable = false;
@@ -179,6 +196,13 @@ export function createAI(team, difficulty = 'normal') {
               // Save for the missing role rather than endlessly buying cheaper infantry.
               if (!affordable) break;
             }
+          }
+          if (surplus) {
+            // Scale paid production when income outpaces the existing producers,
+            // including when population reservations prevent more recruitment.
+            const investment = [...order].sort((a, b) => Sim.producers(state, team, a.unit).length - Sim.producers(state, team, b.unit).length)
+              .find((building) => building.requires.every((id) => built.has(id)));
+            if (investment && Sim.construct(state, team, investment.id)) actions++;
           }
           for (const building of order) {
             if (built.size === 3 && building.unit === preferred && Sim.producers(state, team, building.unit).length < settings.copies && state.rubies[team] >= 150 && Sim.construct(state, team, building.id)) actions++;
@@ -196,24 +220,28 @@ export function createAI(team, difficulty = 'normal') {
       }
       const base = state.bases[team];
       const rally = { x: base.x + (team ? -110 : 110), y: base.y + (team ? 65 : -65) };
-      const invaders = enemies.filter((enemy) => owned.some((mine) => distance(enemy, mine) < (brutal ? 400 : 240)));
+      const invaders = (brutal ? observedArmy : enemies).filter((enemy) => owned.some((mine) => distance(enemy, mine) < (brutal ? 400 : 240)));
+      let threatenedEconomy = false;
       if (brutal) {
         for (const worker of workers) {
           const danger = observedArmy.filter((enemy) => distance(worker, enemy) < 260);
           const guards = army.filter((unit) => distance(worker, unit) < 280);
           if (power(danger) > power(guards)) {
+            threatenedEconomy = true;
             evacuated.add(worker.id);
             if (!worker.retreat || worker.harvest) Sim.order(state, [worker.id], base.x, base.y, null, true);
           } else if (!danger.length) {
             evacuated.delete(worker.id);
           }
         }
-        if (invaders.length) {
+        // An expansion skirmish must not cancel an army already attacking.
+        if (threatenedEconomy || invaders.some((enemy) => distance(enemy, base) < 220)) {
           for (const unit of army) deployed.delete(unit.id);
         }
       }
-      if (invaders.length && !defending && army.length && (!brutal || state.time >= retreatUntil)) {
-        Sim.order(state, army.map((unit) => unit.id), invaders[0].x, invaders[0].y, null, false);
+      const defenders = army.filter((unit) => !brutal || !deployed.has(unit.id));
+      if (invaders.length && !defending && defenders.length && (!brutal || state.time >= retreatUntil)) {
+        Sim.order(state, defenders.map((unit) => unit.id), invaders[0].x, invaders[0].y, null, false);
         actions++;
       }
       defending = invaders.length > 0;
@@ -240,10 +268,16 @@ export function createAI(team, difficulty = 'normal') {
       const waveStrength = attackers.reduce((strength, unit) => strength + unit.hp / Sim.stats(unit.type, 0).hp, 0);
       const counterattack = brutal && (state.time < counterUntil || threats.length >= Math.max(3, knownArmy.size) && army.length > threats.length * 1.5) && attackers.length >= 5;
       const enoughTroops = counterattack || waveStrength >= (brutal ? Math.min(12, settings.wave + metrics.waves * 2) : settings.wave) && attackWindow;
-      const saturated = own.length + state.queues[team].length >= Sim.unitLimit(team);
       const overdue = lastWave > 0 && state.time - lastWave > 90;
       const assembly = brutal ? attackers : reserve;
       const assembled = assembly.filter((unit) => distance(unit, rally) < 240).length >= assembly.length * 0.7;
+      // Scattered reserves must actually receive a regroup order; waiting for
+      // assembled alone can strand defenders at a distant expansion forever.
+      if (overdue && !assembled && !defending && state.time >= retreatUntil && state.time - lastRegroup >= 12) {
+        Sim.order(state, assembly.map((unit) => unit.id), rally.x, rally.y, null, false);
+        lastRegroup = state.time;
+        actions++;
+      }
       if ((!brutal || attackers.length >= 5) && !defending && state.time >= retreatUntil && (enoughTroops || reserve.length > 0 && (saturated || overdue)) && assembled) {
         for (const unit of attackers) deployed.add(unit.id);
         Sim.order(state, attackers.map((unit) => unit.id), destination.x, destination.y, null, false);
@@ -311,6 +345,27 @@ export function createAI(team, difficulty = 'normal') {
           const guardPost = guardingMain ? base : null;
           const goal = localInvaders[0] || guardPost || victim || (raiders.has(unit.id) ? mines[1 - team] : null) || (deployed.has(unit.id) || unit.id === scout ? destination : rally);
           Sim.order(state, [unit.id], goal.x, goal.y, victim || null, false);
+          actions++;
+        }
+      }
+      // Last, so defensive micro cannot replace the safety order this update.
+      // This includes deployed troops and raiders, leaving only the garrison.
+      if (forceWave && state.time - lastWave >= 120) {
+        const reliefArmy = army.slice(garrison);
+        if (reliefArmy.length) {
+          const knownTargets = [...knownBuildings.values(), ...remembered.values(), ...intelligence.bases];
+          const goal = knownTargets.sort((a, b) => distance(a, base) - distance(b, base))[0] || enemyBase;
+          const ids = reliefArmy.map((unit) => unit.id);
+          Sim.order(state, ids, goal.x, goal.y, null, false);
+          for (const id of ids) {
+            deployed.add(id);
+            raiders.delete(id);
+          }
+          retreatUntil = 0;
+          counterUntil = 0;
+          metrics.waves++;
+          metrics.waveSizes.push(ids.length);
+          lastWave = state.time;
           actions++;
         }
       }

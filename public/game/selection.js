@@ -14,6 +14,22 @@ export function unitsOfType(units, team, type, bounds) {
   );
   return { total, visible };
 }
+export function createFieldDoubleTap() {
+  let previous = null;
+  return {
+    reset() {
+      previous = null;
+    },
+    tap(unitType, screenX, screenY, now) {
+      const double = previous?.unitType === unitType &&
+        now >= previous.time && now - previous.time < 350 &&
+        Math.hypot(screenX - previous.x, screenY - previous.y) < 40;
+      previous = double ? null : { unitType, x: screenX, y: screenY, time: now };
+      return double ? 'double' : 'single';
+    },
+  };
+}
+
 export function createPortraitTap() {
   let previous = null;
   return {
@@ -47,4 +63,16 @@ export function filterSelection(selection, units, type, remove = false) {
   return new Set(units.filter((unit) =>
     selection.has(unit.id) && unit.hp > 0 && (remove ? unit.type !== type : unit.type === type),
   ).map((unit) => unit.id));
+}
+
+export function armyUnits(units, team) {
+  return units.filter((unit) => unit.team === team && unit.hp > 0 && unit.type !== 'commis');
+}
+
+export function armyToastText(count) {
+  return count + (count === 1 ? " unité · Toute l'armée" : " unités · Toute l'armée");
+}
+
+export function groupToastText(index, count) {
+  return 'Groupe ' + (index + 1) + ' assigné · ' + count + (count === 1 ? ' unité' : ' unités');
 }

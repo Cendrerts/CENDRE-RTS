@@ -210,6 +210,7 @@ function forest(u) {
 }
 function create() {
   let s = {
+    matchCounters: [emptyMatchCounters(), emptyMatchCounters()],
     queues: [[], []],
     controlGroups: [[], [], [], []],
     time: 0,
@@ -355,8 +356,34 @@ function spawn(s, type, team, origin = null) {
   }
   applyRally(s, s.units.at(-1), origin);
 }
+function emptyMatchCounters() {
+  return {
+    rubiesCollected: 0,
+    unitsProduced: 0,
+    unitsLost: 0,
+    unitsKilled: 0,
+    buildingsDestroyed: 0,
+  };
+}
+function matchStats(s) {
+  return {
+    teams: [0, 1].map((team) => ({ ...emptyMatchCounters(), ...s.matchCounters?.[team] })),
+    duration: s.time,
+  };
+}
+function applyDamage(s, target, damage, attackerTeam = null) {
+  const wasAlive = target.hp > 0;
+  target.hp -= damage;
+  recordDamageEvent(s, target);
+  if (!wasAlive || target.hp > 0) return;
+  if (!target.base) s.matchCounters[target.team].unitsLost++;
+  if (attackerTeam === null || attackerTeam === target.team) return;
+  const counter = target.base ? 'buildingsDestroyed' : 'unitsKilled';
+  s.matchCounters[attackerTeam][counter]++;
+}
 // Shared migration for saved solo states and persisted server matches.
 function migrateState(s) {
+  s.matchCounters ??= [emptyMatchCounters(), emptyMatchCounters()];
   if (Object.hasOwn(s, 'gold')) {
     if (!Object.hasOwn(s, 'rubies')) s.rubies = s.gold;
     delete s.gold;
@@ -395,22 +422,42 @@ function construct(s, team, type, baseId, slotId = null) {
   ensureSlots(s);
   return placeBuilding(s, team, type, baseId, slotId);
 }
-function recruit(s, type, team, producerId = null) {
+export function populationCap(state, team) {
+  return unitLimit(team);
+}
+export function canRecruit(s, team, type, producerId = null) {
   s.queues ??= [[], []];
   if (s.winner !== null || !Object.hasOwn(TYPES, type)) return false;
   ensureSlots(s);
-  const cfg = stats(type, team),
-    q = s.queues[team],
-    options = producers(s, team, type).filter(
-      (p) =>
-        (!producerId || p.id === producerId) && q.filter((j) => j.producerId === p.id).length < 8,
-    );
-  if (
-    !options.length ||
-    s.rubies[team] < cfg.cost ||
-    s.units.filter((u) => u.team === team).length + q.length >= unitLimit(team)
-  )
-    return false;
+  const queue = s.queues[team];
+  return s.rubies[team] >= stats(type, team).cost &&
+    s.units.filter((unit) => unit.team === team).length + queue.length < populationCap(s, team) &&
+    producers(s, team, type).some((producer) =>
+      (!producerId || producer.id === producerId) &&
+      queue.filter((job) => job.producerId === producer.id).length < 8);
+}
+// Evaluate on a copy because canRecruit also migrates older states.
+export function recruitBlockReason(state, team, type, producerId = null) {
+  const snapshot = structuredClone(state);
+  if (canRecruit(snapshot, team, type, producerId)) return null;
+  const queue = snapshot.queues[team];
+  const population = snapshot.units.filter((unit) => unit.team === team).length + queue.length;
+  if (population >= populationCap(snapshot, team)) return 'population';
+  const buildings = producers(snapshot, team, type).filter((producer) =>
+    !producerId || producer.id === producerId);
+  if (!buildings.length) return 'producer';
+  if (buildings.every((producer) =>
+    queue.filter((job) => job.producerId === producer.id).length >= 8)) return 'queues';
+  if (Object.hasOwn(TYPES, type) && snapshot.rubies[team] < stats(type, team).cost) return 'rubies';
+  return 'producer';
+}
+function recruit(s, type, team, producerId = null) {
+  if (!canRecruit(s, team, type, producerId)) return false;
+  const cfg = stats(type, team);
+  const q = s.queues[team];
+  const options = producers(s, team, type).filter((producer) =>
+    (!producerId || producer.id === producerId) &&
+    q.filter((job) => job.producerId === producer.id).length < 8);
   const workload = (p) =>
     q.filter((j) => j.producerId === p.id).reduce((n, j) => n + j.remaining, 0);
   options.sort((a, b) => workload(a) - workload(b));
@@ -468,13 +515,28 @@ function productionTick(s, dt) {
         if (j.remaining <= 1e-6) {
           q.splice(index, 1);
           spawn(s, j.type, t, p);
+          s.matchCounters[t].unitsProduced++;
         } else break;
       }
     }
   }
 }
 
-function order(s, ids, x, y, target = null, retreat = !target) {
+function startWaypoint(unit, point) {
+  unit.path = route(unit.x, unit.y, point.x, point.y);
+  if (!unit.path.length) unit.path = [{ x: point.x, y: point.y }];
+  unit.attackDestination = point.attackMove ? point : null;
+  unit.retreat = !point.attackMove;
+  unit.chasing = false;
+  unit.target = null;
+  unit.autoTargetId = null;
+  unit.lastRetargetAt = null;
+  unit.hold = false;
+  unit.repath = 0;
+  unit.stuck = null;
+}
+
+function order(s, ids, x, y, target = null, retreat = !target, queue = false) {
   const units = s.units.filter((u) => ids.includes(u.id));
   if (!units.length) return;
   const centerX = units.reduce((sum, unit) => sum + unit.x, 0) / units.length;
@@ -515,6 +577,24 @@ function order(s, ids, x, y, target = null, retreat = !target) {
   destinations.sort(byOffset);
   units.forEach((u, index) => {
     const destination = destinations[index % destinations.length];
+    if (queue === true && !target) {
+      u.orderQueue ??= [];
+      if (u.orderQueue.length >= 8) return;
+      const point = { x: destination.x, y: destination.y, attackMove: !retreat };
+      u.orderQueue.push(point);
+      if (u.orderQueue.length === 1 &&
+          (u.harvest || u.manual || u.patrol || u.followId || (!u.path.length && !u.target && !u.chasing))) {
+        u.followId = null;
+        u.patrol = null;
+        u.manual = null;
+        u.harvest = null;
+        u.queueActive = true;
+        startWaypoint(u, point);
+      }
+      return;
+    }
+    u.orderQueue = [];
+    u.queueActive = false;
     u.followId = null;
     u.patrol = null;
     u.manual = null;
@@ -709,8 +789,7 @@ function tick(s, dt) {
     u.cool -= dt;
     u.repath -= dt;
     if (forest(u)) {
-      u.hp -= RULES.forestDamage * dt;
-      recordDamageEvent(s, u);
+      applyDamage(s, u, RULES.forestDamage * dt);
     }
     if (u.hp <= 0) continue;
     if (u.manual) {
@@ -762,6 +841,18 @@ function tick(s, dt) {
       u.path = route(u.x, u.y, u.attackDestination.x, u.attackDestination.y);
       u.chasing = false;
     }
+    if (!target && !u.path.length && !u.chasing && u.orderQueue?.length) {
+      if (u.queueActive) u.orderQueue.shift();
+      u.queueActive = u.orderQueue.length > 0;
+      if (u.queueActive) {
+        u.followId = null;
+        u.patrol = null;
+        startWaypoint(u, u.orderQueue[0]);
+      } else {
+        u.retreat = false;
+        u.attackDestination = null;
+      }
+    }
     if (!target && !u.hold && u.patrol && !u.path.length) {
       u.patrol.index = 1 - u.patrol.index;
       const destination = u.patrol.points[u.patrol.index];
@@ -775,8 +866,7 @@ function tick(s, dt) {
         u.cool = cfg.rate;
         u.lastAttackTargetId = target.id ?? null;
         u.lastAttackAt = s.time;
-        target.hp -= cfg.damage;
-        recordDamageEvent(s, target);
+        applyDamage(s, target, cfg.damage, u.team);
         if (cfg.splash) {
           for (const v of s.units)
             if (
@@ -785,8 +875,7 @@ function tick(s, dt) {
               v.hp > 0 &&
               Math.hypot(v.x - target.x, v.y - target.y) <= cfg.splash
             ) {
-              v.hp -= cfg.damage;
-              recordDamageEvent(s, v);
+              applyDamage(s, v, cfg.damage, u.team);
             }
         }
         s.shots.push({
@@ -834,7 +923,7 @@ function tick(s, dt) {
           if (Math.hypot(point.x - u.x, point.y - u.y) >= 0.01) break;
           u.path.shift();
         }
-        if (!u.path.length) u.retreat = false;
+        if (!u.path.length && !u.orderQueue?.length) u.retreat = false;
       }
     }
   }
@@ -997,6 +1086,8 @@ function assignHarvest(s, u, index) {
   u.manual = null;
   u.patrol = null;
   u.followId = null;
+  u.orderQueue = [];
+  u.queueActive = false;
   u.harvest = { mine: index, phase: u.cargo > 0 ? 'VERS_BASE' : 'VERS_GISEMENT', elapsed: 0 };
   u.target = null;
   u.autoTargetId = null;
@@ -1067,6 +1158,7 @@ function harvestTick(s, u, dt) {
       h.elapsed = 0;
     } else {
       s.rubies[u.team] += u.cargo || 0;
+      s.matchCounters[u.team].rubiesCollected += u.cargo || 0;
       u.cargo = 0;
       if (!availableMine(m, u.team)) {
         reassignHarvest(s, u);
@@ -1120,6 +1212,7 @@ export const CendreSim = {
   gather,
   BUILDINGS,
   migrateState,
+  matchStats,
   ensureSlots,
   construct,
   W,
@@ -1130,7 +1223,6 @@ export const CendreSim = {
   TYPES,
   RULES,
   stats,
-  unitLimit,
   walk,
   nearest,
   route,
@@ -1138,6 +1230,10 @@ export const CendreSim = {
   create,
   spawn,
   recruit,
+  canRecruit,
+  populationCap,
+  unitLimit,
+  recruitBlockReason,
   order,
   patrol,
   build,
@@ -1154,6 +1250,8 @@ function steer(s, ids, dx, dy) {
     divisor = Math.max(1, length);
   for (const u of s.units)
     if (ids.includes(u.id)) {
+      u.orderQueue = [];
+      u.queueActive = false;
       u.followId = null;
       u.patrol = null;
       u.harvest = null;
