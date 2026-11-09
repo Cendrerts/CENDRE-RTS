@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict';
 import { createControlGroups, assignGroup, groupUnits, dominantType, createGroupTap, isGroupHold } from '../public/game/control-groups.js';
-import { createPortraitTap, unitsOfType } from '../public/game/selection.js';
+import { createPortraitTap, groupToastText, unitsOfType } from '../public/game/selection.js';
 import { initTouchUI } from '../public/game/mobile.js';
 import { CendreSim as Sim } from '../public/game/sim.js';
+
+assert.equal(groupToastText(1, 1), 'Groupe 2 assigné · 1 unité');
+assert.equal(groupToastText(0, 4), 'Groupe 1 assigné · 4 unités');
 
 const units = [
   { id: 1, type: 'knight', hp: 50, team: 0, x: 10, y: 20 },
