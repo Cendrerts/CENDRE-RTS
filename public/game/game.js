@@ -9,7 +9,7 @@ import { CuistotsAmbience } from './cuistots-ambience.js';
 import { orderFeedback, drawOrderFeedback, vibrateOrder } from './order-feedback.js';
 import { UnitVoices, selectionVoice } from './unit-voices.js';
 import { createRadialMenu } from './radial.js';
-import { armyUnits, armyToastText, groupToastText, filterSelection, cameraBounds, unitsOfType, createFieldDoubleTap, createPortraitTap, unitsInBox, boxSelection } from './selection.js';
+import { buildingsOfType, selectedProducers, selectedRecruitCommand, selectedRallyCommands, armyUnits, armyToastText, groupToastText, filterSelection, cameraBounds, unitsOfType, createFieldDoubleTap, createPortraitTap, unitsInBox, boxSelection } from './selection.js';
 import { createGestures } from './gestures.js';
 import { resolveTap, isEmptyTap } from './tap.js';
 import { installMobileDisplay } from './mobile-display.js';
@@ -620,7 +620,8 @@ function handleFieldTap(e, duration) {
       command.unitId = target.target.id;
     }
     rallyArmed = null;
-    panelCommand(command);
+    const ids = panelContext.producerIds || [openedBuilding.id];
+    for (const rallyCommand of selectedRallyCommands(state, player, ids, command)) panelCommand(rallyCommand);
     return;
   }
   if (duration >= 550 && isEmptyTap(state, player, p, scale)) {
@@ -636,7 +637,7 @@ function handleFieldTap(e, duration) {
     !['select', 'radial', 'production', 'enemyBase'].includes(resolved.kind)
       ? { kind: 'move' }
       : resolved;
-  if (action.kind !== 'select') fieldDoubleTap.reset();
+  if (!['select', 'production'].includes(action.kind)) fieldDoubleTap.reset();
   if (action.kind === 'radial') {
     if (action.context.mine !== undefined) selectedMine = action.context.mine;
     selected.clear();
@@ -652,7 +653,12 @@ function handleFieldTap(e, duration) {
   }
   if (action.kind === 'production') {
     selected.clear();
-    panelContext = { producerId: action.id };
+    const slot = state.slots[player].find((candidate) => candidate.id === action.id);
+    const tap = fieldDoubleTap.tap('building:' + slot.batiment.type, e.clientX, e.clientY, performance.now());
+    const buildings = tap === 'double'
+      ? buildingsOfType(state, player, slot.batiment.type, cameraBounds(ox, oy, scale, viewWidth, viewHeight))
+      : [slot];
+    panelContext = { producerId: action.id, producerIds: buildings.map((building) => building.id) };
     panelVisibilityState = panelVisibility(panelVisibilityState, 'building');
     updateUI();
     return;
@@ -1437,7 +1443,9 @@ function drawCook(u) {
 
 function openedRallyBuilding() {
   if (panelVisibilityState.collapsed) return null;
-  const id = panelContext.producerId || (!panelContext.slotId && panelContext.baseId);
+  const id = (panelContext.producerIds
+    ? selectedProducers(state, player, panelContext.producerIds)[0]?.id
+    : panelContext.producerId) || (!panelContext.slotId && panelContext.baseId);
   const building = id && Sim.rallyBuilding(state, player, id);
   return building ? { id, building } : null;
 }
@@ -2023,12 +2031,13 @@ $('#baseAction').onclick = () => {
   layout();
   updateUI();
 };
-function requestRecruit(command, count = 1) {
+function requestRecruit(command, count = 1, producerIds = null) {
   if (!running || paused) return;
   const preview = net ? structuredClone(state) : state;
   let launched = 0;
   let reason = null;
   for (let index = 0; index < count; index++) {
+    if (producerIds?.length) command = selectedRecruitCommand(preview, player, command.type, producerIds);
     reason = Sim.recruitBlockReason(preview, player, command.type, command.producerId);
     if (reason) break;
     if (net && !sendCommand(command)) break;
@@ -2206,6 +2215,31 @@ function renderContextPanel() {
       };
       button.onlostpointercapture = () => clearTimeout(timer);
     }
+    if (item.kind === 'recruit') {
+      let origin = null;
+      button.onpointerdown = (event) => {
+        removed = false;
+        origin = { x: event.clientX, y: event.clientY };
+        button.setPointerCapture(event.pointerId);
+        timer = setTimeout(() => {
+          removed = true;
+          requestRecruit({ kind: 'recruit', type: item.type, producerId: model.producerId }, 5, model.producerIds);
+        }, 450);
+      };
+      button.onpointermove = (event) => {
+        if (origin && Math.hypot(event.clientX - origin.x, event.clientY - origin.y) > 12) {
+          removed = true;
+          clearTimeout(timer);
+        }
+      };
+      button.onpointerup = () => clearTimeout(timer);
+      button.onpointercancel = () => {
+        removed = true;
+        clearTimeout(timer);
+      };
+      button.onlostpointercapture = () => clearTimeout(timer);
+      button.oncontextmenu = (event) => event.preventDefault();
+    }
     button.onclick = () => {
       if (removed) return;
       if (item.kind === 'filter') {
@@ -2217,7 +2251,7 @@ function renderContextPanel() {
         panelVisibilityState = panelVisibility(panelVisibilityState, 'building');
         updateUI();
       } else if (item.kind === 'recruit') {
-        panelCommand({ kind: 'recruit', type: item.type, producerId: model.producerId });
+        requestRecruit({ kind: 'recruit', type: item.type, producerId: model.producerId }, 1, model.producerIds);
       } else if (item.kind === 'depot') {
         panelCommand({ kind: 'build', index: item.index });
       } else if (panelContext.slotId) {
@@ -2301,7 +2335,7 @@ function renderContextPanel() {
     if (model.producerId && model.queue.length) {
       const queueLabel = document.createElement('small');
       queueLabel.className = 'queue-label';
-      queueLabel.textContent = `File ${model.queue.length}/8`;
+      queueLabel.textContent = `File ${model.queue.length}/${8 * Math.max(1, model.producerIds.length)}`;
       actions.append(queueLabel);
     }
     for (let index = 0; index < model.queue.length; index++) {
@@ -2324,7 +2358,7 @@ function renderContextPanel() {
         button.onclick = () =>
           panelCommand({
             kind: 'cancelProduction',
-            producerId: model.producerId,
+            producerId: job.producerId,
             jobId: job.id,
           });
       }

@@ -1,3 +1,5 @@
+import { CendreSim as Sim } from './sim.js';
+
 // This 2D engine uses world (x,y), equivalent to ground-plane (x,z).
 export function cameraBounds(ox, oy, scale, width, height) {
   return {
@@ -75,4 +77,32 @@ export function armyToastText(count) {
 
 export function groupToastText(index, count) {
   return 'Groupe ' + (index + 1) + ' assigné · ' + count + (count === 1 ? ' unité' : ' unités');
+}
+
+export function buildingsOfType(state, player, type, bounds) {
+  const config = Sim.BUILDINGS[player].find((building) => building.id === type);
+  if (!config) return [];
+  return Sim.producers(state, player, config.unit).filter((building) =>
+    building.x >= bounds.minX && building.x <= bounds.maxX &&
+    building.y >= bounds.minY && building.y <= bounds.maxY,
+  );
+}
+
+export function selectedProducers(state, player, ids) {
+  return Object.keys(Sim.TYPES).flatMap((type) => Sim.producers(state, player, type))
+    .filter((producer) => ids.includes(producer.id));
+}
+
+export function selectedRecruitCommand(state, player, type, ids) {
+  const producers = selectedProducers(state, player, ids).filter((producer) => producer.unit === type);
+  const producer = Sim.leastLoadedProducer(state, player, producers);
+  return { kind: 'recruit', type, producerId: producer?.id || ids[0] };
+}
+
+export function selectedRallyCommands(state, player, ids, target) {
+  return selectedProducers(state, player, ids).map((producer) => ({
+    ...target,
+    kind: 'setRally',
+    buildingId: producer.id,
+  }));
 }
