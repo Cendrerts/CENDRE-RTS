@@ -419,22 +419,24 @@ function construct(s, team, type, baseId, slotId = null) {
   ensureSlots(s);
   return placeBuilding(s, team, type, baseId, slotId);
 }
-function recruit(s, type, team, producerId = null) {
+export function canRecruit(s, team, type, producerId = null) {
   s.queues ??= [[], []];
   if (s.winner !== null || !Object.hasOwn(TYPES, type)) return false;
   ensureSlots(s);
-  const cfg = stats(type, team),
-    q = s.queues[team],
-    options = producers(s, team, type).filter(
-      (p) =>
-        (!producerId || p.id === producerId) && q.filter((j) => j.producerId === p.id).length < 8,
-    );
-  if (
-    !options.length ||
-    s.rubies[team] < cfg.cost ||
-    s.units.filter((u) => u.team === team).length + q.length >= 30
-  )
-    return false;
+  const queue = s.queues[team];
+  return s.rubies[team] >= stats(type, team).cost &&
+    s.units.filter((unit) => unit.team === team).length + queue.length < 30 &&
+    producers(s, team, type).some((producer) =>
+      (!producerId || producer.id === producerId) &&
+      queue.filter((job) => job.producerId === producer.id).length < 8);
+}
+function recruit(s, type, team, producerId = null) {
+  if (!canRecruit(s, team, type, producerId)) return false;
+  const cfg = stats(type, team);
+  const q = s.queues[team];
+  const options = producers(s, team, type).filter((producer) =>
+    (!producerId || producer.id === producerId) &&
+    q.filter((job) => job.producerId === producer.id).length < 8);
   const workload = (p) =>
     q.filter((j) => j.producerId === p.id).reduce((n, j) => n + j.remaining, 0);
   options.sort((a, b) => workload(a) - workload(b));
@@ -1161,6 +1163,7 @@ export const CendreSim = {
   create,
   spawn,
   recruit,
+  canRecruit,
   order,
   patrol,
   build,
