@@ -70,6 +70,16 @@ try {
   const bounds = await page.locator('#queueOrders').boundingBox();
   assert(bounds.width >= 44 && bounds.height >= 44);
   assert(bounds.x >= 0 && bounds.y >= 0 && bounds.y + bounds.height <= 390);
+  const productionToggle = await page.locator('#productionToggle').boundingBox();
+  assert(productionToggle.width >= 44 && productionToggle.height >= 44);
+  const assertNoOverlap = (other) => {
+    assert(bounds.x + bounds.width <= other.x || other.x + other.width <= bounds.x ||
+      bounds.y + bounds.height <= other.y || other.y + other.height <= bounds.y);
+  };
+  assertNoOverlap(productionToggle);
+  await page.locator('#productionToggle').click();
+  assertNoOverlap(await page.locator('#productionBar').boundingBox());
+  await page.locator('#productionToggle').click();
   await page.locator('#queueOrders').click();
   assert.equal(await page.locator('#queueOrders').getAttribute('aria-pressed'), 'true');
   for (const point of [[300, 210], [420, 145], [540, 210]]) {

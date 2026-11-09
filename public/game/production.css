@@ -1,0 +1,94 @@
+#globalProduction {
+  position: fixed;
+  right: max(12px, env(safe-area-inset-right));
+  bottom: max(124px, calc(env(safe-area-inset-bottom) + 120px));
+  z-index: 26;
+}
+#globalProduction[hidden], #productionBar[hidden] {
+  display: none;
+}
+#globalProduction button {
+  box-sizing: border-box;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 8px;
+  border: 1px solid #bca574;
+  border-radius: 8px;
+  background: #14252bf5;
+  color: #f7e7c8;
+  font: 13px Arial, sans-serif;
+  touch-action: none;
+}
+#productionToggle {
+  display: block;
+  margin-left: auto;
+  margin-right: 98px;
+}
+#productionBar {
+  position: absolute;
+  right: 0;
+  bottom: 100px;
+  display: flex;
+  gap: 6px;
+  width: min(424px, calc(100vw - 314px));
+  padding: 6px;
+  border: 1px solid #bca574;
+  border-radius: 10px;
+  background: #101d22f5;
+}
+#productionBar button {
+  flex: 1;
+  height: 52px;
+  padding: 3px 8px;
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  isolation: isolate;
+}
+.productionName, .productionCost {
+  position: relative;
+  display: block;
+}
+.productionName {
+  font-size: 11px;
+  line-height: 12px;
+  white-space: normal;
+}
+.productionCost {
+  margin-top: 2px;
+}
+.productionBadge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 8px;
+  background: #f7e7c8;
+  color: #14252b;
+  font-size: 11px;
+  line-height: 16px;
+}
+.productionBadge[hidden] {
+  display: none;
+}
+#productionBar button::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: #bca57466;
+  transform: scaleX(0);
+  transform-origin: left;
+}
+#productionBar button.productionHolding::before {
+  animation: productionHold 450ms linear forwards;
+}
+@keyframes productionHold {
+  to {
+    transform: scaleX(1);
+  }
+}
+#productionBar button:disabled {
+  opacity: 0.45;
+}

@@ -26,8 +26,8 @@ for (const horde of [false, true]) {
         }
         if (horde && file === 'sim.js') {
           // Main currently has a fixed cap; emulate #66's faction cap only here.
-          assert(source.includes('s.units.filter((u) => u.team === team).length + q.length >= 30'));
-          source = source.replace('>= 30\n', '>= unitLimit(team)\n');
+          assert(source.includes('s.units.filter((unit) => unit.team === team).length + queue.length < 30'));
+          source = source.replace('queue.length < 30 &&', 'queue.length < unitLimit(team) &&');
           source = source.replace('function stats(type, team) {', 'function unitLimit(team) {\n  return (team === 1 ? RatsGout : BrigadeCuisine).unitLimit;\n}\nfunction stats(type, team) {');
           source = source.replace('  stats,', '  unitLimit,\n  stats,');
         }

@@ -1,3 +1,4 @@
+import { initProduction } from './production.js';
 import { panelModel, panelVisibility } from './panel.js';
 import { readSettings, writeSettings } from './settings.js';
 import { bindAudioUnlock } from './audio-unlock.js';
@@ -8,7 +9,7 @@ import { CuistotsAmbience } from './cuistots-ambience.js';
 import { orderFeedback, drawOrderFeedback, vibrateOrder } from './order-feedback.js';
 import { UnitVoices, selectionVoice } from './unit-voices.js';
 import { createRadialMenu } from './radial.js';
-import { armyUnits, filterSelection, cameraBounds, unitsOfType, createPortraitTap, unitsInBox, boxSelection } from './selection.js';
+import { armyUnits, armyToastText, filterSelection, cameraBounds, unitsOfType, createPortraitTap, unitsInBox, boxSelection } from './selection.js';
 import { createGestures } from './gestures.js';
 import { resolveTap, isEmptyTap } from './tap.js';
 import { installMobileDisplay } from './mobile-display.js';
@@ -250,6 +251,8 @@ let panelVisibilityState = {};
 let patrolArmed = false;
 let queueArmed = false;
 let queueSelection = '';
+let productionUI = null;
+
 function updateUI() {
   let army = state.units.filter((u) => u.team === player);
   selected = new Set([...selected].filter((id) => army.some((u) => u.id === id)));
@@ -266,6 +269,7 @@ function updateUI() {
         ? '◉ Tour : occupée par l’adversaire'
         : '◉ Tour : non contrôlée';
   renderContextPanel();
+  productionUI?.refresh(state, player, running);
   touchUI?.refresh();
   controlGroupsUI?.refresh();
   radial?.refresh();
@@ -1729,7 +1733,7 @@ armyButton.onclick = () => {
   portraitTap.reset();
   playSelectionVoice(units);
   updateUI();
-  notify(units.length + " unités · Toute l'armée");
+  notify(armyToastText(units.length));
 };
 $('#controlGroups').append(armyButton);
 
@@ -2264,3 +2268,9 @@ function renderContextPanel() {
   }
 }
 renderContextPanel();
+
+productionUI = initProduction({
+  enabled: () => running && !paused,
+  command: panelCommand,
+  vibrate: () => vibrateOrder(settings.vibration),
+});
