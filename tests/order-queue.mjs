@@ -53,7 +53,7 @@ for (const kind of ['move', 'hold', 'retreat', 'patrol', 'gather']) {
   ({ state, unit } = fixture());
   enqueue(state, unit, points[0]);
   if (kind === 'gather') unit.type = 'commis';
-  command(state, 0, { kind, ids: [unit.id], x: 350, y: 650, index: 0 });
+  command(state, 0, { kind, ids: [unit.id], x: 350, y: 650, index: 0, queue: kind === 'gather' });
   assert.deepEqual(unit.orderQueue, [], `${kind} clears the queue`);
 }
 ({ state, unit } = fixture());
@@ -95,4 +95,61 @@ const authoritativeState = JSON.stringify(state);
 motion.predict({ kind: 'move', ids: [unit.id], x: 500, y: 750, queue: true }, state, 0, 0);
 assert.equal(motion.predictions.size, 0, 'queued orders never predict an immediate direction change');
 assert.equal(JSON.stringify(state), authoritativeState);
+// Targeted waypoints keep both surrounding moves, through both command paths.
+for (const throughServer of [false, true]) {
+  for (const outcome of ['kill', 'alreadyDead', 'invisible', 'escaped', 'base']) {
+    ({ state, unit } = fixture());
+    S.spawn(state, 'commis', 1, { x: 390, y: 750 });
+    const enemy = outcome === 'base' ? state.bases[1] : state.units.find((candidate) => candidate.team === 1);
+    Object.assign(enemy, { x: 390, y: 750, hp: outcome === 'base' ? 1000 : 10 });
+    if (!enemy.base) Object.assign(enemy, { harvest: null, path: [], hold: true });
+    else state.units = [unit];
+    S.visibility(state);
+    const issueOrder = (point, target = null) => {
+      if (throughServer) {
+        command(state, 0, {
+          kind: 'move',
+          ids: [unit.id],
+          ...point,
+          target: target ? (target.base ? { base: true } : { id: target.id }) : null,
+          queue: true,
+        });
+      } else {
+        S.order(state, [unit.id], point.x, point.y, target, !target, true);
+      }
+    };
+    issueOrder(points[0]);
+    issueOrder(enemy, enemy);
+    issueOrder(points[1]);
+    assert.equal(unit.orderQueue.length, 3);
+    for (let index = 0; index < 6; index++) issueOrder(enemy, enemy);
+    assert.equal(unit.orderQueue.length, 8, 'targeted waypoints share the eight-point limit');
+    unit.orderQueue.splice(3);
+    if (throughServer) {
+      state = unpack(pack(state));
+      unit = state.units[0];
+    }
+    const target = outcome === 'base' ? state.bases[1] : state.units.find((candidate) => candidate.team === 1);
+    if (outcome === 'alreadyDead') target.hp = 0;
+    if (outcome === 'invisible') target.x = 1400;
+    let visitedFirst = false;
+    let attacked = false;
+    for (let i = 0; i < 2000; i++) {
+      S.tick(state, 0.025);
+      if (Math.hypot(unit.x - 350, unit.y - 750) < 2) visitedFirst = true;
+      if (unit.lastAttackAt > 0) {
+        assert(visitedFirst, 'the first move finishes before attacking');
+        attacked = true;
+        if (outcome === 'base') target.hp = 0;
+      }
+      if (outcome === 'escaped' && unit.target) target.x = 650;
+    }
+    assert(visitedFirst);
+    assert.equal(attacked, outcome === 'kill' || outcome === 'base');
+    if (outcome === 'kill') assert(target.hp <= 0);
+    assert.equal(unit.orderQueue.length, 0);
+    assert.equal(unit.path.length, 0, outcome);
+    assert(Math.hypot(unit.x - 350, unit.y - 650) < 2, `${outcome}: reaches the final move`);
+  }
+}
 console.log('order queue OK');

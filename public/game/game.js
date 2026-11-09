@@ -678,11 +678,11 @@ function handleFieldTap(e, duration) {
         ids: [...selected],
         x: p.x,
         y: p.y,
-        queue: queueArmed && !patrolArmed && !target,
+        queue: queueArmed && !patrolArmed,
         target: target ? (target.base ? { base: true } : { id: target.id }) : null,
       });
     } else if (patrolArmed) Sim.patrol(state, [...selected], p.x, p.y);
-    else Sim.order(state, [...selected], p.x, p.y, target, !target && !attackMoveArmed, queueArmed && !target);
+    else Sim.order(state, [...selected], p.x, p.y, target, !target && !attackMoveArmed, queueArmed);
     patrolArmed = false;
     attackMoveArmed = false;
     $('#attackAction').setAttribute('aria-pressed', 'false');
@@ -1424,10 +1424,17 @@ function drawOrderQueues() {
       const destination = unit.path.at(-1);
       ctx.lineTo(destination.x, destination.y);
     }
-    for (const point of unit.orderQueue) ctx.lineTo(point.x, point.y);
+    const points = unit.orderQueue.map((point) => {
+      if (!point.target) return point;
+      const target = point.target.base
+        ? state.bases[point.target.team]
+        : state.units.find((candidate) => candidate.id === point.target.id);
+      return target || point;
+    });
+    for (const point of points) ctx.lineTo(point.x, point.y);
     ctx.stroke();
     ctx.setLineDash([]);
-    for (const point of unit.orderQueue) {
+    for (const point of points) {
       ctx.beginPath();
       ctx.arc(point.x, point.y, 4 / scale, 0, Math.PI * 2);
       ctx.stroke();
