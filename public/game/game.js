@@ -9,7 +9,7 @@ import { CuistotsAmbience } from './cuistots-ambience.js';
 import { orderFeedback, drawOrderFeedback, vibrateOrder } from './order-feedback.js';
 import { UnitVoices, selectionVoice } from './unit-voices.js';
 import { createRadialMenu } from './radial.js';
-import { armyUnits, armyToastText, filterSelection, cameraBounds, unitsOfType, createPortraitTap, unitsInBox, boxSelection } from './selection.js';
+import { armyUnits, armyToastText, groupToastText, filterSelection, cameraBounds, unitsOfType, createPortraitTap, unitsInBox, boxSelection } from './selection.js';
 import { createGestures } from './gestures.js';
 import { resolveTap, isEmptyTap } from './tap.js';
 import { installMobileDisplay } from './mobile-display.js';
@@ -1666,7 +1666,7 @@ controlGroupsUI = initControlGroups({
   icon: portraitFor,
   assign: (index, { quiet = false } = {}) => {
     const units = assignGroup(controlGroups(), index, selected, state.units, player);
-    if (!quiet) notify('Groupe ' + (index + 1) + ' assigné · ' + units.length + ' unités');
+    if (!quiet) notify(groupToastText(index, units.length));
   },
   select: (index, center) => {
     const units = groupUnits(controlGroups(), index, state.units, player);
