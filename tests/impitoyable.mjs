@@ -2,19 +2,25 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { CendreSim as S } from '../public/game/sim.js';
 import { createAI } from '../public/game/ai.js';
-import { BUILD_ORDERS, DIFFICULTIES } from '../public/game/ai-config.js';
+import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { DIFFICULTIES } from '../public/game/ai-config.js';
 import { pack, unpack } from '../lib/match.mjs';
 
 assert.deepEqual(DIFFICULTIES.impitoyable, { ...DIFFICULTIES.brutal, incomeBonus: 0.25 });
 for (const [difficulty, settings] of Object.entries(DIFFICULTIES)) {
   assert.equal(settings.incomeBonus, difficulty === 'impitoyable' ? 0.25 : 0);
 }
-// Without banked surplus, decisions remain Brutal's with identical observations.
+// Decisions remain Brutal's with identical observations, including banked surplus.
 for (const team of [0, 1]) {
   const brutalState = S.create();
   const ruthlessState = S.create();
   const brutal = createAI(team, 'brutal');
   const ruthless = createAI(team, 'impitoyable');
+  brutalState.rubies = [2000, 2000];
+  ruthlessState.rubies = [2000, 2000];
   for (const time of [0, 60, 150, 300]) {
     brutalState.time = time;
     ruthlessState.time = time;
@@ -33,27 +39,6 @@ for (const team of [0, 1]) {
   state.time = 1;
   controller.update(state);
   assert.equal(state.incomeMultiplier[team], 1);
-}
-
-// A banked surplus funds all three idle military producers beyond Brutal's economy reserve.
-for (const team of [0, 1]) {
-  for (const difficulty of ['brutal', 'impitoyable']) {
-    const state = S.create();
-    while (state.units.filter((unit) => unit.team === team && unit.type === 'commis').length < 6) {
-      S.spawn(state, 'commis', team);
-    }
-    for (let index = 0; index < 20; index++) {
-      S.spawn(state, 'knight', team);
-    }
-    state.rubies[team] = 2000;
-    for (const building of BUILD_ORDERS[team]) {
-      assert(S.construct(state, team, building.id));
-    }
-    createAI(team, difficulty, state).update(state);
-    const militaryJobs = state.queues[team].filter((job) => job.type !== 'commis');
-    assert.equal(militaryJobs.length, difficulty === 'impitoyable' ? 3 : 0);
-    assert(state.units.filter((unit) => unit.team === team).length + state.queues[team].length <= 30);
-  }
 }
 
 const humanMatch = unpack(pack(S.create()));
@@ -77,9 +62,12 @@ for (const strongTeam of [0, 1]) {
       worker.harvest = { mine: worker.team, phase: 'VERS_BASE', elapsed: 0 };
     }
     const before = [...state.rubies];
+    const collectedBefore = state.matchCounters.map((counters) => counters.rubiesCollected);
     S.tick(state, 0.01);
     for (const team of [0, 1]) {
-      assert.equal(state.rubies[team] - before[team], cargo * (team === strongTeam ? 1.25 : 1));
+      const expectedDeposit = cargo * (team === strongTeam ? 1.25 : 1);
+      assert.equal(state.rubies[team] - before[team], expectedDeposit);
+      assert.equal(state.matchCounters[team].rubiesCollected - collectedBefore[team], expectedDeposit);
     }
     assert.deepEqual(unpack(pack(state)).rubies, state.rubies);
   }
@@ -109,40 +97,61 @@ const menu = readFileSync(new URL('../public/game/index.html', import.meta.url),
 assert.match(menu, /value="brutal">Brutal<\/option><option value="impitoyable">Impitoyable · l’IA récolte \+25 %/);
 assert.match(menu, /id="aiDifficulty" style="min-height:44px"/);
 
-// Ten reproducible seeds, alternating factions and controller update order.
-let victories = 0;
-const victoriesByTeam = [0, 0];
-for (let game = 0; game < 10; game++) {
-  let seed = game + 1;
-  const random = () => {
-    seed = (seed * 1664525 + 1013904223) >>> 0;
-    return seed / 2 ** 32;
-  };
-  const state = S.create();
-  for (const unit of state.units) {
-    const cell = S.nearest(unit.x + random() * 40 - 20, unit.y + random() * 40 - 20);
-    unit.x = (cell % S.COLS) * S.CELL + 10;
-    unit.y = Math.floor(cell / S.COLS) * S.CELL + 10;
-  }
-  S.visibility(state);
-  const strongTeam = game % 2;
-  const controllers = [0, 1].map((team) => createAI(team, team === strongTeam ? 'impitoyable' : 'brutal', state));
-  for (let step = 0; step < 9000 && state.winner === null; step++) {
-    for (const team of strongTeam ? [1, 0] : [0, 1]) controllers[team].update(state);
-    S.tick(state, 0.1);
-    if (game === 1 && [120, 200, 300].some((time) => Math.abs(state.time - time) < 0.01)) {
-      const armies = [0, 1].map((team) => state.units.filter((unit) => unit.team === team && unit.hp > 0 && unit.type !== 'commis').length);
-      console.log(`Seed 2 at ${Math.round(state.time)}s: Impitoyable bank ${state.rubies[1]}, armies Brutal/Impitoyable ${armies.join('/')}`);
+// Factions are bound to team IDs. As in equilibrage-factions.mjs, isolate
+// the tournament modules and use the cooks configuration for both teams.
+const directory = await mkdtemp(join(tmpdir(), 'cendre-impitoyable-'));
+try {
+  for (const file of ['sim.js', 'ai.js', 'ai-config.js', 'slots.js', 'rats-config.js', 'cooks-config.js']) {
+    let source = readFileSync(new URL('../public/game/' + file, import.meta.url), 'utf8');
+    if (file === 'sim.js') {
+      source = source.replace("import { RatsGout } from './rats-config.js';", "import { BrigadeCuisine as RatsGout } from './cooks-config.js';");
     }
+    await writeFile(join(directory, file), source);
   }
-  assert.notEqual(state.winner, null, `Seed ${game + 1}: no winner after 15 minutes`);
-  if (state.winner === strongTeam) {
-    victories++;
-    victoriesByTeam[strongTeam]++;
+  await writeFile(join(directory, 'package.json'), '{"type":"module"}');
+  const { CendreSim: S } = await import(pathToFileURL(join(directory, 'sim.js')));
+  const { createAI } = await import(pathToFileURL(join(directory, 'ai.js')));
+  assert.deepEqual(S.stats('archer', 0), S.stats('archer', 1));
+  assert.equal(S.unitLimit(0), S.unitLimit(1));
+  // Ten reproducible seeds, alternating Impitoyable's side and controller order.
+  let victories = 0;
+  const victoriesByTeam = [0, 0];
+  for (let game = 0; game < 10; game++) {
+    let seed = game + 1;
+    const random = () => {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      return seed / 2 ** 32;
+    };
+    const state = S.create();
+    for (const unit of state.units) {
+      const cell = S.nearest(unit.x + random() * 40 - 20, unit.y + random() * 40 - 20);
+      unit.x = (cell % S.COLS) * S.CELL + 10;
+      unit.y = Math.floor(cell / S.COLS) * S.CELL + 10;
+    }
+    S.visibility(state);
+    const strongTeam = game % 2;
+    const snapshots = [];
+    const controllers = [0, 1].map((team) => createAI(team, team === strongTeam ? 'impitoyable' : 'brutal', state));
+    for (let step = 0; step < 9000 && state.winner === null; step++) {
+      for (const team of strongTeam ? [1, 0] : [0, 1]) controllers[team].update(state);
+      S.tick(state, 0.1);
+      if ([120, 200, 300].some((time) => Math.abs(state.time - time) < 0.01)) {
+        const armies = [0, 1].map((team) => state.units.filter((unit) => unit.team === team && unit.hp > 0 && unit.type !== 'commis').length);
+        snapshots.push({ time: Math.round(state.time), rubies: state.rubies[strongTeam], armies });
+      }
+    }
+    assert.notEqual(state.winner, null, `Seed ${game + 1}: no winner after 15 minutes`);
+    if (state.winner === strongTeam) {
+      victories++;
+      victoriesByTeam[strongTeam]++;
+    }
+    console.log(JSON.stringify({ seed: game + 1, strongTeam, winner: state.winner, duration: Number(state.time.toFixed(1)), snapshots }));
   }
-  console.log(`Seed ${game + 1}: ${state.winner === strongTeam ? 'Impitoyable' : 'Brutal'} (${state.time.toFixed(1)}s)`);
+  console.log(`Impitoyable victories by team: ${victoriesByTeam.join('/5, ')}/5`);
+  assert(victoriesByTeam.every((wins) => wins >= 4), `Wins by team: ${victoriesByTeam}`);
+  assert(victories >= 8, `Impitoyable won ${victories}/10 against Brutal`);
+  console.log(`PASS: exact deposit bonus, default human income, persistence, menu and ${victories}/10 victories.`);
+
+} finally {
+  await rm(directory, { recursive: true, force: true });
 }
-console.log(`Impitoyable victories by team: ${victoriesByTeam.join('/5, ')}/5`);
-assert(victoriesByTeam.every((wins) => wins >= 4), `Wins by team: ${victoriesByTeam}`);
-assert(victories >= 8, `Impitoyable won ${victories}/10 against Brutal`);
-console.log(`PASS: exact deposit bonus, default human income, persistence, menu and ${victories}/10 victories.`);

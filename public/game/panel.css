@@ -187,7 +187,7 @@
 }
 #contextPanel[data-mode='units'] #contextActions {
   display: grid;
-  grid-template-columns: 140px 140px;
+  grid-template-columns: 94px 94px 94px;
   grid-auto-rows: 44px;
   max-width: none;
   gap: 6px;
@@ -223,7 +223,7 @@
 }
 #contextPanel #retreat,
 #contextPanel #hold {
-  width: 140px;
+  width: 94px;
   height: 44px;
   font-size: 12px;
 }
@@ -405,9 +405,39 @@
   white-space: normal;
 }
 
+#controlGroups .group-add {
+  display: none;
+  pointer-events: none;
+}
+#contextPanel #controlGroups button.can-assign {
+  opacity: 1;
+}
+#contextPanel #controlGroups button.can-assign .group-add {
+  display: inline;
+  margin-left: 3px;
+  color: #e6c47e;
+  font: 18px/1 Arial;
+}
+#controlGroupHint {
+  position: fixed;
+  z-index: 26;
+  box-sizing: border-box;
+  width: 310px;
+  max-width: calc(100vw - 180px);
+  padding: 9px 12px;
+  border: 1px solid #bca574;
+  border-radius: 8px;
+  background: #101d22f5;
+  color: #f7e7c8;
+  font: 13px/1.4 Arial;
+  pointer-events: none;
+}
+#controlGroupHint[hidden] {
+  display: none;
+}
 #contextPanel #idleWorkers {
   position: absolute;
-  left: 192px;
+  left: 260px;
   bottom: 116px;
   width: 148px;
   height: 44px;
@@ -418,4 +448,54 @@
 }
 #contextPanel[data-collapsed='true'] #idleWorkers {
   bottom: 48px;
+}
+
+#contextPanel #controlGroups #armySelect {
+  width: 60px;
+  background: #142229dc;
+}
+
+#contextPanel #queueOrders[aria-pressed='true'] {
+  background: #775522;
+  border: 2px solid #ffe3a1;
+  color: #fff4cf;
+}
+
+/* Override the shared SVG's inline 1em size without enlarging portraits. */
+#contextPanel button svg[data-icon],
+.unit-panel button svg[data-icon],
+#squadTools button svg[data-icon],
+#selectionToggle svg[data-icon],
+#idleWorkers svg[data-icon],
+.camera button svg[data-icon] {
+  width: 18px !important;
+  height: 18px !important;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+#combatActions button svg[data-icon],
+.actions button svg[data-icon],
+.army button svg[data-icon],
+#radialUI button svg[data-icon] {
+  width: 24px !important;
+  height: 24px !important;
+}
+button svg[data-icon='selection'] {
+  stroke-width: 2.2;
+}
+.unit-panel button,
+#squadTools button,
+#selectionToggle,
+#idleWorkers,
+.camera button,
+#combatActions button,
+#radialUI button {
+  min-width: 44px;
+  min-height: 44px;
+}
+#contextPanel[data-mode='units'] #contextActions button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
 }

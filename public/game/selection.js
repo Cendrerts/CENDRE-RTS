@@ -1,3 +1,35 @@
+import { CendreSim as Sim } from './sim.js';
+import { BrigadeCuisine } from './cooks-config.js';
+import { RatsGout } from './rats-config.js';
+
+const unitPlurals = [
+  {
+    commis: 'Commis',
+    knight: 'Gardes-Manger',
+    archer: 'Bouchers-Tireurs',
+    mage: 'Chefs de Brigade',
+    garde_manger: 'Garde-manger',
+    boucherie: 'Boucheries',
+    ecole_brigade: 'Écoles de brigade',
+  },
+  {
+    commis: 'Rats-Essuyeurs',
+    knight: 'Rats-Éboueurs',
+    archer: 'Rats-Balance-Déchets',
+    mage: 'Chamans de la Poubelle',
+    niche_ordures: 'Niches à Ordures',
+    atelier_ferraille: 'Ateliers de Ferraille',
+    autel_peste: 'Autels de la Peste',
+  },
+];
+
+export function unitLabel(type, count, faction = 0) {
+  if (type === 'unit') return count === 1 ? 'unité' : 'unités';
+  const units = faction === 1 ? RatsGout.unites : BrigadeCuisine.unites;
+  const singular = units[type]?.name || Sim.BUILDINGS[faction].find((building) => building.id === type)?.name;
+  return count === 1 ? singular : unitPlurals[faction][type];
+}
+
 // This 2D engine uses world (x,y), equivalent to ground-plane (x,z).
 export function cameraBounds(ox, oy, scale, width, height) {
   return {
@@ -14,6 +46,22 @@ export function unitsOfType(units, team, type, bounds) {
   );
   return { total, visible };
 }
+export function createFieldDoubleTap() {
+  let previous = null;
+  return {
+    reset() {
+      previous = null;
+    },
+    tap(unitType, screenX, screenY, now) {
+      const double = previous?.unitType === unitType &&
+        now >= previous.time && now - previous.time < 350 &&
+        Math.hypot(screenX - previous.x, screenY - previous.y) < 40;
+      previous = double ? null : { unitType, x: screenX, y: screenY, time: now };
+      return double ? 'double' : 'single';
+    },
+  };
+}
+
 export function createPortraitTap() {
   let previous = null;
   return {
@@ -47,4 +95,62 @@ export function filterSelection(selection, units, type, remove = false) {
   return new Set(units.filter((unit) =>
     selection.has(unit.id) && unit.hp > 0 && (remove ? unit.type !== type : unit.type === type),
   ).map((unit) => unit.id));
+}
+
+export function armyUnits(units, team) {
+  return units.filter((unit) => unit.team === team && unit.hp > 0 && unit.type !== 'commis');
+}
+
+export function armyToastText(count) {
+  return `${count} ${unitLabel('unit', count)} · Toute l'armée`;
+}
+
+export function groupToastText(index, count) {
+  return `Groupe ${index + 1} assigné · ${count} ${unitLabel('unit', count)}`;
+}
+
+export function buildingsOfType(state, player, type, bounds) {
+  const config = Sim.BUILDINGS[player].find((building) => building.id === type);
+  if (!config) return [];
+  return Sim.producers(state, player, config.unit).filter((building) =>
+    building.x >= bounds.minX && building.x <= bounds.maxX &&
+    building.y >= bounds.minY && building.y <= bounds.maxY,
+  );
+}
+
+export function selectedProducers(state, player, ids) {
+  return Object.keys(Sim.TYPES).flatMap((type) => Sim.producers(state, player, type))
+    .filter((producer) => ids.includes(producer.id));
+}
+
+export function buildingSelectionVisuals(state, player, panelContext) {
+  const ids = panelContext.producerIds || [panelContext.producerId ||
+    (!panelContext.slotId && panelContext.baseId)].filter(Boolean);
+  const buildings = selectedProducers(state, player, ids);
+  const rallyLines = [];
+  const rallyFlags = [];
+  for (const building of buildings) {
+    const structure = Sim.rallyBuilding(state, player, building.id);
+    const point = Sim.rallyPoint(state, structure?.rally);
+    if (!point) continue;
+    rallyLines.push({ building, point });
+    if (!rallyFlags.some((flag) => flag.x === point.x && flag.y === point.y)) {
+      rallyFlags.push(point);
+    }
+  }
+  return { buildings, rallyLines, rallyFlags };
+}
+
+export function selectedRecruitCommand(state, player, type, ids) {
+  const producers = selectedProducers(state, player, ids).filter((producer) => producer.unit === type);
+  const producer = Sim.leastLoadedProducer(state, player, producers);
+  return { kind: 'recruit', type, producerId: producer?.id || ids[0] };
+}
+
+export function selectedRallyCommands(state, player, ids, target) {
+  return selectedProducers(state, player, ids).map((producer) => ({
+    ...target,
+    kind: 'setRally',
+    buildingId: producer.id,
+  }));
 }

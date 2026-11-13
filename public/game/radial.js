@@ -1,8 +1,10 @@
+import { iconSvg } from './icons.js';
+
 export const CATEGORIES = [
-  { id: 'economy', label: 'Économie / Production', icon: '⚒', x: 1, y: -1 },
-  { id: 'military', label: 'Militaire', icon: '⚔', x: 1, y: 1 },
-  { id: 'defense', label: 'Défense', icon: '⛨', x: -1, y: 1 },
-  { id: 'technology', label: 'Technologie / Spécial', icon: '✦', x: -1, y: -1 },
+  { id: 'economy', label: 'Économie / Production', icon: iconSvg('build'), x: 1, y: -1 },
+  { id: 'military', label: 'Militaire', icon: iconSvg('attack'), x: 1, y: 1 },
+  { id: 'defense', label: 'Défense', icon: iconSvg('hold'), x: -1, y: 1 },
+  { id: 'technology', label: 'Technologie / Spécial', icon: iconSvg('special'), x: -1, y: -1 },
 ];
 export function quadrant(dx, dy, deadZone = 32) {
   if (Math.hypot(dx, dy) < deadZone) return null;
@@ -13,7 +15,7 @@ export function createRadialMenu(api) {
   root.id = 'radialUI';
   root.hidden = true;
   root.innerHTML =
-    '<div id="radialWheel" role="group" aria-label="Catégories de construction"></div><section id="radialPanel" aria-label="Menu de construction"><div class="radial-heading"><button id="radialBack" aria-label="Retour aux catégories">←</button><strong id="radialTitle"></strong><button id="radialClose" aria-label="Annuler la construction">×</button></div><p id="radialHint" role="status"></p><div id="radialChoices"></div><div id="radialFallback"></div><button id="radialConfirm" hidden>Confirmer la construction</button></section>';
+    '<div id="radialWheel" role="group" aria-label="Catégories de construction"></div><section id="radialPanel" aria-label="Menu de construction"><div class="radial-heading"><button id="radialBack" aria-label="Retour aux catégories">' + iconSvg('back') + '</button><strong id="radialTitle"></strong><button id="radialClose" aria-label="Annuler la construction">' + iconSvg('close') + '</button></div><p id="radialHint" role="status"></p><div id="radialChoices"></div><div id="radialFallback"></div><button id="radialConfirm" hidden>Confirmer la construction</button></section>';
   document.body.append(root);
   const $ = (s) => root.querySelector(s),
     wheel = $('#radialWheel'),
@@ -42,7 +44,7 @@ export function createRadialMenu(api) {
   }
   const center = document.createElement('button');
   center.className = 'radial-center';
-  center.textContent = '×';
+  center.innerHTML = iconSvg('close');
   center.setAttribute('aria-label', 'Fermer le menu radial');
   center.onclick = () => {
     if (!skipClick) close();

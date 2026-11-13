@@ -1,13 +1,17 @@
+import { iconSvg } from './icons.js';
+import { initProduction, recruitToastText } from './production.js';
 import { panelModel, panelVisibility } from './panel.js';
 import { readSettings, writeSettings } from './settings.js';
 import { bindAudioUnlock } from './audio-unlock.js';
+import { shouldAutoPause } from './auto-pause.js';
 import { minimapToWorld, clampCamera, attackDirection, groupAttackAlerts } from './camera.js';
 'use strict';
 import { CuistotsAmbience } from './cuistots-ambience.js';
 import { orderFeedback, drawOrderFeedback, vibrateOrder } from './order-feedback.js';
+import { orderQueuePoints } from './order-queue.js';
 import { UnitVoices, selectionVoice } from './unit-voices.js';
 import { createRadialMenu } from './radial.js';
-import { filterSelection, cameraBounds, unitsOfType, createPortraitTap, unitsInBox, boxSelection } from './selection.js';
+import { unitLabel, buildingSelectionVisuals, buildingsOfType, selectedProducers, selectedRecruitCommand, selectedRallyCommands, armyUnits, armyToastText, groupToastText, filterSelection, cameraBounds, unitsOfType, createFieldDoubleTap, createPortraitTap, unitsInBox, boxSelection } from './selection.js';
 import { createGestures } from './gestures.js';
 import { resolveTap, isEmptyTap } from './tap.js';
 import { installMobileDisplay } from './mobile-display.js';
@@ -17,7 +21,6 @@ import { NetworkMotion, pollDelay } from './network-motion.js';
 import { RealtimeClient, RealtimeMotion, normalizeRoomCode, networkQuality } from './realtime.js';
 let realtime = null;
 import { ratSVG, ratSprites } from './rats.js';
-import { RatsGout } from './rats-config.js';
 import { cookSVG, cookSprites } from './cooks.js';
 import { drawMinimap } from './minimap.js';
 import { TEAM_COLORS, drawHealthBar, selectionRing, unitFeet, drawCargoRuby, drawMine } from './unit-overlays.js';
@@ -64,6 +67,7 @@ let state = Sim.create(),
   attackMoveArmed = false,
   selectedMine = null;
 const portraitTap = createPortraitTap();
+const fieldDoubleTap = createFieldDoubleTap();
 let networkGroups = createControlGroups();
 let controlGroupsUI;
 function controlGroups() {
@@ -93,7 +97,7 @@ function unlockAmbience() {
 }
 const audioButton = document.createElement('button');
 audioButton.id = 'audioUnlock';
-audioButton.textContent = '🔇';
+audioButton.innerHTML = iconSvg('muted');
 audioButton.setAttribute('aria-label', 'Activer le son');
 audioButton.style.minWidth = '44px';
 audioButton.style.minHeight = '44px';
@@ -123,14 +127,6 @@ let selectionBox = null;
 let holdIndicator = null;
 let viewWidth = canvas.clientWidth,
   viewHeight = canvas.clientHeight;
-let unitNames = {};
-const cookNames = {
-    commis: 'Commis',
-    knight: 'Gardes-Manger',
-    archer: 'Bouchers-Tireurs',
-    mage: 'Chefs de Brigade',
-  },
-  ghostNames = Object.fromEntries(Object.entries(RatsGout.unites).map(([k, v]) => [k, v.name]));
 function portrait(type) {
   let body =
     type === 'mage'
@@ -164,10 +160,11 @@ function portraitFor(type) {
 function setupPortraits() {
   voices.reset();
   portraitTap.reset();
+  fieldDoubleTap.reset();
   panelContext = {};
-  unitNames = player ? ghostNames : cookNames;
 }
 function layout() {
+  fieldDoubleTap.reset();
   scale = Math.max(viewWidth / W, viewHeight / H) * zoom;
   const center = clampCamera(cameraX, cameraY, viewWidth, viewHeight, scale, W, H);
   cameraX = center.x;
@@ -201,6 +198,7 @@ installMobileDisplay({
     }
     fieldPointers.clear();
     portraitTap.reset();
+    fieldDoubleTap.reset();
   },
 });
 function notify(text) {
@@ -216,10 +214,12 @@ function clearSelection() {
   selected.clear();
   selectedMine = null;
   portraitTap.reset();
+  fieldDoubleTap.reset();
   updateUI();
   notify('Sélection vidée');
 }
 function selectType(t, scope = 'all') {
+  fieldDoubleTap.reset();
   panelContext = {};
   buildGhost = null;
   const groups = viewportUnits(t),
@@ -232,7 +232,7 @@ function selectType(t, scope = 'all') {
     selected.size
       ? selected.size +
           ' ' +
-          unitNames[t] +
+          unitLabel(t, selected.size, player) +
           ' · ' +
           (scope === 'all' ? 'Toute la carte' : 'Vue actuelle')
       : groups.total.length
@@ -247,11 +247,15 @@ let panelSignature = '';
 let rallyArmed = null;
 let panelVisibilityState = {};
 let patrolArmed = false;
+let queueArmed = false;
+let queueSelection = '';
+let productionUI = null;
+
 function updateUI() {
   let army = state.units.filter((u) => u.team === player);
   selected = new Set([...selected].filter((id) => army.some((u) => u.id === id)));
   $('#rubies').textContent = Math.floor(state.rubies[player]);
-  $('#population').textContent = army.length + ' / 30';
+  $('#population').textContent = army.length + ' / ' + Sim.unitLimit(player);
   $('#clock').textContent =
     String(Math.floor(state.time / 60)).padStart(2, '0') +
     ':' +
@@ -263,6 +267,7 @@ function updateUI() {
         ? '◉ Tour : occupée par l’adversaire'
         : '◉ Tour : non contrôlée';
   renderContextPanel();
+  productionUI?.refresh(state, player, running);
   touchUI?.refresh();
   controlGroupsUI?.refresh();
   radial?.refresh();
@@ -276,11 +281,25 @@ function choose(t) {
   $('#chooseHuman').setAttribute('aria-pressed', String(t === 0));
   $('#chooseGhost').setAttribute('aria-pressed', String(t === 1));
 }
-$('#start').onclick = () => {
+const welcomeTitle = $('#modalTitle').textContent;
+const welcomeText = $('#modalText').textContent;
+const startLabel = $('#start').innerHTML;
+$('#matchMenu').onclick = async () => {
+  if (net?.finished) await leaveRoom();
+  $('#veil').classList.remove('match-ended');
+  $('#matchStats')?.remove();
+  $('#modalTitle').textContent = welcomeTitle;
+  $('#modalText').textContent = welcomeText;
+  $('#start').innerHTML = startLabel;
+  $('#veil').style.display = 'flex';
+};
+$('#start').onclick = async () => {
+  if (net?.finished) await leaveRoom();
   if (net) {
     notify('Quittez le salon avant de lancer le solo.');
     return;
   }
+  $('#veil').classList.remove('match-ended');
   state = Sim.create();
   controlGroupsUI?.reset();
   selected.clear();
@@ -294,11 +313,12 @@ $('#start').onclick = () => {
   layout();
   setupPortraits();
   $('#veil').style.display = 'none';
-  $('#pause').textContent = 'Ⅱ';
+  $('#pause').innerHTML = iconSvg('pause');
   updateUI();
   notify('Explorez avec vos unités. Glisser : caméra · Maintenir + glisser : sélection · 2 doigts : zoom');
 };
 $('#all').onclick = () => {
+  fieldDoubleTap.reset();
   panelContext = {};
   const units = state.units.filter((u) => u.team === player);
   selected = new Set(units.map((u) => u.id));
@@ -323,6 +343,8 @@ $('#hold').onclick = () => {
   state.units
     .filter((u) => selected.has(u.id))
     .forEach((u) => {
+      u.orderQueue = [];
+      u.queueActive = false;
       u.patrol = null;
       u.manual = null;
       u.followId = null;
@@ -366,11 +388,7 @@ function closePauseMenu() {
   updateAmbience();
   $('#pause').focus();
 }
-$('#pause').onclick = () => {
-  if (!$('#pauseMenu').hidden) {
-    closePauseMenu();
-    return;
-  }
+function openPauseMenu() {
   if (!running) return;
   touchUI?.stop();
   radial?.close();
@@ -383,7 +401,21 @@ $('#pause').onclick = () => {
   if (!net) paused = true;
   updateAmbience();
   $('#resumeGame').focus();
+}
+$('#pause').onclick = () => {
+  if (!$('#pauseMenu').hidden) {
+    closePauseMenu();
+    return;
+  }
+  openPauseMenu();
 };
+function autoPause(hidden) {
+  if (shouldAutoPause({ multiplayer: !!net, hidden, running, paused })) {
+    openPauseMenu();
+  }
+}
+document.addEventListener('visibilitychange', () => autoPause(document.visibilityState === 'hidden'));
+window.addEventListener('pagehide', () => autoPause(true));
 $('#closePause').onclick = closePauseMenu;
 $('#resumeGame').onclick = closePauseMenu;
 $('#pauseMenu').onclick = (event) => {
@@ -477,6 +509,7 @@ function world(e) {
 function handleFieldPointer(e, type) {
   if (type === 'down') {
     if (!running || paused) return;
+    if ($('#selectionToggle')?.getAttribute('aria-pressed') === 'true') fieldDoubleTap.reset();
     fieldPointers.add(e.pointerId);
     canvas.setPointerCapture(e.pointerId);
   } else if (!fieldPointers.has(e.pointerId)) return;
@@ -497,11 +530,15 @@ function applyFieldGesture(action) {
   if (!action) return;
   if (action.kind === 'hold') {
     holdIndicator = action;
-    if (action.ready) vibrateOrder(settings.vibration);
+    if (action.ready) {
+      fieldDoubleTap.reset();
+      vibrateOrder(settings.vibration);
+    }
     return;
   }
   holdIndicator = null;
   if (action.kind === 'camera') {
+    fieldDoubleTap.reset();
     selectionBox = null;
     if (!action.from) return;
     const anchorX = (action.from.x - ox) / scale;
@@ -515,6 +552,7 @@ function applyFieldGesture(action) {
     return;
   }
   if (action.kind === 'select-box') {
+    fieldDoubleTap.reset();
     selectionBox = action;
     if (action.final) {
       const start = { x: (action.start.x - ox) / scale, y: (action.start.y - oy) / scale };
@@ -528,6 +566,7 @@ function applyFieldGesture(action) {
       selected = nextSelection;
       selectedMine = null;
       portraitTap.reset();
+      fieldDoubleTap.reset();
       playSelectionVoice(units);
       selectionBox = null;
       updateUI();
@@ -547,6 +586,7 @@ for (const [event, type] of Object.entries({
 }
 let tapFlash = null;
 function handleFieldTap(e, duration) {
+  if (buildGhost || radial?.isGhost || rallyArmed) fieldDoubleTap.reset();
   let p = world(e);
   if (buildGhost && !radial?.isGhost) {
     const slot = state.slots[player].find((item) => !item.occupe && item.baseId === buildGhost.context.baseId && Math.hypot(item.x - p.x, item.y - p.y) < 30);
@@ -572,7 +612,8 @@ function handleFieldTap(e, duration) {
       command.unitId = target.target.id;
     }
     rallyArmed = null;
-    panelCommand(command);
+    const ids = panelContext.producerIds || [openedBuilding.id];
+    for (const rallyCommand of selectedRallyCommands(state, player, ids, command)) panelCommand(rallyCommand);
     return;
   }
   if (duration >= 550 && isEmptyTap(state, player, p, scale)) {
@@ -588,6 +629,7 @@ function handleFieldTap(e, duration) {
     !['select', 'radial', 'production', 'enemyBase'].includes(resolved.kind)
       ? { kind: 'move' }
       : resolved;
+  if (!['select', 'production'].includes(action.kind)) fieldDoubleTap.reset();
   if (action.kind === 'radial') {
     if (action.context.mine !== undefined) selectedMine = action.context.mine;
     selected.clear();
@@ -603,12 +645,23 @@ function handleFieldTap(e, duration) {
   }
   if (action.kind === 'production') {
     selected.clear();
-    panelContext = { producerId: action.id };
+    const slot = state.slots[player].find((candidate) => candidate.id === action.id);
+    const tap = fieldDoubleTap.tap('building:' + slot.batiment.type, e.clientX, e.clientY, performance.now());
+    const buildings = tap === 'double'
+      ? buildingsOfType(state, player, slot.batiment.type, cameraBounds(ox, oy, scale, viewWidth, viewHeight))
+      : [slot];
+    panelContext = { producerId: action.id, producerIds: buildings.map((building) => building.id) };
     panelVisibilityState = panelVisibility(panelVisibilityState, 'building');
     updateUI();
     return;
   }
   if (action.kind === 'select') {
+    const unit = state.units.find((candidate) => candidate.id === action.id);
+    const tap = fieldDoubleTap.tap(unit.type, e.clientX, e.clientY, performance.now());
+    if (tap === 'double') {
+      selectType(unit.type, 'visible');
+      return;
+    }
     panelContext = {};
     buildGhost = null;
     selected = new Set([action.id]);
@@ -645,10 +698,11 @@ function handleFieldTap(e, duration) {
         ids: [...selected],
         x: p.x,
         y: p.y,
+        queue: queueArmed && !patrolArmed,
         target: target ? (target.base ? { base: true } : { id: target.id }) : null,
       });
     } else if (patrolArmed) Sim.patrol(state, [...selected], p.x, p.y);
-    else Sim.order(state, [...selected], p.x, p.y, target, !target && !attackMoveArmed);
+    else Sim.order(state, [...selected], p.x, p.y, target, !target && !attackMoveArmed, queueArmed);
     patrolArmed = false;
     attackMoveArmed = false;
     $('#attackAction').setAttribute('aria-pressed', 'false');
@@ -741,7 +795,7 @@ function updateAttackAlerts() {
     if (!button) {
       button = document.createElement('button');
       button.className = 'attack-alert';
-      button.textContent = '➤';
+      button.innerHTML = iconSvg('alert');
       button.setAttribute('aria-label', 'Attaque hors écran : centrer la caméra');
       document.body.append(button);
       alertButtons.set(alert.zone, button);
@@ -777,7 +831,41 @@ function finish() {
   $('#modalTitle').textContent = state.winner === player ? 'Victoire !' : 'Votre base est tombée';
   $('#modalText').textContent =
     'La bataille est terminée. Changez de camp ou relancez pour essayer une autre stratégie.';
-  $('#start').innerHTML = 'Nouvelle escarmouche →';
+  const result = Sim.matchStats(state);
+  const minutes = Math.floor(result.duration / 60);
+  const seconds = Math.floor(result.duration % 60);
+  const table = document.createElement('table');
+  table.id = 'matchStats';
+  const caption = table.createCaption();
+  caption.textContent = 'Durée : ' + String(minutes).padStart(2, '0') + ':' + String(seconds).padStart(2, '0');
+  const header = table.createTHead().insertRow();
+  for (const label of ['Statistiques', 'Vous', 'Adversaire']) {
+    const cell = document.createElement('th');
+    cell.scope = 'col';
+    cell.textContent = label;
+    header.append(cell);
+  }
+  const body = table.createTBody();
+  for (const [key, label] of [
+    ['rubiesCollected', 'Rubis récoltés'],
+    ['unitsProduced', 'Unités produites'],
+    ['unitsLost', 'Unités perdues'],
+    ['unitsKilled', 'Unités tuées'],
+    ['buildingsDestroyed', 'Bâtiments détruits'],
+  ]) {
+    const row = body.insertRow();
+    const heading = document.createElement('th');
+    heading.scope = 'row';
+    heading.textContent = label;
+    row.append(heading);
+    for (const team of [player, 1 - player]) {
+      row.insertCell().textContent = result.teams[team][key];
+    }
+  }
+  $('#matchStats')?.remove();
+  $('#modalTitle').after(table);
+  $('#veil').classList.add('match-ended');
+  $('#start').innerHTML = 'Nouvelle escarmouche ' + iconSvg('right');
   $('#veil').style.display = 'flex';
 }
 function poly(points, fill, stroke) {
@@ -942,6 +1030,7 @@ function draw() {
     if (Sim.visibleAt(state, player, s.x, s.y) && Sim.visibleAt(state, player, s.tx, s.ty))
       line(s.x, s.y, s.tx, s.ty, s.team ? '#8ef1ce' : '#ffd388', 2);
   drawFog();
+  drawOrderQueues();
   if (marker) {
     const elapsed = (performance.now() - marker.started) / 1000;
     const target = marker.base ? state.bases[1 - player] : state.units.find((unit) => unit.id === marker.targetId);
@@ -1283,6 +1372,7 @@ async function leaveRoom() {
   running = false;
   paused = false;
   $('#veil').style.display = 'flex';
+  $('#veil').classList.remove('match-ended');
   $('#modalTitle').textContent = 'Explorez. Occupez. Conquérez.';
   $('#modalText').textContent = 'Créez un nouveau duel ou lancez une escarmouche solo.';
   try {
@@ -1337,34 +1427,77 @@ function drawCook(u) {
 
 function openedRallyBuilding() {
   if (panelVisibilityState.collapsed) return null;
-  const id = panelContext.producerId || (!panelContext.slotId && panelContext.baseId);
+  const id = (panelContext.producerIds
+    ? selectedProducers(state, player, panelContext.producerIds)[0]?.id
+    : panelContext.producerId) || (!panelContext.slotId && panelContext.baseId);
   const building = id && Sim.rallyBuilding(state, player, id);
   return building ? { id, building } : null;
 }
+function drawOrderQueues() {
+  ctx.save();
+  ctx.strokeStyle = TEAM_COLORS[player];
+  ctx.lineWidth = 1.5 / scale;
+  ctx.setLineDash([6 / scale, 5 / scale]);
+  for (const unit of state.units) {
+    if (!selected.has(unit.id) || unit.team !== player || !unit.orderQueue?.length) continue;
+    ctx.strokeStyle = TEAM_COLORS[player];
+    ctx.beginPath();
+    ctx.moveTo(unit.x, unit.y);
+    if (!unit.queueActive && unit.path.length) {
+      const destination = unit.path.at(-1);
+      ctx.lineTo(destination.x, destination.y);
+    }
+    const points = orderQueuePoints(state, player, unit.orderQueue);
+    for (const point of points) ctx.lineTo(point.x, point.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    for (const point of points) {
+      ctx.strokeStyle = point.target ? orderFeedback({ kind: 'attack' }).color : TEAM_COLORS[player];
+      ctx.beginPath();
+      ctx.arc(point.x, point.y, (point.target ? 6 : 4) / scale, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.setLineDash([6 / scale, 5 / scale]);
+  }
+  ctx.restore();
+}
+
 function drawRally() {
-  const opened = openedRallyBuilding();
-  const point = Sim.rallyPoint(state, opened?.building.rally);
-  if (!opened || !point) return;
+  if (panelVisibilityState.collapsed) return;
+  const { buildings, rallyLines, rallyFlags } = buildingSelectionVisuals(state, player, panelContext);
   ctx.save();
   ctx.strokeStyle = TEAM_COLORS[player];
   ctx.fillStyle = ctx.strokeStyle;
-  ctx.lineWidth = 1 / scale;
-  ctx.setLineDash([4 / scale, 4 / scale]);
-  ctx.beginPath();
-  ctx.moveTo(opened.building.x, opened.building.y);
-  ctx.lineTo(point.x, point.y);
-  ctx.stroke();
-  ctx.setLineDash([]);
   ctx.lineWidth = 2 / scale;
-  ctx.beginPath();
-  ctx.moveTo(point.x, point.y);
-  ctx.lineTo(point.x, point.y - 23 / scale);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(point.x, point.y - 23 / scale);
-  ctx.lineTo(point.x + 14 / scale, point.y - 18 / scale);
-  ctx.lineTo(point.x, point.y - 13 / scale);
-  ctx.fill();
+  for (const building of buildings) {
+    ctx.beginPath();
+    ctx.ellipse(building.x, building.y + 5, 29, 15, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  for (const { building, point } of rallyLines) {
+    ctx.lineWidth = 4 / scale;
+    ctx.strokeStyle = '#101819';
+    ctx.setLineDash([6 / scale, 5 / scale]);
+    ctx.beginPath();
+    ctx.moveTo(building.x, building.y);
+    ctx.lineTo(point.x, point.y);
+    ctx.stroke();
+    ctx.strokeStyle = TEAM_COLORS[player];
+    ctx.lineWidth = 2 / scale;
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  for (const point of rallyFlags) {
+    ctx.beginPath();
+    ctx.moveTo(point.x, point.y);
+    ctx.lineTo(point.x, point.y - 23 / scale);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(point.x, point.y - 23 / scale);
+    ctx.lineTo(point.x + 14 / scale, point.y - 18 / scale);
+    ctx.lineTo(point.x, point.y - 13 / scale);
+    ctx.fill();
+  }
   ctx.restore();
 }
 
@@ -1582,11 +1715,12 @@ touchUI = initTouchUI({
 
 const selectionToggle = document.createElement('button');
 selectionToggle.id = 'selectionToggle';
-selectionToggle.textContent = '⬚ Sélection';
+selectionToggle.innerHTML = iconSvg('selection') + ' Sélection';
 selectionToggle.setAttribute('aria-pressed', 'false');
 selectionToggle.onclick = () => {
   const active = selectionToggle.getAttribute('aria-pressed') !== 'true';
   selectionToggle.setAttribute('aria-pressed', String(active));
+  fieldDoubleTap.reset();
   gestures.setSelectionMode(active);
   selectionBox = null;
   holdIndicator = null;
@@ -1596,11 +1730,12 @@ controlGroupsUI = initControlGroups({
   enabled: () => running && !paused,
   units: (index) => groupUnits(controlGroups(), index, state.units, player),
   icon: portraitFor,
-  assign: (index) => {
+  assign: (index, { quiet = false } = {}) => {
     const units = assignGroup(controlGroups(), index, selected, state.units, player);
-    notify('Groupe ' + (index + 1) + ' assigné · ' + units.length + ' unités');
+    if (!quiet) notify(groupToastText(index, units.length));
   },
   select: (index, center) => {
+    fieldDoubleTap.reset();
     const units = groupUnits(controlGroups(), index, state.units, player);
     panelContext = {};
     selected = new Set(units.map((unit) => unit.id));
@@ -1614,6 +1749,29 @@ controlGroupsUI = initControlGroups({
     updateUI();
   },
 });
+
+const armyButton = document.createElement('button');
+armyButton.id = 'armySelect';
+armyButton.type = 'button';
+armyButton.textContent = 'Armée';
+armyButton.onclick = () => {
+  if (!running || paused) return;
+  const units = armyUnits(state.units, player);
+  if (!units.length) {
+    notify('Aucune unité de combat');
+    return;
+  }
+  panelContext = {};
+  buildGhost = null;
+  selected = new Set(units.map((unit) => unit.id));
+  selectedMine = null;
+  portraitTap.reset();
+  fieldDoubleTap.reset();
+  playSelectionVoice(units);
+  updateUI();
+  notify(armyToastText(units.length));
+};
+$('#controlGroups').append(armyButton);
 
 function openRadial(e, context) {
   radial.open(e.clientX, e.clientY, { ...context, team: player });
@@ -1821,12 +1979,12 @@ idleButton.addEventListener('contextmenu', (event) => event.preventDefault());
 const panelChevron = document.createElement('button');
 panelChevron.id = 'panelChevron';
 panelChevron.setAttribute('aria-label', 'Replier le panneau');
-panelChevron.textContent = '⌄';
+panelChevron.innerHTML = iconSvg('down');
 panelRoot.append(panelChevron);
 const panelTab = document.createElement('button');
 panelTab.id = 'panelTab';
 panelTab.setAttribute('aria-label', 'Ouvrir le panneau');
-panelTab.textContent = '⌃';
+panelTab.innerHTML = iconSvg('up');
 panelRoot.append(panelTab);
 function changePanelVisibility(event) {
   panelVisibilityState = panelVisibility(panelVisibilityState, event);
@@ -1868,11 +2026,41 @@ $('#baseAction').onclick = () => {
   layout();
   updateUI();
 };
+function requestRecruit(command, count = 1, producerIds = null) {
+  if (!running || paused) return;
+  const preview = net ? structuredClone(state) : state;
+  let launched = 0;
+  let reason = null;
+  for (let index = 0; index < count; index++) {
+    if (producerIds?.length) command = selectedRecruitCommand(preview, player, command.type, producerIds);
+    reason = Sim.recruitBlockReason(preview, player, command.type, command.producerId);
+    if (reason) break;
+    if (net && !sendCommand(command)) break;
+    if (!Sim.recruit(preview, command.type, player, command.producerId)) break;
+    launched++;
+  }
+  if (reason) {
+    const population = preview.units.filter((unit) => unit.team === player).length + preview.queues[player].length;
+    const missing = Math.max(0, Sim.stats(command.type, player).cost - preview.rubies[player]);
+    const messages = {
+      population: `Population pleine (${population} / ${Sim.populationCap(preview, player)})`,
+      queues: 'Files pleines',
+      rubies: `Rubis insuffisants : il manque ${missing}`,
+      producer: 'Aucun bâtiment pour cette unité',
+    };
+    notify(recruitToastText(launched, messages[reason]));
+    toastTime = 3;
+  }
+  updateUI();
+}
 function panelCommand(command) {
   if (!running || paused) return;
+  if (command.kind === 'recruit') {
+    requestRecruit(command);
+    return;
+  }
   if (net) sendCommand(command);
   else if (command.kind === 'setRally') Sim.setRally(state, player, command);
-  else if (command.kind === 'recruit') Sim.recruit(state, command.type, player, command.producerId);
   else if (command.kind === 'construct')
     Sim.construct(state, player, command.type, command.baseId, command.slotId);
   else if (command.kind === 'build') Sim.build(state, player, command.index);
@@ -1889,6 +2077,9 @@ function renderContextPanel() {
   }
   panelVisibilityState = panelVisibility(panelVisibilityState);
   if (rallyArmed && openedRallyBuilding()?.id !== rallyArmed) rallyArmed = null;
+  const selectionKey = [...selected].sort((a, b) => a - b).join(',');
+  if (selectionKey !== queueSelection || !selectionKey) queueArmed = false;
+  queueSelection = selectionKey;
   const model = panelModel(state, player, selected, {
     ...panelContext,
     width: innerWidth,
@@ -1896,7 +2087,7 @@ function renderContextPanel() {
   });
   const idleCount = Sim.idleWorkers(state, player).length;
   idleButton.hidden = idleCount === 0;
-  idleButton.textContent = `⚒ Ouvrier inactif · ${idleCount}`;
+  idleButton.innerHTML = iconSvg('build') + ` Ouvrier inactif · ${idleCount}`;
   idleButton.setAttribute('aria-label', `Ouvrier inactif : ${idleCount}. Appui long : tous`);
   panelRoot.dataset.collapsed = String(model.collapsed);
   panelRoot.hidden = !running;
@@ -1912,7 +2103,7 @@ function renderContextPanel() {
   const currentHealthText = $('#contextIdentity .health-text');
   if (currentHealthText)
     currentHealthText.textContent = `${Math.ceil(model.left.hp)}/${Math.ceil(model.left.max)}`;
-  const signature = JSON.stringify([model, paused, patrolArmed, rallyArmed], (key, value) =>
+  const signature = JSON.stringify([model, paused, patrolArmed, rallyArmed, queueArmed], (key, value) =>
     ['remaining', 'hp', 'status'].includes(key) ? undefined : value,
   );
   if (signature === panelSignature) return;
@@ -1979,14 +2170,15 @@ function renderContextPanel() {
     if (item.locked) {
       const lock = document.createElement('i');
       lock.className = 'panel-lock';
-      lock.textContent = '🔒';
+      lock.innerHTML = iconSvg('lock');
       button.append(lock);
     }
     button.title = item.locked
       ? item.prerequisite || 'Rubis insuffisants ou file pleine'
       : item.name;
     button.setAttribute('aria-label', button.title);
-    button.disabled = paused || item.locked;
+    button.disabled = paused || (item.locked && item.kind !== 'recruit');
+    if (item.kind === 'recruit' && item.locked) button.style.opacity = '0.45';
     let timer;
     let removed = false;
     if (item.kind === 'filter') {
@@ -1997,6 +2189,7 @@ function renderContextPanel() {
         button.setPointerCapture(event.pointerId);
         timer = setTimeout(() => {
           removed = true;
+          fieldDoubleTap.reset();
           selected = filterSelection(selected, state.units, item.type, true);
           updateUI();
         }, 550);
@@ -2017,9 +2210,35 @@ function renderContextPanel() {
       };
       button.onlostpointercapture = () => clearTimeout(timer);
     }
+    if (item.kind === 'recruit') {
+      let origin = null;
+      button.onpointerdown = (event) => {
+        removed = false;
+        origin = { x: event.clientX, y: event.clientY };
+        button.setPointerCapture(event.pointerId);
+        timer = setTimeout(() => {
+          removed = true;
+          requestRecruit({ kind: 'recruit', type: item.type, producerId: model.producerId }, 5, model.producerIds);
+        }, 450);
+      };
+      button.onpointermove = (event) => {
+        if (origin && Math.hypot(event.clientX - origin.x, event.clientY - origin.y) > 12) {
+          removed = true;
+          clearTimeout(timer);
+        }
+      };
+      button.onpointerup = () => clearTimeout(timer);
+      button.onpointercancel = () => {
+        removed = true;
+        clearTimeout(timer);
+      };
+      button.onlostpointercapture = () => clearTimeout(timer);
+      button.oncontextmenu = (event) => event.preventDefault();
+    }
     button.onclick = () => {
       if (removed) return;
       if (item.kind === 'filter') {
+        fieldDoubleTap.reset();
         selected = filterSelection(selected, state.units, item.type);
         updateUI();
       } else if (item.kind === 'main') {
@@ -2027,7 +2246,7 @@ function renderContextPanel() {
         panelVisibilityState = panelVisibility(panelVisibilityState, 'building');
         updateUI();
       } else if (item.kind === 'recruit') {
-        panelCommand({ kind: 'recruit', type: item.type, producerId: model.producerId });
+        requestRecruit({ kind: 'recruit', type: item.type, producerId: model.producerId }, 1, model.producerIds);
       } else if (item.kind === 'depot') {
         panelCommand({ kind: 'build', index: item.index });
       } else if (panelContext.slotId) {
@@ -2058,11 +2277,11 @@ function renderContextPanel() {
   actions.replaceChildren();
   if (model.mode === 'units') {
     const ability = document.createElement('button');
-    ability.textContent = '✦ Compétence spéciale';
+    ability.innerHTML = iconSvg('special') + ' Compétence spéciale';
     ability.disabled = true;
     ability.title = 'Aucune compétence disponible';
     const patrol = document.createElement('button');
-    patrol.textContent = '⇄ Patrouiller';
+    patrol.innerHTML = iconSvg('patrol') + ' Patrouiller';
     patrol.setAttribute('aria-pressed', String(patrolArmed));
     patrol.disabled = paused;
     patrol.onclick = () => {
@@ -2072,14 +2291,25 @@ function renderContextPanel() {
       notify(patrolArmed ? 'Patrouiller · Touchez le sol' : 'Patrouille annulée');
       updateUI();
     };
-    $('#hold').innerHTML = '⛨ <span>Tenir position</span>';
-    actions.append($('#hold'), patrol, ability, $('#retreat'));
+    $('#hold').innerHTML = iconSvg('hold') + ' <span>Tenir position</span>';
+    const queue = document.createElement('button');
+    queue.id = 'queueOrders';
+    queue.innerHTML = iconSvg('queue') + ' Enchaîner';
+    queue.style.minHeight = '44px';
+    queue.style.minWidth = '44px';
+    queue.setAttribute('aria-pressed', String(queueArmed));
+    queue.disabled = paused;
+    queue.onclick = () => {
+      queueArmed = !queueArmed;
+      updateUI();
+    };
+    actions.append($('#hold'), patrol, queue, ability, $('#retreat'));
   } else {
     const opened = openedRallyBuilding();
     if (opened) {
       const rally = document.createElement('button');
       rally.id = 'rallyAction';
-      rally.textContent = '⚑ Ralliement';
+      rally.innerHTML = iconSvg('rally') + ' Ralliement';
       rally.style.minHeight = '44px';
       rally.style.minWidth = '44px';
       rally.setAttribute('aria-pressed', String(rallyArmed === opened.id));
@@ -2100,7 +2330,7 @@ function renderContextPanel() {
     if (model.producerId && model.queue.length) {
       const queueLabel = document.createElement('small');
       queueLabel.className = 'queue-label';
-      queueLabel.textContent = `File ${model.queue.length}/8`;
+      queueLabel.textContent = `File ${model.queue.length}/${8 * Math.max(1, model.producerIds.length)}`;
       actions.append(queueLabel);
     }
     for (let index = 0; index < model.queue.length; index++) {
@@ -2123,7 +2353,7 @@ function renderContextPanel() {
         button.onclick = () =>
           panelCommand({
             kind: 'cancelProduction',
-            producerId: model.producerId,
+            producerId: job.producerId,
             jobId: job.id,
           });
       }
@@ -2132,3 +2362,10 @@ function renderContextPanel() {
   }
 }
 renderContextPanel();
+
+productionUI = initProduction({
+  enabled: () => running && !paused,
+  command: panelCommand,
+  recruitBatch: requestRecruit,
+  vibrate: () => vibrateOrder(settings.vibration),
+});

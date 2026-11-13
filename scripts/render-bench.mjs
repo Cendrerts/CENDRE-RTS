@@ -68,59 +68,71 @@ try {
     await page.goto(origin + '/render-bench');
     const cdp = await page.context().newCDPSession(page);
     await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
-    const result = await page.evaluate(async () => {
-      const { CendreSim: sim } = await import('/public/game/sim.js');
-      const { combatScenario } = await import('/scripts/render-scenario.mjs');
-      const { createRenderCache, prepareDrawList } = await import('/public/game/render-cache.js');
-      const state = combatScenario(sim);
-      const cache = createRenderCache(() => document.createElement('canvas'));
-      const fog = document.createElement('canvas');
-      fog.width = sim.COLS;
-      fog.height = sim.ROWS;
-      const context = fog.getContext('2d');
-      const { cookSprites } = await import('/public/game/cooks.js');
-      const { ratSprites } = await import('/public/game/rats.js');
-      await Promise.all([...Object.values(cookSprites), ...Object.values(ratSprites)].map((image) => image.decode()));
-      const terrain = new Image();
-      terrain.src = '/public/game/assets/terres-brulees.png';
-      await terrain.decode();
-      const startingHealth = state.units.reduce((sum, unit) => sum + unit.hp, 0);
-      const samples = [];
-      let minUnits = 60;
-      for (let frame = 0; frame < 1200; frame++) {
-        await new Promise(requestAnimationFrame);
-        const started = performance.now();
-        sim.tick(state, 1 / 60);
-        const units = prepareDrawList(state, 0, sim.canSee);
-        cache.terrain(terrain, 844, 390, 0, 0, 1, sim.W, sim.H);
-        cache.updateFog(context, state.visible[0], state.explored[0], sim.COLS);
-        for (const unit of units) {
-          const size = unit.type === 'archer' ? 52 : 46;
-          cache.sprite((unit.team ? ratSprites : cookSprites)[unit.type], unit.type, unit.team, 1, size, size * 1.125);
+    for (const scenarioName of ['combatScenario', 'hordeScenario']) {
+      const result = await page.evaluate(async (scenarioName) => {
+        const { CendreSim: sim } = await import('/public/game/sim.js');
+        const scenarios = await import('/scripts/render-scenario.mjs');
+        const { createRenderCache, prepareDrawList } = await import('/public/game/render-cache.js');
+        const state = scenarios[scenarioName](sim);
+        const startingUnits = state.units.length;
+        const cache = createRenderCache(() => document.createElement('canvas'));
+        const fog = document.createElement('canvas');
+        fog.width = sim.COLS;
+        fog.height = sim.ROWS;
+        const context = fog.getContext('2d');
+        const { cookSprites } = await import('/public/game/cooks.js');
+        const { ratSprites } = await import('/public/game/rats.js');
+        await Promise.all([...Object.values(cookSprites), ...Object.values(ratSprites)].map((image) => image.decode()));
+        const terrain = new Image();
+        terrain.src = '/public/game/assets/terres-brulees.png';
+        await terrain.decode();
+        const startingHealth = state.units.reduce((sum, unit) => sum + unit.hp, 0);
+        const samples = [];
+        let minUnits = startingUnits;
+        for (let frame = 0; frame < 1200; frame++) {
+          await new Promise(requestAnimationFrame);
+          const started = performance.now();
+          sim.tick(state, 1 / 60);
+          const units = prepareDrawList(state, 0, sim.canSee);
+          cache.terrain(terrain, 844, 390, 0, 0, 1, sim.W, sim.H);
+          cache.updateFog(context, state.visible[0], state.explored[0], sim.COLS);
+          for (const unit of units) {
+            const size = unit.type === 'archer' ? 52 : 46;
+            cache.sprite((unit.team ? ratSprites : cookSprites)[unit.type], unit.type, unit.team, 1, size, size * 1.125);
+          }
+          const duration = performance.now() - started;
+          if (frame >= 600) samples.push(duration);
+          minUnits = Math.min(minUnits, units.length);
         }
-        const duration = performance.now() - started;
-        if (frame >= 600) samples.push(duration);
-        minUnits = Math.min(minUnits, units.length);
+        samples.sort((a, b) => a - b);
+        return {
+          startingUnits,
+          damageDealt: startingHealth - state.units.reduce((sum, unit) => sum + unit.hp, 0),
+          frames: samples.length,
+          cpuThrottling: 4,
+          viewport: '844x390',
+          units: state.units.length,
+          minVisibleUnits: minUnits,
+          meanMs: samples.reduce((sum, value) => sum + value, 0) / samples.length,
+          p95Ms: samples[Math.floor(samples.length * 0.95)],
+          p99Ms: samples[Math.floor(samples.length * 0.99)],
+          maxMs: samples.at(-1),
+          overBudgetFrames: samples.filter((duration) => duration >= 4).length,
+          chrome: navigator.userAgent,
+        };
+      }, scenarioName);
+      console.log(scenarioName, JSON.stringify(result, null, 2));
+      const horde = scenarioName === 'hordeScenario';
+      const filename = horde ? 'benchmark-horde.json' : 'benchmark.json';
+      await writeFile(`artifacts/issue-17/${filename}`, JSON.stringify(result, null, 2) + '\n');
+      const expectedUnits = horde ? 91 : 60;
+      const maxBudget = horde ? 8 : 4;
+      if (result.startingUnits !== expectedUnits || result.units !== expectedUnits ||
+          result.minVisibleUnits !== expectedUnits || result.damageDealt <= 0 ||
+          result.p95Ms >= 4 || result.maxMs >= maxBudget) {
+        process.exitCode = 1;
       }
-      samples.sort((a, b) => a - b);
-      return {
-        damageDealt: startingHealth - state.units.reduce((sum, unit) => sum + unit.hp, 0),
-        frames: samples.length,
-        cpuThrottling: 4,
-        viewport: '844x390',
-        units: state.units.length,
-        minVisibleUnits: minUnits,
-        meanMs: samples.reduce((sum, value) => sum + value, 0) / samples.length,
-        p95Ms: samples[Math.floor(samples.length * 0.95)],
-        p99Ms: samples[Math.floor(samples.length * 0.99)],
-        maxMs: samples.at(-1),
-        overBudgetFrames: samples.filter((duration) => duration >= 4).length,
-        chrome: navigator.userAgent,
-      };
-    });
-    console.log(JSON.stringify(result, null, 2));
-    await writeFile('artifacts/issue-17/benchmark.json', JSON.stringify(result, null, 2) + '\n');
-    if (result.units !== 60 || result.minVisibleUnits !== 60 || result.damageDealt <= 0 || result.maxMs >= 4) process.exitCode = 1;
+    }
   }
 } finally {
   await browser?.close();

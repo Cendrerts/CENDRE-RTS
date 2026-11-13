@@ -1,5 +1,6 @@
 // User stats: speed and range converted to world pixels at 20 px per unit.
 export const RatsGout = {
+  unitLimit: 45,
   nomFaction: 'Rats-Goût',
   styleDeJeu: 'Horde, nombre, vitesse de production accrue',
   themeVisuel: 'Déchets, rouille, ferraille et vert toxique',
@@ -26,7 +27,7 @@ export const RatsGout = {
       damage: 9,
       range: 32,
       production: 10,
-      cost: 60,
+      cost: 36,
       rate: 1,
       vision: 155,
     },
@@ -39,7 +40,7 @@ export const RatsGout = {
       damage: 11,
       range: 120,
       production: 12,
-      cost: 75,
+      cost: 45,
       rate: 1.1,
       vision: 180,
     },
@@ -52,7 +53,7 @@ export const RatsGout = {
       damage: 18,
       range: 100,
       production: 22,
-      cost: 100,
+      cost: 60,
       rate: 1.7,
       vision: 170,
       splash: 45,
