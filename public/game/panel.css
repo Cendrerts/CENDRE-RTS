@@ -211,7 +211,7 @@
   height: 27px;
 }
 #contextPanel[data-mode='units'] #contextGrid small {
-  font-size: 8px;
+  font-size: 9px;
   white-space: nowrap;
 }
 #contextPanel[data-mode='units']:has(#contextGrid button) #contextIdentity > div:last-child {

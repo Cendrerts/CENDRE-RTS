@@ -1,0 +1,203 @@
+Faction 0 — unite — Production ouverte — 844×390 tactile
+Vérifié : 23 cibles >= 44×44 px ; aucun débordement de libellé dans le panneau et la production.
+12 px | #rubies | 999
+12 px | #population | 1 / 30
+12 px | #clock | 00:00
+20 px | #zoomIn | +
+12 px | span | Base
+10 px | #selectionToggle | Sélection
+12 px | span | Attaquer
+11 px | small.health-text | 50/50
+13 px | div | Commis
+11 px | small.unit-status | Sac 0
+16 px | strong | 1
+18 px | span.group-add | +
+16 px | strong | 2
+18 px | span.group-add | +
+16 px | strong | 3
+18 px | span.group-add | +
+16 px | strong | 4
+18 px | span.group-add | +
+11 px | #armySelect | Armée
+12 px | span | Tenir position
+11 px | button | Patrouiller
+11 px | #queueOrders | Enchaîner
+11 px | button | Compétence spéciale
+9 px | span | Décrocher
+13 px | #productionToggle | Production
+11 px | span.productionName | Commis
+13 px | span.productionCost | 40 ♦
+11 px | span.productionName | Garde-Manger
+13 px | span.productionCost | 60 ♦
+11 px | span.productionName | Boucher-Tireur
+13 px | span.productionCost | 75 ♦
+11 px | span.productionName | Chef de Brigade
+13 px | span.productionCost | 100 ♦
+Faction 0 — batiment — Production ouverte — 844×390 tactile
+Vérifié : 20 cibles >= 44×44 px ; aucun débordement de libellé dans le panneau et la production.
+12 px | #rubies | 899
+12 px | #population | 1 / 30
+12 px | #clock | 00:00
+20 px | #zoomIn | +
+12 px | span | Base
+10 px | #selectionToggle | Sélection
+12 px | span | Attaquer
+54 px | div.building-portrait | ⚒
+11 px | small.health-text | 1500/1500
+13 px | div | Garde-manger
+11 px | small.unit-status | Production 0/8
+16 px | strong | 1
+16 px | strong | 2
+16 px | strong | 3
+16 px | strong | 4
+11 px | #armySelect | Armée
+10 px | small | Garde
+10 px | b.panel-cost | 60
+11 px | #rallyAction | Ralliement
+13 px | #productionToggle | Production
+11 px | span.productionName | Commis
+13 px | span.productionCost | 40 ♦
+11 px | span.productionName | Garde-Manger
+13 px | span.productionCost | 60 ♦
+11 px | span.productionName | Boucher-Tireur
+13 px | span.productionCost | 75 ♦
+11 px | span.productionName | Chef de Brigade
+13 px | span.productionCost | 100 ♦
+Faction 0 — groupe — Production ouverte — 844×390 tactile
+Vérifié : 25 cibles >= 44×44 px ; aucun débordement de libellé dans le panneau et la production.
+12 px | #rubies | 999
+12 px | #population | 2 / 30
+12 px | #clock | 00:00
+20 px | #zoomIn | +
+12 px | span | Base
+10 px | #selectionToggle | Sélection
+12 px | span | Attaquer
+11 px | small.health-text | 250/250
+13 px | div | 2 unités
+16 px | strong | 1
+18 px | span.group-add | +
+16 px | strong | 2
+18 px | span.group-add | +
+16 px | strong | 3
+18 px | span.group-add | +
+16 px | strong | 4
+18 px | span.group-add | +
+11 px | #armySelect | Armée
+9 px | small | ×1
+9 px | small | ×1
+12 px | span | Tenir position
+11 px | button | Patrouiller
+11 px | #queueOrders | Enchaîner
+11 px | button | Compétence spéciale
+9 px | span | Décrocher
+13 px | #productionToggle | Production
+11 px | span.productionName | Commis
+13 px | span.productionCost | 40 ♦
+11 px | span.productionName | Garde-Manger
+13 px | span.productionCost | 60 ♦
+11 px | span.productionName | Boucher-Tireur
+13 px | span.productionCost | 75 ♦
+11 px | span.productionName | Chef de Brigade
+13 px | span.productionCost | 100 ♦
+Faction 1 — unite — Production ouverte — 844×390 tactile
+Vérifié : 23 cibles >= 44×44 px ; aucun débordement de libellé dans le panneau et la production.
+12 px | #rubies | 999
+12 px | #population | 1 / 45
+12 px | #clock | 00:00
+20 px | #zoomIn | +
+12 px | span | Base
+10 px | #selectionToggle | Sélection
+12 px | span | Attaquer
+11 px | small.health-text | 45/45
+13 px | div | Rat-Essuyeur
+11 px | small.unit-status | Sac 0
+16 px | strong | 1
+18 px | span.group-add | +
+16 px | strong | 2
+18 px | span.group-add | +
+16 px | strong | 3
+18 px | span.group-add | +
+16 px | strong | 4
+18 px | span.group-add | +
+11 px | #armySelect | Armée
+12 px | span | Tenir position
+11 px | button | Patrouiller
+11 px | #queueOrders | Enchaîner
+11 px | button | Compétence spéciale
+9 px | span | Décrocher
+13 px | #productionToggle | Production
+11 px | span.productionName | Rat-Essuyeur
+13 px | span.productionCost | 40 ♦
+11 px | span.productionName | Rat-Éboueur
+13 px | span.productionCost | 36 ♦
+11 px | span.productionName | Rat-Balance-Déchets
+13 px | span.productionCost | 45 ♦
+11 px | span.productionName | Chaman de la Poubelle
+13 px | span.productionCost | 60 ♦
+Faction 1 — batiment — Production ouverte — 844×390 tactile
+Vérifié : 20 cibles >= 44×44 px ; aucun débordement de libellé dans le panneau et la production.
+12 px | #rubies | 899
+12 px | #population | 1 / 45
+12 px | #clock | 00:00
+20 px | #zoomIn | +
+12 px | span | Base
+10 px | #selectionToggle | Sélection
+12 px | span | Attaquer
+54 px | div.building-portrait | ⚒
+11 px | small.health-text | 1500/1500
+13 px | div | Niche à Ordures
+11 px | small.unit-status | Production 0/8
+16 px | strong | 1
+16 px | strong | 2
+16 px | strong | 3
+16 px | strong | 4
+11 px | #armySelect | Armée
+10 px | small | Éboueur
+10 px | b.panel-cost | 36
+11 px | #rallyAction | Ralliement
+13 px | #productionToggle | Production
+11 px | span.productionName | Rat-Essuyeur
+13 px | span.productionCost | 40 ♦
+11 px | span.productionName | Rat-Éboueur
+13 px | span.productionCost | 36 ♦
+11 px | span.productionName | Rat-Balance-Déchets
+13 px | span.productionCost | 45 ♦
+11 px | span.productionName | Chaman de la Poubelle
+13 px | span.productionCost | 60 ♦
+Faction 1 — groupe — Production ouverte — 844×390 tactile
+Vérifié : 25 cibles >= 44×44 px ; aucun débordement de libellé dans le panneau et la production.
+12 px | #rubies | 999
+12 px | #population | 2 / 45
+12 px | #clock | 00:00
+20 px | #zoomIn | +
+12 px | span | Base
+10 px | #selectionToggle | Sélection
+12 px | span | Attaquer
+11 px | small.health-text | 155/155
+13 px | div | 2 unités
+16 px | strong | 1
+18 px | span.group-add | +
+16 px | strong | 2
+18 px | span.group-add | +
+16 px | strong | 3
+18 px | span.group-add | +
+16 px | strong | 4
+18 px | span.group-add | +
+11 px | #armySelect | Armée
+9 px | small | ×1
+9 px | small | ×1
+12 px | span | Tenir position
+11 px | button | Patrouiller
+11 px | #queueOrders | Enchaîner
+11 px | button | Compétence spéciale
+9 px | span | Décrocher
+13 px | #productionToggle | Production
+11 px | span.productionName | Rat-Essuyeur
+13 px | span.productionCost | 40 ♦
+11 px | span.productionName | Rat-Éboueur
+13 px | span.productionCost | 36 ♦
+11 px | span.productionName | Rat-Balance-Déchets
+13 px | span.productionCost | 45 ♦
+11 px | span.productionName | Chaman de la Poubelle
+13 px | span.productionCost | 60 ♦
+PASS : tous les textes visibles mesurés sont à 9 px minimum.
