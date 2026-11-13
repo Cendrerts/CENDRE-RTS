@@ -1,3 +1,5 @@
+import { TEAM_COLORS } from './unit-overlays.js';
+
 // Shared button icons: no font or external asset required.
 const paths = {
   "minus": "M4 12h16",
@@ -16,8 +18,8 @@ const paths = {
   "lock": "M7 11V7a5 5 0 0 1 10 0v4M5 11h14v11H5ZM12 15v3",
   "special": "m12 2 3 7 7 3-7 3-3 7-3-7-7-3 7-3Z",
   "home": "m2 11 10-9 10 9M5 9v13h14V9M10 22v-8h4v8",
-  "rook": "M5 2v6h14V2h-4v3H9V2ZM7 8v10l-3 4h16l-3-4V8M7 18h10",
-  "biohazard": "M12 10V5m-2-3a4 4 0 1 0 4 0M10 13l-5 3m-3-2a4 4 0 1 0 3 5M14 13l5 3m0 3a4 4 0 1 0 3-5M12 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4",
+  "cuistots": "M3 19 16 12l5 5-9 5-3-3-5 3ZM6 11V8C1 8 2 2 7 3c2-3 6-3 8 0 5-1 6 5 1 5v3Z",
+  "ratsgout": "M5 17v-5C1 9 3 3 7 3c3 0 5 2 5 5 3 0 4 2 8 5l-4 4ZM10 18v-2h4v2l7 2v2H2v-2ZM17 12l5-3v2l-4 3ZM18 14h4v2h-6Z",
   "right": "M4 12h16m-6-6 6 6-6 6",
   "alert": "m5 3 16 9-16 9 4-9Z",
   "up": "m5 16 7-8 7 8",
@@ -28,5 +30,9 @@ const paths = {
 
 export function iconSvg(name) {
   if (!Object.hasOwn(paths, name)) throw new Error(`Unknown icon: ${name}`);
+  const faction = ['cuistots', 'ratsgout'].indexOf(name);
+  if (faction !== -1) {
+    return `<svg data-icon="${name}" width="32" height="32" viewBox="0 0 24 24" fill="${TEAM_COLORS[faction]}" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" style="width:32px;height:32px;vertical-align:middle;pointer-events:none"><path stroke="#111719" stroke-width="1.5" vector-effect="non-scaling-stroke" d="${paths[name]}"/></svg>`;
+  }
   return `<svg data-icon="${name}" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" style="width:1em;height:1em;vertical-align:-0.125em;pointer-events:none"><path d="${paths[name]}"/></svg>`;
 }
