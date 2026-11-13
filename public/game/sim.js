@@ -448,6 +448,16 @@ export function recruitBlockReason(state, team, type, producerId = null) {
   if (Object.hasOwn(TYPES, type) && snapshot.rubies[team] < stats(type, team).cost) return 'rubies';
   return 'producer';
 }
+export function leastLoadedProducer(state, team, candidates) {
+  const queue = state.queues[team];
+  const available = candidates.filter((producer) =>
+    queue.filter((job) => job.producerId === producer.id).length < 8);
+  const workload = (producer) => queue.filter((job) => job.producerId === producer.id)
+    .reduce((total, job) => total + job.remaining, 0);
+  available.sort((a, b) => workload(a) - workload(b));
+  return available[0];
+}
+
 function recruit(s, type, team, producerId = null) {
   if (!canRecruit(s, team, type, producerId)) return false;
   const cfg = stats(type, team);
@@ -455,9 +465,7 @@ function recruit(s, type, team, producerId = null) {
   const options = producers(s, team, type).filter((producer) =>
     (!producerId || producer.id === producerId) &&
     q.filter((job) => job.producerId === producer.id).length < 8);
-  const workload = (p) =>
-    q.filter((j) => j.producerId === p.id).reduce((n, j) => n + j.remaining, 0);
-  options.sort((a, b) => workload(a) - workload(b));
+  const producer = leastLoadedProducer(s, team, options);
   s.rubies[team] -= cfg.cost;
   s.nextProductionJobId = (s.nextProductionJobId || 0) + 1;
   q.push({
@@ -465,7 +473,7 @@ function recruit(s, type, team, producerId = null) {
     type,
     remaining: cfg.production,
     total: cfg.production,
-    producerId: options[0].id,
+    producerId: producer.id,
   });
   return true;
 }
@@ -1227,6 +1235,7 @@ function predictMotion(state, unit, command, dt) {
 
 export const CendreSim = {
   idleWorkers,
+  leastLoadedProducer,
   setRally,
   rallyBuilding,
   rallyPoint,
