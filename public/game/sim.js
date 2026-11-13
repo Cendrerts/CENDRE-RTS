@@ -208,6 +208,10 @@ function route(x, y, tx, ty) {
 function forest(u) {
   return ((u.x - 800) / 150) ** 2 + ((u.y - 445) / 110) ** 2 < 1;
 }
+function configureIncome(s, team, bonus) {
+  if (!s.incomeMultiplier) s.incomeMultiplier = [1, 1];
+  s.incomeMultiplier[team] = 1 + bonus;
+}
 function create() {
   let s = {
     matchCounters: [emptyMatchCounters(), emptyMatchCounters()],
@@ -216,6 +220,7 @@ function create() {
     time: 0,
     id: 0,
     rubies: [100, 100],
+    incomeMultiplier: [1, 1],
     units: [],
     shots: [],
     damageEvents: [],
@@ -383,6 +388,7 @@ function applyDamage(s, target, damage, attackerTeam = null) {
 }
 // Shared migration for saved solo states and persisted server matches.
 function migrateState(s) {
+  if (!s.incomeMultiplier) s.incomeMultiplier = [1, 1];
   s.matchCounters ??= [emptyMatchCounters(), emptyMatchCounters()];
   if (Object.hasOwn(s, 'gold')) {
     if (!Object.hasOwn(s, 'rubies')) s.rubies = s.gold;
@@ -1195,8 +1201,9 @@ function harvestTick(s, u, dt) {
       h.phase = 'MINAGE';
       h.elapsed = 0;
     } else {
-      s.rubies[u.team] += u.cargo || 0;
-      s.matchCounters[u.team].rubiesCollected += u.cargo || 0;
+      const deposit = (u.cargo || 0) * (s.incomeMultiplier?.[u.team] ?? 1);
+      s.rubies[u.team] += deposit;
+      s.matchCounters[u.team].rubiesCollected += deposit;
       u.cargo = 0;
       if (!availableMine(m, u.team)) {
         reassignHarvest(s, u);
@@ -1267,6 +1274,7 @@ export const CendreSim = {
   route,
   forest,
   create,
+  configureIncome,
   spawn,
   recruit,
   canRecruit,

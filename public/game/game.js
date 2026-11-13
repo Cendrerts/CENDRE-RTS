@@ -304,7 +304,7 @@ $('#start').onclick = async () => {
   controlGroupsUI?.reset();
   selected.clear();
   player = chosen;
-  soloAI = createAI(1 - player, $('#aiDifficulty').value);
+  soloAI = createAI(1 - player, $('#aiDifficulty').value, state);
   running = true;
   paused = false;
   zoom = 2.6;
