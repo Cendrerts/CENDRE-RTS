@@ -1,3 +1,4 @@
+import { iconSvg } from './icons.js';
 import { initProduction, recruitToastText } from './production.js';
 import { panelModel, panelVisibility } from './panel.js';
 import { readSettings, writeSettings } from './settings.js';
@@ -97,7 +98,7 @@ function unlockAmbience() {
 }
 const audioButton = document.createElement('button');
 audioButton.id = 'audioUnlock';
-audioButton.textContent = '🔇';
+audioButton.innerHTML = iconSvg('muted');
 audioButton.setAttribute('aria-label', 'Activer le son');
 audioButton.style.minWidth = '44px';
 audioButton.style.minHeight = '44px';
@@ -322,7 +323,7 @@ $('#start').onclick = async () => {
   layout();
   setupPortraits();
   $('#veil').style.display = 'none';
-  $('#pause').textContent = 'Ⅱ';
+  $('#pause').innerHTML = iconSvg('pause');
   updateUI();
   notify('Explorez avec vos unités. Glisser : caméra · Maintenir + glisser : sélection · 2 doigts : zoom');
 };
@@ -806,7 +807,7 @@ function updateAttackAlerts() {
     if (!button) {
       button = document.createElement('button');
       button.className = 'attack-alert';
-      button.textContent = '➤';
+      button.innerHTML = iconSvg('alert');
       button.setAttribute('aria-label', 'Attaque hors écran : centrer la caméra');
       document.body.append(button);
       alertButtons.set(alert.zone, button);
@@ -876,7 +877,7 @@ function finish() {
   $('#matchStats')?.remove();
   $('#modalTitle').after(table);
   $('#veil').classList.add('match-ended');
-  $('#start').innerHTML = 'Nouvelle escarmouche →';
+  $('#start').innerHTML = 'Nouvelle escarmouche ' + iconSvg('right');
   $('#veil').style.display = 'flex';
 }
 function poly(points, fill, stroke) {
@@ -1716,7 +1717,7 @@ touchUI = initTouchUI({
 
 const selectionToggle = document.createElement('button');
 selectionToggle.id = 'selectionToggle';
-selectionToggle.textContent = '⬚ Sélection';
+selectionToggle.innerHTML = iconSvg('selection') + ' Sélection';
 selectionToggle.setAttribute('aria-pressed', 'false');
 selectionToggle.onclick = () => {
   const active = selectionToggle.getAttribute('aria-pressed') !== 'true';
@@ -1980,12 +1981,12 @@ idleButton.addEventListener('contextmenu', (event) => event.preventDefault());
 const panelChevron = document.createElement('button');
 panelChevron.id = 'panelChevron';
 panelChevron.setAttribute('aria-label', 'Replier le panneau');
-panelChevron.textContent = '⌄';
+panelChevron.innerHTML = iconSvg('down');
 panelRoot.append(panelChevron);
 const panelTab = document.createElement('button');
 panelTab.id = 'panelTab';
 panelTab.setAttribute('aria-label', 'Ouvrir le panneau');
-panelTab.textContent = '⌃';
+panelTab.innerHTML = iconSvg('up');
 panelRoot.append(panelTab);
 function changePanelVisibility(event) {
   panelVisibilityState = panelVisibility(panelVisibilityState, event);
@@ -2087,7 +2088,7 @@ function renderContextPanel() {
   });
   const idleCount = Sim.idleWorkers(state, player).length;
   idleButton.hidden = idleCount === 0;
-  idleButton.textContent = `⚒ Ouvrier inactif · ${idleCount}`;
+  idleButton.innerHTML = iconSvg('build') + ` Ouvrier inactif · ${idleCount}`;
   idleButton.setAttribute('aria-label', `Ouvrier inactif : ${idleCount}. Appui long : tous`);
   panelRoot.dataset.collapsed = String(model.collapsed);
   panelRoot.hidden = !running;
@@ -2170,7 +2171,7 @@ function renderContextPanel() {
     if (item.locked) {
       const lock = document.createElement('i');
       lock.className = 'panel-lock';
-      lock.textContent = '🔒';
+      lock.innerHTML = iconSvg('lock');
       button.append(lock);
     }
     button.title = item.locked
@@ -2252,11 +2253,11 @@ function renderContextPanel() {
   actions.replaceChildren();
   if (model.mode === 'units') {
     const ability = document.createElement('button');
-    ability.textContent = '✦ Compétence spéciale';
+    ability.innerHTML = iconSvg('special') + ' Compétence spéciale';
     ability.disabled = true;
     ability.title = 'Aucune compétence disponible';
     const patrol = document.createElement('button');
-    patrol.textContent = '⇄ Patrouiller';
+    patrol.innerHTML = iconSvg('patrol') + ' Patrouiller';
     patrol.setAttribute('aria-pressed', String(patrolArmed));
     patrol.disabled = paused;
     patrol.onclick = () => {
@@ -2266,10 +2267,10 @@ function renderContextPanel() {
       notify(patrolArmed ? 'Patrouiller · Touchez le sol' : 'Patrouille annulée');
       updateUI();
     };
-    $('#hold').innerHTML = '⛨ <span>Tenir position</span>';
+    $('#hold').innerHTML = iconSvg('hold') + ' <span>Tenir position</span>';
     const queue = document.createElement('button');
     queue.id = 'queueOrders';
-    queue.textContent = '⇢ Enchaîner';
+    queue.innerHTML = iconSvg('queue') + ' Enchaîner';
     queue.style.minHeight = '44px';
     queue.style.minWidth = '44px';
     queue.setAttribute('aria-pressed', String(queueArmed));
@@ -2284,7 +2285,7 @@ function renderContextPanel() {
     if (opened) {
       const rally = document.createElement('button');
       rally.id = 'rallyAction';
-      rally.textContent = '⚑ Ralliement';
+      rally.innerHTML = iconSvg('rally') + ' Ralliement';
       rally.style.minHeight = '44px';
       rally.style.minWidth = '44px';
       rally.setAttribute('aria-pressed', String(rallyArmed === opened.id));
