@@ -8,7 +8,7 @@ const paths = {
   "build": "m4 20 10-10M12 4l3-2 7 7-3 3-7-8ZM3 17l4 4M3 4l17 17M3 4v5l4-2Z",
   "rally": "M5 22V3m0 1c5-4 9 4 14 0v10c-5 4-9-4-14 0",
   "queue": "M3 12h3m3 0h3m3 0h6m-5-5 5 5-5 5",
-  "selection": "M3 8V3h5m8 0h5v5m0 8v5h-5m-8 0H3v-5M3 11v2m18-2v2M11 3h2m-2 18h2",
+  "selection": "M3 7V3h4m10 0h4v4m0 10v4h-4m-10 0H3v-4M3 10v4m18-4v4M10 3h4m-4 18h4",
   "fullscreen": "M3 9V3h6m6 0h6v6m0 6v6h-6m-6 0H3v-6",
   "back": "M20 12H4m6-6-6 6 6 6",
   "menu": "M4 5h16M4 12h16M4 19h16",
