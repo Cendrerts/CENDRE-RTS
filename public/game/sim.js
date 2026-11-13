@@ -14,6 +14,9 @@ const W = 1680,
   COLS = 84,
   ROWS = 47;
 const TYPES = BrigadeCuisine.unites;
+function unitLimit(team) {
+  return (team === 1 ? RatsGout : BrigadeCuisine).unitLimit;
+}
 function stats(type, team) {
   return team === 1 ? RatsGout.unites[type] : TYPES[type];
 }
@@ -420,7 +423,7 @@ function construct(s, team, type, baseId, slotId = null) {
   return placeBuilding(s, team, type, baseId, slotId);
 }
 export function populationCap(state, team) {
-  return 30;
+  return unitLimit(team);
 }
 export function canRecruit(s, team, type, producerId = null) {
   s.queues ??= [[], []];
@@ -1268,6 +1271,7 @@ export const CendreSim = {
   recruit,
   canRecruit,
   populationCap,
+  unitLimit,
   recruitBlockReason,
   order,
   patrol,

@@ -265,7 +265,7 @@ function updateUI() {
   let army = state.units.filter((u) => u.team === player);
   selected = new Set([...selected].filter((id) => army.some((u) => u.id === id)));
   $('#rubies').textContent = Math.floor(state.rubies[player]);
-  $('#population').textContent = army.length + ' / 30';
+  $('#population').textContent = army.length + ' / ' + Sim.unitLimit(player);
   $('#clock').textContent =
     String(Math.floor(state.time / 60)).padStart(2, '0') +
     ':' +

@@ -15,21 +15,12 @@ for (const horde of [false, true]) {
       await mkdir(variant);
       for (const file of ['sim.js', 'ai.js', 'ai-config.js', 'slots.js', 'rats-config.js', 'cooks-config.js']) {
         let source = await readFile(new URL('../public/game/' + file, import.meta.url), 'utf8');
-        if (horde && file === 'rats-config.js') {
-          source = source.replace('export const RatsGout = {', 'export const RatsGout = {\n  unitLimit: 45,');
-          for (const [before, after] of [[60, 36], [75, 45], [100, 60]]) {
-            source = source.replace(`cost: ${before},`, `cost: ${after},`);
-          }
-        }
-        if (horde && file === 'cooks-config.js') {
-          source = source.replace('export const BrigadeCuisine = {', 'export const BrigadeCuisine = {\n  unitLimit: 30,');
-        }
-        if (horde && file === 'sim.js') {
-          // Main currently has a fixed cap; emulate #66's faction cap only here.
-          assert(source.includes('s.units.filter((unit) => unit.team === team).length + queue.length < populationCap(s, team)'));
-          source = source.replace('export function populationCap(state, team) {\n  return 30;', 'export function populationCap(state, team) {\n  return unitLimit(team);');
-          source = source.replace('function stats(type, team) {', 'function unitLimit(team) {\n  return (team === 1 ? RatsGout : BrigadeCuisine).unitLimit;\n}\nfunction stats(type, team) {');
-          source = source.replace('  stats,', '  unitLimit,\n  stats,');
+        if (!horde && file === 'rats-config.js') {
+          // Preserve the pre-horde baseline in an isolated test config.
+          source = source.replace('unitLimit: 45,', 'unitLimit: 30,');
+          const baselineCosts = { 36: 60, 45: 75, 60: 100 };
+          source = source.replace(/cost: (36|45|60),/g, (match, cost) =>
+            `cost: ${baselineCosts[cost]},`);
         }
         if (reversed && file === 'sim.js') {
           source = source.replace("import { BrigadeCuisine } from './cooks-config.js';", "import { RatsGout as BrigadeCuisine } from './rats-config.js';");
@@ -44,7 +35,7 @@ for (const horde of [false, true]) {
       });
     }
     const [{ sim: normalSim, ai: normalAI }, { sim: reversedSim, ai: reversedAI }] = variants;
-    console.log(horde ? 'Horde: cap 45, costs 36/45/60' : 'Current main settings');
+    console.log(horde ? 'Horde: cap 45, costs 36/45/60' : 'Pre-horde: cap 30, costs 60/75/100');
     // The emergency order bypasses assembly and includes already deployed
     // troops. Both the bank and the military-capacity triggers are exercised.
     for (const { sim, ai } of variants) {

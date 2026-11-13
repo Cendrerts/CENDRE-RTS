@@ -1,5 +1,6 @@
 // Speeds and ranges converted to world pixels at 20 px per unit.
 export const BrigadeCuisine = {
+  unitLimit: 30,
   nomFaction: 'Brigade de Cuisine',
   styleDeJeu: 'Unités d’élite, résistance élevée, dégâts lourds',
   unites: {

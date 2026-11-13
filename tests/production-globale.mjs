@@ -42,7 +42,7 @@ for (const team of [0, 1]) {
   assert.throws(() => command(state, team, { kind: 'recruit', type: 'archer' }));
   assert.equal(state.queues[team].length, 5);
   state.rubies[team] = 9999;
-  while (state.units.filter((unit) => unit.team === team).length + state.queues[team].length < 30) {
+  while (state.units.filter((unit) => unit.team === team).length + state.queues[team].length < Sim.populationCap(state, team)) {
     Sim.spawn(state, 'commis', team);
   }
   assert(productionModel(state, team).every((item) => item.disabled));
