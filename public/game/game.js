@@ -11,7 +11,7 @@ import { orderFeedback, drawOrderFeedback, vibrateOrder } from './order-feedback
 import { orderQueuePoints } from './order-queue.js';
 import { UnitVoices, selectionVoice } from './unit-voices.js';
 import { createRadialMenu } from './radial.js';
-import { buildingSelectionVisuals, buildingsOfType, selectedProducers, selectedRecruitCommand, selectedRallyCommands, armyUnits, armyToastText, groupToastText, filterSelection, cameraBounds, unitsOfType, createFieldDoubleTap, createPortraitTap, unitsInBox, boxSelection } from './selection.js';
+import { unitLabel, buildingSelectionVisuals, buildingsOfType, selectedProducers, selectedRecruitCommand, selectedRallyCommands, armyUnits, armyToastText, groupToastText, filterSelection, cameraBounds, unitsOfType, createFieldDoubleTap, createPortraitTap, unitsInBox, boxSelection } from './selection.js';
 import { createGestures } from './gestures.js';
 import { resolveTap, isEmptyTap } from './tap.js';
 import { installMobileDisplay } from './mobile-display.js';
@@ -21,7 +21,6 @@ import { NetworkMotion, pollDelay } from './network-motion.js';
 import { RealtimeClient, RealtimeMotion, normalizeRoomCode, networkQuality } from './realtime.js';
 let realtime = null;
 import { ratSVG, ratSprites } from './rats.js';
-import { RatsGout } from './rats-config.js';
 import { cookSVG, cookSprites } from './cooks.js';
 import { drawMinimap } from './minimap.js';
 import { TEAM_COLORS, drawHealthBar, selectionRing, unitFeet, drawCargoRuby, drawMine } from './unit-overlays.js';
@@ -128,14 +127,6 @@ let selectionBox = null;
 let holdIndicator = null;
 let viewWidth = canvas.clientWidth,
   viewHeight = canvas.clientHeight;
-let unitNames = {};
-const cookNames = {
-    commis: 'Commis',
-    knight: 'Gardes-Manger',
-    archer: 'Bouchers-Tireurs',
-    mage: 'Chefs de Brigade',
-  },
-  ghostNames = Object.fromEntries(Object.entries(RatsGout.unites).map(([k, v]) => [k, v.name]));
 function portrait(type) {
   let body =
     type === 'mage'
@@ -171,7 +162,6 @@ function setupPortraits() {
   portraitTap.reset();
   fieldDoubleTap.reset();
   panelContext = {};
-  unitNames = player ? ghostNames : cookNames;
 }
 function layout() {
   fieldDoubleTap.reset();
@@ -242,7 +232,7 @@ function selectType(t, scope = 'all') {
     selected.size
       ? selected.size +
           ' ' +
-          unitNames[t] +
+          unitLabel(t, selected.size, player) +
           ' · ' +
           (scope === 'all' ? 'Toute la carte' : 'Vue actuelle')
       : groups.total.length
@@ -670,14 +660,6 @@ function handleFieldTap(e, duration) {
     const tap = fieldDoubleTap.tap(unit.type, e.clientX, e.clientY, performance.now());
     if (tap === 'double') {
       selectType(unit.type, 'visible');
-      const singularNames = player
-        ? ghostNames
-        : { commis: 'Commis', knight: 'Garde-Manger', archer: 'Boucher-Tireur', mage: 'Chef de Brigade' };
-      const pluralNames = player
-        ? { commis: 'Rats-Essuyeurs', knight: 'Rats-Éboueurs', archer: 'Rats-Balance-Déchets', mage: 'Chamans de la Poubelle' }
-        : unitNames;
-      const name = selected.size === 1 ? singularNames[unit.type] : pluralNames[unit.type];
-      notify(selected.size + ' ' + name + ' · Vue actuelle');
       return;
     }
     panelContext = {};

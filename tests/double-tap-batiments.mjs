@@ -4,6 +4,11 @@ import { buildingSelectionVisuals, buildingsOfType, selectedRecruitCommand, sele
 import { panelModel } from '../public/game/panel.js';
 import { command } from '../lib/match.mjs';
 
+const buildingPlurals = [
+  ['Garde-manger', 'Boucheries', 'Écoles de brigade'],
+  ['Niches à Ordures', 'Ateliers de Ferraille', 'Autels de la Peste'],
+];
+
 for (const player of [0, 1]) {
   for (const config of Sim.BUILDINGS[player]) {
     const state = Sim.create();
@@ -44,6 +49,8 @@ for (const player of [0, 1]) {
     assert.equal(buildingSelectionVisuals(state, player, context).rallyFlags.length, 2);
     const model = panelModel(state, player, new Set(), { producerIds: ids });
     assert.equal(model.left.count, 3);
+    assert.equal(model.left.name, buildingPlurals[player][Sim.BUILDINGS[player].indexOf(config)]);
+    assert.equal(model.grid[0][0].name, Sim.stats(config.unit, player).name);
     const singular = panelModel(state, player, new Set(), { producerIds: [ids[0]] });
     assert.equal(singular.left.count, 1);
     assert.equal(singular.left.name, config.name);

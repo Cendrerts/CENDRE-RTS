@@ -1,4 +1,4 @@
-import { selectedProducers } from './selection.js';
+import { unitLabel, selectedProducers } from './selection.js';
 import { CendreSim as Sim } from './sim.js';
 
 export function panelCapacity(width = 844) {
@@ -41,15 +41,10 @@ export function panelModel(state, player, selection, context = {}) {
   }));
   counts.sort((a, b) => b.count - a.count);
   const main = counts[0]?.type;
-  const pluralNames = {
-    'Garde-manger': 'Garde-manger',
-    'Boucherie': 'Boucheries',
-    'École de brigade': 'Écoles de brigade',
-    'Niche à Ordures': 'Niches à Ordures',
-    'Atelier de Ferraille': 'Ateliers de Ferraille',
-    'Autel de la Peste': 'Autels de la Peste',
-  };
-  const producerName = producers.length > 1 ? pluralNames[producer?.name] : producer?.name;
+  const producerType = Sim.BUILDINGS[player].find((building) => building.unit === producer?.unit)?.id;
+  const producerName = producerType
+    ? unitLabel(producerType, producers.length, player)
+    : producer?.name;
   const queuesFull = producers.length
     ? producers.every((producer) => state.queues[player]
       .filter((job) => job.producerId === producer.id).length >= 8)
@@ -57,7 +52,7 @@ export function panelModel(state, player, selection, context = {}) {
   const left = {
     name:
       mode === 'units'
-        ? counts.length > 1 ? 'unités' : Sim.stats(main, player).name
+        ? counts.length > 1 ? unitLabel('unit', units.length) : unitLabel(main, units.length, player)
         : producerName ||
           Sim.baseSites(state, player).find((base) => base.id === context.baseId)?.name ||
           'Votre armée',
@@ -85,7 +80,7 @@ export function panelModel(state, player, selection, context = {}) {
     items = counts.map((item) => ({
       ...item,
       kind: 'filter',
-      name: Sim.stats(item.type, player).name,
+      name: unitLabel(item.type, item.count, player),
     }));
   if (recruitmentProducer)
     items = [

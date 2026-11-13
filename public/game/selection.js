@@ -1,4 +1,34 @@
 import { CendreSim as Sim } from './sim.js';
+import { BrigadeCuisine } from './cooks-config.js';
+import { RatsGout } from './rats-config.js';
+
+const unitPlurals = [
+  {
+    commis: 'Commis',
+    knight: 'Gardes-Manger',
+    archer: 'Bouchers-Tireurs',
+    mage: 'Chefs de Brigade',
+    garde_manger: 'Garde-manger',
+    boucherie: 'Boucheries',
+    ecole_brigade: 'Écoles de brigade',
+  },
+  {
+    commis: 'Rats-Essuyeurs',
+    knight: 'Rats-Éboueurs',
+    archer: 'Rats-Balance-Déchets',
+    mage: 'Chamans de la Poubelle',
+    niche_ordures: 'Niches à Ordures',
+    atelier_ferraille: 'Ateliers de Ferraille',
+    autel_peste: 'Autels de la Peste',
+  },
+];
+
+export function unitLabel(type, count, faction = 0) {
+  if (type === 'unit') return count === 1 ? 'unité' : 'unités';
+  const units = faction === 1 ? RatsGout.unites : BrigadeCuisine.unites;
+  const singular = units[type]?.name || Sim.BUILDINGS[faction].find((building) => building.id === type)?.name;
+  return count === 1 ? singular : unitPlurals[faction][type];
+}
 
 // This 2D engine uses world (x,y), equivalent to ground-plane (x,z).
 export function cameraBounds(ox, oy, scale, width, height) {
@@ -72,11 +102,11 @@ export function armyUnits(units, team) {
 }
 
 export function armyToastText(count) {
-  return count + (count === 1 ? " unité · Toute l'armée" : " unités · Toute l'armée");
+  return `${count} ${unitLabel('unit', count)} · Toute l'armée`;
 }
 
 export function groupToastText(index, count) {
-  return 'Groupe ' + (index + 1) + ' assigné · ' + count + (count === 1 ? ' unité' : ' unités');
+  return `Groupe ${index + 1} assigné · ${count} ${unitLabel('unit', count)}`;
 }
 
 export function buildingsOfType(state, player, type, bounds) {
