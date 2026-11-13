@@ -18,8 +18,10 @@ for (const [team, [buttonId, name]] of factions.entries()) {
   assert(svg.includes('stroke="#111719" stroke-width="1.5" vector-effect="non-scaling-stroke"'));
   assert(!/gradient/i.test(svg));
   if (name === 'ratsgout') {
-    assert(svg.includes('fill-rule="evenodd"'), 'Œil évidé du rat');
-    assert(svg.includes('M14.5 10.5a1.5 1.5'), 'Œil rond de diamètre 3');
+    assert(svg.includes('M2.5 15.5C2.5 10.5 6.5 8 11 8 14.5 8 18.5 10.5 22 13 18.5 15 14.5 16.5 9.5 16.5 5.5 16.5 2.5 17 2.5 15.5Z'), 'Tête en goutte du rat');
+    assert(svg.includes('<circle cx="7.5" cy="6.5" r="3.6"'), 'Oreille ronde du rat');
+    assert(svg.includes('<circle cx="14" cy="11.3" r="1.2" fill="#111719" stroke="none"/>'), 'Œil plein du rat');
+    assert(!svg.includes('fill-rule="evenodd"'), 'Aucun œil évidé');
   }
 }
 for (const filename of readdirSync(gameDirectory)) {
