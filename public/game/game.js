@@ -1,3 +1,4 @@
+import { iconSvg } from './icons.js';
 import { initProduction, recruitToastText } from './production.js';
 import { panelModel, panelVisibility } from './panel.js';
 import { readSettings, writeSettings } from './settings.js';
@@ -7,9 +8,10 @@ import { minimapToWorld, clampCamera, attackDirection, groupAttackAlerts } from 
 'use strict';
 import { CuistotsAmbience } from './cuistots-ambience.js';
 import { orderFeedback, drawOrderFeedback, vibrateOrder } from './order-feedback.js';
+import { orderQueuePoints } from './order-queue.js';
 import { UnitVoices, selectionVoice } from './unit-voices.js';
 import { createRadialMenu } from './radial.js';
-import { unitLabel, armyUnits, armyToastText, groupToastText, filterSelection, cameraBounds, unitsOfType, createFieldDoubleTap, createPortraitTap, unitsInBox, boxSelection } from './selection.js';
+import { unitLabel, buildingSelectionVisuals, buildingsOfType, selectedProducers, selectedRecruitCommand, selectedRallyCommands, armyUnits, armyToastText, groupToastText, filterSelection, cameraBounds, unitsOfType, createFieldDoubleTap, createPortraitTap, unitsInBox, boxSelection } from './selection.js';
 import { createGestures } from './gestures.js';
 import { resolveTap, isEmptyTap } from './tap.js';
 import { installMobileDisplay } from './mobile-display.js';
@@ -95,7 +97,7 @@ function unlockAmbience() {
 }
 const audioButton = document.createElement('button');
 audioButton.id = 'audioUnlock';
-audioButton.textContent = '🔇';
+audioButton.innerHTML = iconSvg('muted');
 audioButton.setAttribute('aria-label', 'Activer le son');
 audioButton.style.minWidth = '44px';
 audioButton.style.minHeight = '44px';
@@ -253,7 +255,7 @@ function updateUI() {
   let army = state.units.filter((u) => u.team === player);
   selected = new Set([...selected].filter((id) => army.some((u) => u.id === id)));
   $('#rubies').textContent = Math.floor(state.rubies[player]);
-  $('#population').textContent = army.length + ' / 30';
+  $('#population').textContent = army.length + ' / ' + Sim.unitLimit(player);
   $('#clock').textContent =
     String(Math.floor(state.time / 60)).padStart(2, '0') +
     ':' +
@@ -311,7 +313,7 @@ $('#start').onclick = async () => {
   layout();
   setupPortraits();
   $('#veil').style.display = 'none';
-  $('#pause').textContent = 'Ⅱ';
+  $('#pause').innerHTML = iconSvg('pause');
   updateUI();
   notify('Explorez avec vos unités. Glisser : caméra · Maintenir + glisser : sélection · 2 doigts : zoom');
 };
@@ -610,7 +612,8 @@ function handleFieldTap(e, duration) {
       command.unitId = target.target.id;
     }
     rallyArmed = null;
-    panelCommand(command);
+    const ids = panelContext.producerIds || [openedBuilding.id];
+    for (const rallyCommand of selectedRallyCommands(state, player, ids, command)) panelCommand(rallyCommand);
     return;
   }
   if (duration >= 550 && isEmptyTap(state, player, p, scale)) {
@@ -626,7 +629,7 @@ function handleFieldTap(e, duration) {
     !['select', 'radial', 'production', 'enemyBase'].includes(resolved.kind)
       ? { kind: 'move' }
       : resolved;
-  if (action.kind !== 'select') fieldDoubleTap.reset();
+  if (!['select', 'production'].includes(action.kind)) fieldDoubleTap.reset();
   if (action.kind === 'radial') {
     if (action.context.mine !== undefined) selectedMine = action.context.mine;
     selected.clear();
@@ -642,7 +645,12 @@ function handleFieldTap(e, duration) {
   }
   if (action.kind === 'production') {
     selected.clear();
-    panelContext = { producerId: action.id };
+    const slot = state.slots[player].find((candidate) => candidate.id === action.id);
+    const tap = fieldDoubleTap.tap('building:' + slot.batiment.type, e.clientX, e.clientY, performance.now());
+    const buildings = tap === 'double'
+      ? buildingsOfType(state, player, slot.batiment.type, cameraBounds(ox, oy, scale, viewWidth, viewHeight))
+      : [slot];
+    panelContext = { producerId: action.id, producerIds: buildings.map((building) => building.id) };
     panelVisibilityState = panelVisibility(panelVisibilityState, 'building');
     updateUI();
     return;
@@ -690,11 +698,11 @@ function handleFieldTap(e, duration) {
         ids: [...selected],
         x: p.x,
         y: p.y,
-        queue: queueArmed && !patrolArmed && !target,
+        queue: queueArmed && !patrolArmed,
         target: target ? (target.base ? { base: true } : { id: target.id }) : null,
       });
     } else if (patrolArmed) Sim.patrol(state, [...selected], p.x, p.y);
-    else Sim.order(state, [...selected], p.x, p.y, target, !target && !attackMoveArmed, queueArmed && !target);
+    else Sim.order(state, [...selected], p.x, p.y, target, !target && !attackMoveArmed, queueArmed);
     patrolArmed = false;
     attackMoveArmed = false;
     $('#attackAction').setAttribute('aria-pressed', 'false');
@@ -787,7 +795,7 @@ function updateAttackAlerts() {
     if (!button) {
       button = document.createElement('button');
       button.className = 'attack-alert';
-      button.textContent = '➤';
+      button.innerHTML = iconSvg('alert');
       button.setAttribute('aria-label', 'Attaque hors écran : centrer la caméra');
       document.body.append(button);
       alertButtons.set(alert.zone, button);
@@ -857,7 +865,7 @@ function finish() {
   $('#matchStats')?.remove();
   $('#modalTitle').after(table);
   $('#veil').classList.add('match-ended');
-  $('#start').innerHTML = 'Nouvelle escarmouche →';
+  $('#start').innerHTML = 'Nouvelle escarmouche ' + iconSvg('right');
   $('#veil').style.display = 'flex';
 }
 function poly(points, fill, stroke) {
@@ -1419,7 +1427,9 @@ function drawCook(u) {
 
 function openedRallyBuilding() {
   if (panelVisibilityState.collapsed) return null;
-  const id = panelContext.producerId || (!panelContext.slotId && panelContext.baseId);
+  const id = (panelContext.producerIds
+    ? selectedProducers(state, player, panelContext.producerIds)[0]?.id
+    : panelContext.producerId) || (!panelContext.slotId && panelContext.baseId);
   const building = id && Sim.rallyBuilding(state, player, id);
   return building ? { id, building } : null;
 }
@@ -1430,18 +1440,21 @@ function drawOrderQueues() {
   ctx.setLineDash([6 / scale, 5 / scale]);
   for (const unit of state.units) {
     if (!selected.has(unit.id) || unit.team !== player || !unit.orderQueue?.length) continue;
+    ctx.strokeStyle = TEAM_COLORS[player];
     ctx.beginPath();
     ctx.moveTo(unit.x, unit.y);
     if (!unit.queueActive && unit.path.length) {
       const destination = unit.path.at(-1);
       ctx.lineTo(destination.x, destination.y);
     }
-    for (const point of unit.orderQueue) ctx.lineTo(point.x, point.y);
+    const points = orderQueuePoints(state, player, unit.orderQueue);
+    for (const point of points) ctx.lineTo(point.x, point.y);
     ctx.stroke();
     ctx.setLineDash([]);
-    for (const point of unit.orderQueue) {
+    for (const point of points) {
+      ctx.strokeStyle = point.target ? orderFeedback({ kind: 'attack' }).color : TEAM_COLORS[player];
       ctx.beginPath();
-      ctx.arc(point.x, point.y, 4 / scale, 0, Math.PI * 2);
+      ctx.arc(point.x, point.y, (point.target ? 6 : 4) / scale, 0, Math.PI * 2);
       ctx.stroke();
     }
     ctx.setLineDash([6 / scale, 5 / scale]);
@@ -1450,33 +1463,41 @@ function drawOrderQueues() {
 }
 
 function drawRally() {
-  const opened = openedRallyBuilding();
-  const point = Sim.rallyPoint(state, opened?.building.rally);
-  if (!opened || !point) return;
+  if (panelVisibilityState.collapsed) return;
+  const { buildings, rallyLines, rallyFlags } = buildingSelectionVisuals(state, player, panelContext);
   ctx.save();
   ctx.strokeStyle = TEAM_COLORS[player];
   ctx.fillStyle = ctx.strokeStyle;
-  ctx.lineWidth = 4 / scale;
-  ctx.strokeStyle = '#101819';
-  ctx.setLineDash([6 / scale, 5 / scale]);
-  ctx.beginPath();
-  ctx.moveTo(opened.building.x, opened.building.y);
-  ctx.lineTo(point.x, point.y);
-  ctx.stroke();
-  ctx.strokeStyle = TEAM_COLORS[player];
   ctx.lineWidth = 2 / scale;
-  ctx.stroke();
+  for (const building of buildings) {
+    ctx.beginPath();
+    ctx.ellipse(building.x, building.y + 5, 29, 15, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  for (const { building, point } of rallyLines) {
+    ctx.lineWidth = 4 / scale;
+    ctx.strokeStyle = '#101819';
+    ctx.setLineDash([6 / scale, 5 / scale]);
+    ctx.beginPath();
+    ctx.moveTo(building.x, building.y);
+    ctx.lineTo(point.x, point.y);
+    ctx.stroke();
+    ctx.strokeStyle = TEAM_COLORS[player];
+    ctx.lineWidth = 2 / scale;
+    ctx.stroke();
+  }
   ctx.setLineDash([]);
-  ctx.lineWidth = 2 / scale;
-  ctx.beginPath();
-  ctx.moveTo(point.x, point.y);
-  ctx.lineTo(point.x, point.y - 23 / scale);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(point.x, point.y - 23 / scale);
-  ctx.lineTo(point.x + 14 / scale, point.y - 18 / scale);
-  ctx.lineTo(point.x, point.y - 13 / scale);
-  ctx.fill();
+  for (const point of rallyFlags) {
+    ctx.beginPath();
+    ctx.moveTo(point.x, point.y);
+    ctx.lineTo(point.x, point.y - 23 / scale);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(point.x, point.y - 23 / scale);
+    ctx.lineTo(point.x + 14 / scale, point.y - 18 / scale);
+    ctx.lineTo(point.x, point.y - 13 / scale);
+    ctx.fill();
+  }
   ctx.restore();
 }
 
@@ -1694,7 +1715,7 @@ touchUI = initTouchUI({
 
 const selectionToggle = document.createElement('button');
 selectionToggle.id = 'selectionToggle';
-selectionToggle.textContent = '⬚ Sélection';
+selectionToggle.innerHTML = iconSvg('selection') + ' Sélection';
 selectionToggle.setAttribute('aria-pressed', 'false');
 selectionToggle.onclick = () => {
   const active = selectionToggle.getAttribute('aria-pressed') !== 'true';
@@ -1958,12 +1979,12 @@ idleButton.addEventListener('contextmenu', (event) => event.preventDefault());
 const panelChevron = document.createElement('button');
 panelChevron.id = 'panelChevron';
 panelChevron.setAttribute('aria-label', 'Replier le panneau');
-panelChevron.textContent = '⌄';
+panelChevron.innerHTML = iconSvg('down');
 panelRoot.append(panelChevron);
 const panelTab = document.createElement('button');
 panelTab.id = 'panelTab';
 panelTab.setAttribute('aria-label', 'Ouvrir le panneau');
-panelTab.textContent = '⌃';
+panelTab.innerHTML = iconSvg('up');
 panelRoot.append(panelTab);
 function changePanelVisibility(event) {
   panelVisibilityState = panelVisibility(panelVisibilityState, event);
@@ -2005,12 +2026,13 @@ $('#baseAction').onclick = () => {
   layout();
   updateUI();
 };
-function requestRecruit(command, count = 1) {
+function requestRecruit(command, count = 1, producerIds = null) {
   if (!running || paused) return;
   const preview = net ? structuredClone(state) : state;
   let launched = 0;
   let reason = null;
   for (let index = 0; index < count; index++) {
+    if (producerIds?.length) command = selectedRecruitCommand(preview, player, command.type, producerIds);
     reason = Sim.recruitBlockReason(preview, player, command.type, command.producerId);
     if (reason) break;
     if (net && !sendCommand(command)) break;
@@ -2065,7 +2087,7 @@ function renderContextPanel() {
   });
   const idleCount = Sim.idleWorkers(state, player).length;
   idleButton.hidden = idleCount === 0;
-  idleButton.textContent = `⚒ Ouvrier inactif · ${idleCount}`;
+  idleButton.innerHTML = iconSvg('build') + ` Ouvrier inactif · ${idleCount}`;
   idleButton.setAttribute('aria-label', `Ouvrier inactif : ${idleCount}. Appui long : tous`);
   panelRoot.dataset.collapsed = String(model.collapsed);
   panelRoot.hidden = !running;
@@ -2148,7 +2170,7 @@ function renderContextPanel() {
     if (item.locked) {
       const lock = document.createElement('i');
       lock.className = 'panel-lock';
-      lock.textContent = '🔒';
+      lock.innerHTML = iconSvg('lock');
       button.append(lock);
     }
     button.title = item.locked
@@ -2188,6 +2210,31 @@ function renderContextPanel() {
       };
       button.onlostpointercapture = () => clearTimeout(timer);
     }
+    if (item.kind === 'recruit') {
+      let origin = null;
+      button.onpointerdown = (event) => {
+        removed = false;
+        origin = { x: event.clientX, y: event.clientY };
+        button.setPointerCapture(event.pointerId);
+        timer = setTimeout(() => {
+          removed = true;
+          requestRecruit({ kind: 'recruit', type: item.type, producerId: model.producerId }, 5, model.producerIds);
+        }, 450);
+      };
+      button.onpointermove = (event) => {
+        if (origin && Math.hypot(event.clientX - origin.x, event.clientY - origin.y) > 12) {
+          removed = true;
+          clearTimeout(timer);
+        }
+      };
+      button.onpointerup = () => clearTimeout(timer);
+      button.onpointercancel = () => {
+        removed = true;
+        clearTimeout(timer);
+      };
+      button.onlostpointercapture = () => clearTimeout(timer);
+      button.oncontextmenu = (event) => event.preventDefault();
+    }
     button.onclick = () => {
       if (removed) return;
       if (item.kind === 'filter') {
@@ -2199,7 +2246,7 @@ function renderContextPanel() {
         panelVisibilityState = panelVisibility(panelVisibilityState, 'building');
         updateUI();
       } else if (item.kind === 'recruit') {
-        panelCommand({ kind: 'recruit', type: item.type, producerId: model.producerId });
+        requestRecruit({ kind: 'recruit', type: item.type, producerId: model.producerId }, 1, model.producerIds);
       } else if (item.kind === 'depot') {
         panelCommand({ kind: 'build', index: item.index });
       } else if (panelContext.slotId) {
@@ -2230,11 +2277,11 @@ function renderContextPanel() {
   actions.replaceChildren();
   if (model.mode === 'units') {
     const ability = document.createElement('button');
-    ability.textContent = '✦ Compétence spéciale';
+    ability.innerHTML = iconSvg('special') + ' Compétence spéciale';
     ability.disabled = true;
     ability.title = 'Aucune compétence disponible';
     const patrol = document.createElement('button');
-    patrol.textContent = '⇄ Patrouiller';
+    patrol.innerHTML = iconSvg('patrol') + ' Patrouiller';
     patrol.setAttribute('aria-pressed', String(patrolArmed));
     patrol.disabled = paused;
     patrol.onclick = () => {
@@ -2244,10 +2291,10 @@ function renderContextPanel() {
       notify(patrolArmed ? 'Patrouiller · Touchez le sol' : 'Patrouille annulée');
       updateUI();
     };
-    $('#hold').innerHTML = '⛨ <span>Tenir position</span>';
+    $('#hold').innerHTML = iconSvg('hold') + ' <span>Tenir position</span>';
     const queue = document.createElement('button');
     queue.id = 'queueOrders';
-    queue.textContent = '⇢ Enchaîner';
+    queue.innerHTML = iconSvg('queue') + ' Enchaîner';
     queue.style.minHeight = '44px';
     queue.style.minWidth = '44px';
     queue.setAttribute('aria-pressed', String(queueArmed));
@@ -2262,7 +2309,7 @@ function renderContextPanel() {
     if (opened) {
       const rally = document.createElement('button');
       rally.id = 'rallyAction';
-      rally.textContent = '⚑ Ralliement';
+      rally.innerHTML = iconSvg('rally') + ' Ralliement';
       rally.style.minHeight = '44px';
       rally.style.minWidth = '44px';
       rally.setAttribute('aria-pressed', String(rallyArmed === opened.id));
@@ -2283,7 +2330,7 @@ function renderContextPanel() {
     if (model.producerId && model.queue.length) {
       const queueLabel = document.createElement('small');
       queueLabel.className = 'queue-label';
-      queueLabel.textContent = `File ${model.queue.length}/8`;
+      queueLabel.textContent = `File ${model.queue.length}/${8 * Math.max(1, model.producerIds.length)}`;
       actions.append(queueLabel);
     }
     for (let index = 0; index < model.queue.length; index++) {
@@ -2306,7 +2353,7 @@ function renderContextPanel() {
         button.onclick = () =>
           panelCommand({
             kind: 'cancelProduction',
-            producerId: model.producerId,
+            producerId: job.producerId,
             jobId: job.id,
           });
       }

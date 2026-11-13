@@ -23,7 +23,7 @@ for (const team of [0, 1]) {
   check(state, 'archer', 'producer');
   check(state, 'commis', 'producer', 'missing_producer');
   const cap = Sim.populationCap(state, team);
-  assert.equal(cap, 30);
+  assert.equal(cap, team === 1 ? 45 : 30);
   for (const population of [cap - 1, cap, cap + 1]) {
     state.units = Array.from({ length: population }, () => ({ team }));
     assert.equal(

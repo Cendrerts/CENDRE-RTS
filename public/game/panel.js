@@ -1,4 +1,4 @@
-import { unitLabel } from './selection.js';
+import { unitLabel, selectedProducers } from './selection.js';
 import { CendreSim as Sim } from './sim.js';
 
 export function panelCapacity(width = 844) {
@@ -16,9 +16,8 @@ export function panelModel(state, player, selection, context = {}) {
   const units = state.units.filter(
     (unit) => unit.team === player && unit.hp > 0 && selection.has(unit.id),
   );
-  const producer = Object.keys(Sim.TYPES)
-    .flatMap((type) => Sim.producers(state, player, type))
-    .find((item) => item.id === context.producerId);
+  const producers = selectedProducers(state, player, context.producerIds || [context.producerId]);
+  const producer = producers[0];
   const mode =
     context.baseId || context.slotId || context.bases
       ? 'base'
@@ -35,22 +34,30 @@ export function panelModel(state, player, selection, context = {}) {
     : null);
   const queue = (state.queues?.[player] || [])
     .map((job, index) => ({ ...job, index }))
-    .filter((job) => job.producerId === (producer?.id || context.baseId));
+    .filter((job) => producers.some((producer) => producer.id === job.producerId) || job.producerId === context.baseId);
   const counts = [...new Set(units.map((unit) => unit.type))].map((type) => ({
     type,
     count: units.filter((unit) => unit.type === type).length,
   }));
   counts.sort((a, b) => b.count - a.count);
   const main = counts[0]?.type;
+  const producerType = Sim.BUILDINGS[player].find((building) => building.unit === producer?.unit)?.id;
+  const producerName = producerType
+    ? unitLabel(producerType, producers.length, player)
+    : producer?.name;
+  const queuesFull = producers.length
+    ? producers.every((producer) => state.queues[player]
+      .filter((job) => job.producerId === producer.id).length >= 8)
+    : queue.length >= 8;
   const left = {
     name:
       mode === 'units'
         ? counts.length > 1 ? unitLabel('unit', units.length) : unitLabel(main, units.length, player)
-        : producer?.name ||
+        : producerName ||
           Sim.baseSites(state, player).find((base) => base.id === context.baseId)?.name ||
           'Votre armée',
     type: main || producer?.unit || 'commis',
-    count: units.length,
+    count: producer ? producers.length : units.length,
     max:
       mode === 'units' ? units.reduce((sum, unit) => sum + unit.max, 0) : state.bases[player].max,
     hp: mode === 'units' ? units.reduce((sum, unit) => sum + unit.hp, 0) : state.bases[player].hp,
@@ -65,7 +72,7 @@ export function panelModel(state, player, selection, context = {}) {
           : units.some((unit) => unit.hold)
             ? 'Tenir'
             : 'Prêt'
-        : `Production ${queue.length}/8`,
+        : `Production ${queue.length}/${8 * Math.max(1, producers.length)}`,
   };
   if (context.bases) left.status = 'Unité proche · mine libre';
   let items = [];
@@ -82,7 +89,7 @@ export function panelModel(state, player, selection, context = {}) {
         type: recruitmentProducer.unit,
         ...Sim.stats(recruitmentProducer.unit, player),
         locked:
-          queue.length >= 8 ||
+          queuesFull ||
           state.units.filter((unit) => unit.team === player).length +
             (state.queues?.[player]?.length || 0) >=
             30,
@@ -165,6 +172,7 @@ export function panelModel(state, player, selection, context = {}) {
     activeTab,
     slotId: context.slotId,
     producerId: recruitmentProducer?.id,
+    producerIds: producers.map((producer) => producer.id),
     actions: mode === 'units' ? ['hold', 'patrol', 'ability', 'disengage'] : [],
     queue,
   };

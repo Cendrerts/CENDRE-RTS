@@ -14,6 +14,9 @@ const W = 1680,
   COLS = 84,
   ROWS = 47;
 const TYPES = BrigadeCuisine.unites;
+function unitLimit(team) {
+  return (team === 1 ? RatsGout : BrigadeCuisine).unitLimit;
+}
 function stats(type, team) {
   return team === 1 ? RatsGout.unites[type] : TYPES[type];
 }
@@ -420,7 +423,7 @@ function construct(s, team, type, baseId, slotId = null) {
   return placeBuilding(s, team, type, baseId, slotId);
 }
 export function populationCap(state, team) {
-  return 30;
+  return unitLimit(team);
 }
 export function canRecruit(s, team, type, producerId = null) {
   s.queues ??= [[], []];
@@ -448,6 +451,16 @@ export function recruitBlockReason(state, team, type, producerId = null) {
   if (Object.hasOwn(TYPES, type) && snapshot.rubies[team] < stats(type, team).cost) return 'rubies';
   return 'producer';
 }
+export function leastLoadedProducer(state, team, candidates) {
+  const queue = state.queues[team];
+  const available = candidates.filter((producer) =>
+    queue.filter((job) => job.producerId === producer.id).length < 8);
+  const workload = (producer) => queue.filter((job) => job.producerId === producer.id)
+    .reduce((total, job) => total + job.remaining, 0);
+  available.sort((a, b) => workload(a) - workload(b));
+  return available[0];
+}
+
 function recruit(s, type, team, producerId = null) {
   if (!canRecruit(s, team, type, producerId)) return false;
   const cfg = stats(type, team);
@@ -455,9 +468,7 @@ function recruit(s, type, team, producerId = null) {
   const options = producers(s, team, type).filter((producer) =>
     (!producerId || producer.id === producerId) &&
     q.filter((job) => job.producerId === producer.id).length < 8);
-  const workload = (p) =>
-    q.filter((j) => j.producerId === p.id).reduce((n, j) => n + j.remaining, 0);
-  options.sort((a, b) => workload(a) - workload(b));
+  const producer = leastLoadedProducer(s, team, options);
   s.rubies[team] -= cfg.cost;
   s.nextProductionJobId = (s.nextProductionJobId || 0) + 1;
   q.push({
@@ -465,7 +476,7 @@ function recruit(s, type, team, producerId = null) {
     type,
     remaining: cfg.production,
     total: cfg.production,
-    producerId: options[0].id,
+    producerId: producer.id,
   });
   return true;
 }
@@ -519,13 +530,22 @@ function productionTick(s, dt) {
   }
 }
 
-function startWaypoint(unit, point) {
+function startWaypoint(s, unit, point) {
   unit.path = route(unit.x, unit.y, point.x, point.y);
   if (!unit.path.length) unit.path = [{ x: point.x, y: point.y }];
   unit.attackDestination = point.attackMove ? point : null;
-  unit.retreat = !point.attackMove;
+  unit.retreat = !point.attackMove && !point.target;
   unit.chasing = false;
-  unit.target = null;
+  unit.target = point.target
+    ? point.target.base
+      ? s.bases[point.target.team]
+      : s.units.find((candidate) => candidate.id === point.target.id) || null
+    : null;
+  if (point.target && (!unit.target || unit.target.hp <= 0 || !canSee(s, unit.team, unit.target))) {
+    unit.target = null;
+    unit.path = [];
+    unit.retreat = true;
+  }
   unit.autoTargetId = null;
   unit.lastRetargetAt = null;
   unit.hold = false;
@@ -574,10 +594,16 @@ function order(s, ids, x, y, target = null, retreat = !target, queue = false) {
   destinations.sort(byOffset);
   units.forEach((u, index) => {
     const destination = destinations[index % destinations.length];
-    if (queue === true && !target) {
+    if (queue === true) {
       u.orderQueue ??= [];
       if (u.orderQueue.length >= 8) return;
       const point = { x: destination.x, y: destination.y, attackMove: !retreat };
+      if (target) {
+        point.x = target.x;
+        point.y = target.y;
+        point.target = target.base ? { base: true, team: target.team } : { id: target.id };
+        point.attackMove = false;
+      }
       u.orderQueue.push(point);
       if (u.orderQueue.length === 1 &&
           (u.harvest || u.manual || u.patrol || u.followId || (!u.path.length && !u.target && !u.chasing))) {
@@ -586,7 +612,7 @@ function order(s, ids, x, y, target = null, retreat = !target, queue = false) {
         u.manual = null;
         u.harvest = null;
         u.queueActive = true;
-        startWaypoint(u, point);
+        startWaypoint(s, u, point);
       }
       return;
     }
@@ -810,8 +836,22 @@ function tick(s, dt) {
     }
     let cfg = stats(u.type, u.team),
       target = u.target;
-    if (target && (target.hp <= 0 || !canSee(s, u.team, target))) target = u.target = null;
-    if (!target && !u.retreat) {
+    // Allow the initial approach; abandon a target that escapes both the waypoint and pursuit range.
+    const activeWaypoint = u.queueActive ? u.orderQueue?.[0] : null;
+    const targetedWaypoint = activeWaypoint?.target;
+    if (target && (target.hp <= 0 || !canSee(s, u.team, target) ||
+        (targetedWaypoint && u.chasing &&
+          Math.hypot(target.x - activeWaypoint.x, target.y - activeWaypoint.y) > cfg.range + 75 +
+            (target.base ? 45 : 0) &&
+          Math.hypot(target.x - u.x, target.y - u.y) > cfg.range + 75 + (target.base ? 45 : 0)))) {
+      target = u.target = null;
+      if (targetedWaypoint) {
+        u.path = [];
+        u.chasing = false;
+        u.hold = false;
+      }
+    }
+    if (!target && !u.retreat && !targetedWaypoint) {
       target = entities.get(u.autoTargetId);
       if (target && (target.hp <= 0 || !canSee(s, u.team, target) ||
           Math.hypot(target.x - u.x, target.y - u.y) > cfg.range + 75 + (target.base ? 45 : 0))) {
@@ -838,13 +878,14 @@ function tick(s, dt) {
       u.path = route(u.x, u.y, u.attackDestination.x, u.attackDestination.y);
       u.chasing = false;
     }
-    if (!target && !u.path.length && !u.chasing && u.orderQueue?.length) {
+    while (!target && !u.path.length && !u.chasing && u.orderQueue?.length) {
       if (u.queueActive) u.orderQueue.shift();
       u.queueActive = u.orderQueue.length > 0;
       if (u.queueActive) {
         u.followId = null;
         u.patrol = null;
-        startWaypoint(u, u.orderQueue[0]);
+        startWaypoint(s, u, u.orderQueue[0]);
+        target = u.target;
       } else {
         u.retreat = false;
         u.attackDestination = null;
@@ -1197,6 +1238,7 @@ function predictMotion(state, unit, command, dt) {
 
 export const CendreSim = {
   idleWorkers,
+  leastLoadedProducer,
   setRally,
   rallyBuilding,
   rallyPoint,
@@ -1229,6 +1271,7 @@ export const CendreSim = {
   recruit,
   canRecruit,
   populationCap,
+  unitLimit,
   recruitBlockReason,
   order,
   patrol,
