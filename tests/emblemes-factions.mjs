@@ -17,6 +17,10 @@ for (const [team, [buttonId, name]] of factions.entries()) {
   assert(svg.includes(`fill="${TEAM_COLORS[team]}"`));
   assert(svg.includes('stroke="#111719" stroke-width="1.5" vector-effect="non-scaling-stroke"'));
   assert(!/gradient/i.test(svg));
+  if (name === 'ratsgout') {
+    assert(svg.includes('fill-rule="evenodd"'), 'Œil évidé du rat');
+    assert(svg.includes('M14.5 10.5a1.5 1.5'), 'Œil rond de diamètre 3');
+  }
 }
 for (const filename of readdirSync(gameDirectory)) {
   if (!/\.(js|html|css)$/.test(filename)) continue;

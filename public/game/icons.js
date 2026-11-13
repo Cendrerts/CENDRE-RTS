@@ -19,7 +19,7 @@ const paths = {
   "special": "m12 2 3 7 7 3-7 3-3 7-3-7-7-3 7-3Z",
   "home": "m2 11 10-9 10 9M5 9v13h14V9M10 22v-8h4v8",
   "cuistots": "M3 19 16 12l5 5-9 5-3-3-5 3ZM6 11V8C1 8 2 2 7 3c2-3 6-3 8 0 5-1 6 5 1 5v3Z",
-  "ratsgout": "M5 17v-5C1 9 3 3 7 3c3 0 5 2 5 5 3 0 4 2 8 5l-4 4ZM10 18v-2h4v2l7 2v2H2v-2ZM17 12l5-3v2l-4 3ZM18 14h4v2h-6Z",
+  "ratsgout": "M3 16V11Q3 9 4 8A3.75 3.75 0 1 1 10.5 6.5Q13 6.5 15 9L19 11.8 23 9.5 22.5 11.5 20.5 13 23 13.5 20.5 14.2 23 15.5 22 17 19 14.5 14 16ZM14.5 10.5a1.5 1.5 0 1 0-3 0 1.5 1.5 0 1 0 3 0ZM10 19.5V18h4v1.5ZM22 21a10 1.5 0 1 0-20 0 10 1.5 0 1 0 20 0Z",
   "right": "M4 12h16m-6-6 6 6-6 6",
   "alert": "m5 3 16 9-16 9 4-9Z",
   "up": "m5 16 7-8 7 8",
@@ -32,7 +32,7 @@ export function iconSvg(name) {
   if (!Object.hasOwn(paths, name)) throw new Error(`Unknown icon: ${name}`);
   const faction = ['cuistots', 'ratsgout'].indexOf(name);
   if (faction !== -1) {
-    return `<svg data-icon="${name}" width="32" height="32" viewBox="0 0 24 24" fill="${TEAM_COLORS[faction]}" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" style="width:32px;height:32px;vertical-align:middle;pointer-events:none"><path stroke="#111719" stroke-width="1.5" vector-effect="non-scaling-stroke" d="${paths[name]}"/></svg>`;
+    return `<svg data-icon="${name}" width="32" height="32" viewBox="0 0 24 24" fill="${TEAM_COLORS[faction]}" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" style="width:32px;height:32px;vertical-align:middle;pointer-events:none"><path stroke="#111719" stroke-width="1.5" vector-effect="non-scaling-stroke" d="${paths[name]}"${name === 'ratsgout' ? ' fill-rule="evenodd"' : ''}/></svg>`;
   }
   return `<svg data-icon="${name}" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" style="width:1em;height:1em;vertical-align:-0.125em;pointer-events:none"><path d="${paths[name]}"/></svg>`;
 }
