@@ -1,3 +1,5 @@
+import { TEAM_COLORS } from './unit-overlays.js';
+
 // Shared button icons: no font or external asset required.
 const paths = {
   "minus": "M4 12h16",
@@ -16,8 +18,8 @@ const paths = {
   "lock": "M7 11V7a5 5 0 0 1 10 0v4M5 11h14v11H5ZM12 15v3",
   "special": "m12 2 3 7 7 3-7 3-3 7-3-7-7-3 7-3Z",
   "home": "m2 11 10-9 10 9M5 9v13h14V9M10 22v-8h4v8",
-  "rook": "M5 2v6h14V2h-4v3H9V2ZM7 8v10l-3 4h16l-3-4V8M7 18h10",
-  "biohazard": "M12 10V5m-2-3a4 4 0 1 0 4 0M10 13l-5 3m-3-2a4 4 0 1 0 3 5M14 13l5 3m0 3a4 4 0 1 0 3-5M12 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4",
+  "cuistots": "M3 19 16 12l5 5-9 5-3-3-5 3ZM6 11V8C1 8 2 2 7 3c2-3 6-3 8 0 5-1 6 5 1 5v3Z",
+  "ratsgout": "M2.5 15.5C2.5 10.5 6.5 8 11 8 14.5 8 18.5 10.5 22 13 18.5 15 14.5 16.5 9.5 16.5 5.5 16.5 2.5 17 2.5 15.5Z",
   "right": "M4 12h16m-6-6 6 6-6 6",
   "alert": "m5 3 16 9-16 9 4-9Z",
   "up": "m5 16 7-8 7 8",
@@ -28,5 +30,13 @@ const paths = {
 
 export function iconSvg(name) {
   if (!Object.hasOwn(paths, name)) throw new Error(`Unknown icon: ${name}`);
+  const faction = ['cuistots', 'ratsgout'].indexOf(name);
+  if (faction !== -1) {
+    const outline = 'stroke="#111719" stroke-width="1.5" vector-effect="non-scaling-stroke"';
+    const elements = name === 'ratsgout'
+      ? `<g ${outline}><circle cx="7.5" cy="6.5" r="3.6" vector-effect="non-scaling-stroke"/><path d="${paths[name]}" vector-effect="non-scaling-stroke"/><circle cx="14" cy="11.3" r="1.2" fill="#111719" stroke="none"/><circle cx="21.8" cy="13" r="1" fill="#111719" stroke="none"/><path d="M19 14.5 23 16M18.5 15.5l3 2.5" fill="none" vector-effect="non-scaling-stroke"/><path d="M10 19.5V18h4v1.5Z" vector-effect="non-scaling-stroke"/><ellipse cx="12" cy="21" rx="10" ry="1.5" vector-effect="non-scaling-stroke"/></g>`
+      : `<path ${outline} d="${paths[name]}"/>`;
+    return `<svg data-icon="${name}" width="32" height="32" viewBox="0 0 24 24" fill="${TEAM_COLORS[faction]}" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" style="width:32px;height:32px;vertical-align:middle;pointer-events:none">${elements}</svg>`;
+  }
   return `<svg data-icon="${name}" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" style="width:1em;height:1em;vertical-align:-0.125em;pointer-events:none"><path d="${paths[name]}"/></svg>`;
 }
