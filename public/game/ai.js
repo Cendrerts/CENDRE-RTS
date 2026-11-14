@@ -290,8 +290,12 @@ export function createAI(team, difficulty = 'normal', state = null) {
           const enemyInRange = [...enemies, ...state.monsters.filter((monster) => monster.hp > 0 && monster.targetId != null)]
             .some((enemy) => distance(unit, enemy) <= Sim.stats(unit.type, team).range + 75);
           if (!enemyInRange && unit.devour) return true;
-          if (!enemyInRange && !unit.retreat && !unit.path.length && !(unit.target?.hp > 0) && !deployed.has(unit.id) && !raiders.has(unit.id) && unit.id !== scout) {
-            const corpse = state.corpses.filter((item) => item.expiresAt > state.time && distance(unit, item) < 200 && Sim.visibleAt(state, team, item.x, item.y) &&
+          if (!enemyInRange && !unit.retreat && !unit.path.length &&
+            !(unit.target?.hp > 0) && !deployed.has(unit.id) &&
+            !raiders.has(unit.id) && unit.id !== scout) {
+            const corpse = state.corpses.filter((item) =>
+              item.expiresAt > state.time && distance(unit, item) < 200 &&
+              Sim.visibleAt(state, team, item.x, item.y) &&
               !army.some((ally) => ally.devour?.corpseId === item.id))
               .sort((a, b) => distance(unit, a) - distance(unit, b))[0];
             if (corpse && Sim.devour(state, team, [unit.id], corpse.id)) {
@@ -302,43 +306,9 @@ export function createAI(team, difficulty = 'normal', state = null) {
         return false;
       };
       if (difficulty !== 'facile') {
-        if (team === 0 && state.ingredients[team] >= 40 && state.ragout.readyAt === null && state.ragout.expiresAt <= state.time) {
+        if (team === 0 && state.ingredients[team] >= 40 &&
+          state.ragout.readyAt === null && state.ragout.expiresAt <= state.time) {
           if (Sim.cookDish(state, team).ok) actions++;
-        }
-        const baseThreatened = defending || threats.some((enemy) => distance(enemy, base) < 650);
-        if (baseThreatened || !army.length) huntingCamp = null;
-        if (huntingCamp && !state.monsters.some((monster) => monster.hp > 0 && monster.camp === huntingCamp.name)) {
-          huntingCamp = null;
-          nextHunt = state.time + 30;
-          for (const unit of army) {
-            if (tryDevour(unit)) actions++;
-          }
-          Sim.order(state, army.filter((unit) => !unit.devour).map((unit) => unit.id), rally.x, rally.y, null, false);
-          actions++;
-        }
-        const attacking = army.some((unit) => deployed.has(unit.id) || raiders.has(unit.id));
-        if (!huntingCamp && !baseThreatened && !attacking && army.length >= 6 && state.time >= nextHunt && state.time >= retreatUntil) {
-          huntingCamp = state.camps.filter((camp) => state.monsters.some((monster) => monster.hp > 0 && monster.camp === camp.name))
-            .sort((a, b) => distance(a, base) - distance(b, base))[0] || null;
-        }
-        if (huntingCamp) {
-          const prey = state.monsters.find((monster) => monster.hp > 0 && !monster.returning && monster.camp === huntingCamp.name);
-          for (const unit of army) {
-            if (tryDevour(unit)) {
-              actions++;
-              continue;
-            }
-            if (prey && Sim.canSee(state, team, prey)) {
-              if (unit.target !== prey) {
-                Sim.order(state, [unit.id], prey.x, prey.y, prey, false);
-                actions++;
-              }
-            } else if (!unit.path.length || unit.target) {
-              Sim.order(state, [unit.id], huntingCamp.x, huntingCamp.y, null, false);
-              actions++;
-            }
-          }
-          return actions;
         }
       }
       const fighting = enemies.filter((enemy) => enemy.type !== 'commis' && army.some((unit) => distance(unit, enemy) < 200));
@@ -420,6 +390,69 @@ export function createAI(team, difficulty = 'normal', state = null) {
         metrics.waves++;
         metrics.waveSizes.push(attackers.length);
         lastWave = state.time;
+      }
+      if (difficulty !== 'facile') {
+        const baseThreatened = defending || threats.some((enemy) => distance(enemy, base) < 650);
+        const hunters = army.filter((unit) =>
+          unit.id !== scout && !raiders.has(unit.id));
+        const enemyNearHunters = observedArmy.some((enemy) =>
+          hunters.some((unit) => distance(unit, enemy) < 300));
+        const waveHasPriority = forceWave || metrics.waves > 0 && lastWave === state.time;
+        if (baseThreatened || enemyNearHunters || waveHasPriority || !hunters.length) {
+          if (huntingCamp) {
+            huntingCamp = null;
+            nextHunt = state.time + 30;
+            const interrupted = hunters.filter((unit) => !deployed.has(unit.id));
+            for (const unit of interrupted) {
+              const enemy = observedArmy.filter((candidate) => distance(unit, candidate) < 300)
+                .sort((a, b) => distance(unit, a) - distance(unit, b))[0];
+              const goal = enemy || rally;
+              Sim.order(state, [unit.id], goal.x, goal.y, enemy || null, false);
+              actions++;
+            }
+          }
+        }
+        if (huntingCamp && !state.monsters.some((monster) =>
+          monster.hp > 0 && monster.camp === huntingCamp.name)) {
+          huntingCamp = null;
+          nextHunt = state.time + 30;
+          for (const unit of hunters) {
+            if (tryDevour(unit)) actions++;
+          }
+          const returning = hunters.filter((unit) => !unit.devour)
+            .map((unit) => unit.id);
+          Sim.order(state, returning, rally.x, rally.y, null, false);
+          actions++;
+        }
+        const attacking = army.some((unit) => deployed.has(unit.id) || raiders.has(unit.id));
+        if (!huntingCamp && !baseThreatened && !enemyNearHunters &&
+          !waveHasPriority && !attacking && hunters.length >= 6 &&
+          state.time >= nextHunt && state.time >= retreatUntil) {
+          huntingCamp = state.camps.filter((camp) =>
+            state.monsters.some((monster) =>
+              monster.hp > 0 && monster.camp === camp.name))
+            .sort((a, b) => distance(a, base) - distance(b, base))[0] || null;
+        }
+        if (huntingCamp) {
+          const prey = state.monsters.find((monster) =>
+            monster.hp > 0 && !monster.returning && monster.camp === huntingCamp.name);
+          for (const unit of hunters) {
+            if (tryDevour(unit)) {
+              actions++;
+              continue;
+            }
+            if (prey && Sim.canSee(state, team, prey)) {
+              if (unit.target !== prey) {
+                Sim.order(state, [unit.id], prey.x, prey.y, prey, false);
+                actions++;
+              }
+            } else if (!unit.path.length || unit.target) {
+              Sim.order(state, [unit.id], huntingCamp.x, huntingCamp.y, null, false);
+              actions++;
+            }
+          }
+          return actions;
+        }
       }
       const visibleBase = Sim.canSee(state, team, state.bases[1 - team]) ? state.bases[1 - team] : null;
       if (!brutal && settings.micro && state.time > 180 && raiders.size < 3 && army.length >= 10) {
