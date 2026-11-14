@@ -268,7 +268,8 @@ function updateUI() {
   selected = new Set([...selected].filter((id) => army.some((u) => u.id === id)));
   const ragoutSeconds = Math.max(0, Math.ceil((state.ragout?.expiresAt || 0) - state.time));
   $('#ingredients').textContent = Math.floor(state.ingredients?.[player] || 0) +
-    (player === 0 && ragoutSeconds > 0 ? ' · Ragoût ' + ragoutSeconds + ' s' : '');
+    (player === 0 && ragoutSeconds > 0 ? ' · Ragoût ' + ragoutSeconds + ' s' : '') +
+    (player === 1 && state.festin?.readyAt != null ? ' · Festin ' + Math.max(0, Math.ceil(state.festin.readyAt - state.time)) + ' s' : '');
   $('#rubies').textContent = Math.floor(state.rubies[player]);
   $('#population').textContent = army.length + ' / ' + Sim.unitLimit(player);
   $('#clock').textContent =
@@ -1128,6 +1129,9 @@ function draw() {
   for (let b of state.bases)
     if (Sim.canSee(state, player, b)) {
       bar(b.x, b.y - 80, b.hp, b.max, 85);
+      if (b.team === 1 && state.festin?.readyAt != null) {
+        bar(b.x, b.y - 94, 15 - (state.festin.readyAt - state.time), 15, 85);
+      }
       if (b.team === 0 && state.ragout?.readyAt != null) {
         bar(b.x, b.y - 94, 20 - (state.ragout.readyAt - state.time), 20, 85);
       }
@@ -2169,10 +2173,10 @@ function requestRecruit(command, count = 1, producerIds = null) {
 function panelCommand(command) {
   if (!running || paused) return;
   if (command.kind === 'cookDish') {
-    const reason = Sim.cookDishBlockReason(state, player);
+    const reason = Sim.cookDishBlockReason(state, player, command.dish);
     if (reason) notify(reason);
     else if (net) sendCommand(command);
-    else Sim.cookDish(state, player);
+    else Sim.cookDish(state, player, command.dish);
     updateUI();
     return;
   }
@@ -2224,7 +2228,7 @@ function renderContextPanel() {
   const currentHealthText = $('#contextIdentity .health-text');
   if (currentHealthText)
     currentHealthText.textContent = `${Math.ceil(model.left.hp)}/${Math.ceil(model.left.max)}`;
-  const signature = JSON.stringify([model, paused, patrolArmed, rallyArmed, queueArmed, Sim.cookDishBlockReason(state, player)], (key, value) =>
+  const signature = JSON.stringify([model, paused, patrolArmed, rallyArmed, queueArmed, Sim.cookDishBlockReason(state, player, player === 1 ? 'festin' : 'ragout')], (key, value) =>
     ['remaining', 'hp', 'status'].includes(key) ? undefined : value,
   );
   if (signature === panelSignature) return;
@@ -2427,18 +2431,19 @@ function renderContextPanel() {
     actions.append($('#hold'), patrol, queue, ability, $('#retreat'));
   } else {
     const opened = openedRallyBuilding();
-    if (player === 0 && opened?.id === 'main_0') {
-      const ragout = document.createElement('button');
-      ragout.id = 'ragoutAction';
-      ragout.innerHTML = iconSvg('ragout') + ' Ragoût · 40';
-      ragout.style.minHeight = '44px';
-      ragout.style.minWidth = '44px';
-      const reason = Sim.cookDishBlockReason(state, player);
-      ragout.setAttribute('aria-disabled', String(Boolean(reason)));
-      ragout.style.opacity = reason ? '0.5' : '1';
-      ragout.title = reason || '20 s de cuisson · +15 % de dégâts pendant 45 s';
-      ragout.onclick = () => panelCommand({ kind: 'cookDish' });
-      actions.append(ragout);
+    if (opened?.id === 'main_' + player) {
+      const dish = player === 1 ? 'festin' : 'ragout';
+      const dishButton = document.createElement('button');
+      dishButton.id = dish + 'Action';
+      dishButton.innerHTML = iconSvg(dish) + (player === 1 ? ' Festin · 40' : ' Ragoût · 40');
+      dishButton.style.minHeight = '44px';
+      dishButton.style.minWidth = '44px';
+      const reason = Sim.cookDishBlockReason(state, player, dish);
+      dishButton.setAttribute('aria-disabled', String(Boolean(reason)));
+      dishButton.style.opacity = reason ? '0.5' : '1';
+      dishButton.title = reason || (player === 1 ? '15 s de préparation · 4 Rats-Éboueurs' : '20 s de cuisson · +15 % de dégâts pendant 45 s');
+      dishButton.onclick = () => panelCommand({ kind: 'cookDish', dish });
+      actions.append(dishButton);
     }
     if (opened) {
       const rally = document.createElement('button');

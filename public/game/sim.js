@@ -236,6 +236,7 @@ function create() {
     rubies: [100, 100],
     ingredients: [0, 0],
     ragout: { readyAt: null, expiresAt: 0 },
+    festin: { readyAt: null },
     monsterId: 0,
     monsters: [],
     corpses: [],
@@ -480,6 +481,7 @@ function migrateState(s) {
   delete s.tower;
   s.ingredients ??= [0, 0];
   s.ragout ??= { readyAt: null, expiresAt: 0 };
+  s.festin ??= { readyAt: null };
   s.monsterId ??= 0;
   s.monsters ??= [];
   s.corpses ??= [];
@@ -504,7 +506,21 @@ const RAGOUT_REASONS = {
   ingredients: 'Ingrédients insuffisants : 40 nécessaires.',
   ended: 'La partie est terminée.',
 };
-function cookDishBlockReason(s, team) {
+function festinFreePlaces(s) {
+  return populationCap(s, 1) - s.units.filter((unit) => unit.team === 1 && unit.hp > 0).length -
+    (s.queues?.[1]?.length || 0);
+}
+function cookDishBlockReason(s, team, dish = 'ragout') {
+  if (dish === 'festin') {
+    if (team !== 1) return 'Seuls les Rats-Goût peuvent préparer le Festin.';
+    if (s.winner !== null) return RAGOUT_REASONS.ended;
+    if (!(s.bases[1]?.hp > 0)) return 'Grande Décharge indisponible.';
+    if (festinFreePlaces(s) < 4) return 'Population insuffisante : 4 places libres nécessaires.';
+    if (s.festin?.readyAt != null) return 'Festin déjà en préparation.';
+    if ((s.ingredients?.[team] || 0) < 40) return RAGOUT_REASONS.ingredients;
+    return null;
+  }
+  if (dish !== 'ragout') return 'Plat inconnu.';
   if (team !== 0) return RAGOUT_REASONS.faction;
   if (s.winner !== null) return RAGOUT_REASONS.ended;
   if (!(s.bases[team]?.hp > 0)) return RAGOUT_REASONS.tower;
@@ -512,13 +528,23 @@ function cookDishBlockReason(s, team) {
   if ((s.ingredients?.[team] || 0) < 40) return RAGOUT_REASONS.ingredients;
   return null;
 }
-function cookDish(s, team) {
-  const reason = cookDishBlockReason(s, team);
+function cookDish(s, team, dish = 'ragout') {
+  const reason = cookDishBlockReason(s, team, dish);
   if (reason) return { ok: false, reason };
   migrateState(s);
   s.ingredients[team] -= 40;
-  s.ragout.readyAt = s.time + 20;
+  if (dish === 'festin') s.festin.readyAt = s.time + 15;
+  else s.ragout.readyAt = s.time + 20;
   return { ok: true, reason: null };
+}
+function festinTick(s) {
+  if (s.festin.readyAt === null || s.time + 1e-9 < s.festin.readyAt) return;
+  s.festin.readyAt = null;
+  if (!(s.bases[1]?.hp > 0)) return;
+  const count = Math.max(0, Math.min(4, festinFreePlaces(s)));
+  for (let index = 0; index < count; index++) {
+    spawn(s, 'knight', 1, { ...s.bases[1], id: 'main_1' });
+  }
 }
 function ragoutActive(s, unit) {
   return unit.team === 0 && unit.type !== 'commis' && unit.hp > 0 &&
@@ -975,6 +1001,7 @@ function tick(s, dt) {
   productionTick(s, dt);
   s.time += dt;
   ragoutTick(s);
+  festinTick(s);
   s.corpses = s.corpses.filter((corpse) => corpse.expiresAt > s.time + 1e-9);
   s.devourEvents = s.devourEvents.filter((event) => s.time - event.time < 1.5);
   s.damageEvents = (s.damageEvents || []).filter((event) => s.time - event.time < 5).slice(-24);

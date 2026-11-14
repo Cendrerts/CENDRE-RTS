@@ -306,6 +306,7 @@ export function createAI(team, difficulty = 'normal', state = null) {
         return false;
       };
       if (difficulty !== 'facile') {
+        if (team === 1 && Sim.cookDish(state, team, 'festin').ok) actions++;
         if (team === 0 && state.ingredients[team] >= 40 &&
           state.ragout.readyAt === null && state.ragout.expiresAt <= state.time) {
           if (Sim.cookDish(state, team).ok) actions++;
