@@ -31,6 +31,9 @@ for (const team of [0, 1]) {
   for (const expected of ['centre', 'nord', 'sud']) {
     const state = Sim.create();
     state.units = [];
+    // Isoler les vagues de combat : aucun camp à chasser dans ce scénario.
+    state.camps = [];
+    state.monsters = [];
     const base = state.bases[team];
     for (let index = 0; index < 24; index++) {
       Sim.spawn(state, 'knight', team);
@@ -73,6 +76,9 @@ for (const team of [0, 1]) {
 for (const team of [0, 1]) {
   const state = Sim.create();
   state.units = [];
+  // Isoler les vagues de combat : aucun camp à chasser dans ce scénario.
+  state.camps = [];
+  state.monsters = [];
   Sim.spawn(state, 'knight', team);
   for (let index = 0; index < 8; index++) {
     Sim.spawn(state, 'knight', 1 - team);
@@ -95,6 +101,9 @@ for (const team of [0, 1]) {
 {
   const state = Sim.create();
   state.units = [];
+  // Isoler les vagues de combat : aucun camp à chasser dans ce scénario.
+  state.camps = [];
+  state.monsters = [];
   for (let index = 0; index < 14; index++) {
     Sim.spawn(state, 'knight', 0);
     const unit = state.units.at(-1);
@@ -136,6 +145,9 @@ for (const [difficulty, time, capped, expected] of [
 ]) {
   const state = Sim.create();
   state.units = [];
+  // Isoler les vagues de combat : aucun camp à chasser dans ce scénario.
+  state.camps = [];
+  state.monsters = [];
   for (let index = 0; index < 14; index++) {
     Sim.spawn(state, 'knight', 0);
     const unit = state.units.at(-1);
@@ -169,6 +181,9 @@ for (const [difficulty, time, capped, expected] of [
 // A raid on an undefended expansion evacuates workers and recalls the army.
 {
   const state = Sim.create();
+  // Ce scénario commence directement par une vague, sans chasse préalable.
+  state.camps = [];
+  state.monsters = [];
   const worker = state.units.find((unit) => unit.team === 0);
   for (let index = 0; index < 14; index++) {
     Sim.spawn(state, 'knight', 0);
@@ -207,6 +222,9 @@ for (const [difficulty, time, capped, expected] of [
 for (const [team, time] of [[0, 240], [1, 240], [0, 480], [1, 480]]) {
   const state = Sim.create();
   state.units = [];
+  // Isoler les vagues de combat : aucun camp à chasser dans ce scénario.
+  state.camps = [];
+  state.monsters = [];
   const enemyBase = state.bases[1 - team];
   for (let index = 0; index < 4; index++) {
     Sim.spawn(state, 'archer', team);
@@ -236,6 +254,9 @@ for (const [team, time] of [[0, 240], [1, 240], [0, 480], [1, 480]]) {
 {
   const state = Sim.create();
   state.units = [];
+  // Isoler les vagues de combat : aucun camp à chasser dans ce scénario.
+  state.camps = [];
+  state.monsters = [];
   for (let index = 0; index < 24; index++) {
     Sim.spawn(state, 'knight', 0);
     const unit = state.units.at(-1);

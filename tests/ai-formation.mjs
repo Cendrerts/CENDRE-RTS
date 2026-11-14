@@ -6,6 +6,9 @@ assert.equal(Sim.orderFormation, undefined);
 for (const team of [0, 1]) {
   const state = Sim.create();
   state.units = [];
+  // Isoler les vagues de combat : aucun camp à chasser dans ce scénario.
+  state.camps = [];
+  state.monsters = [];
   for (let index = 0; index < 24; index++) {
     Sim.spawn(state, ['knight', 'archer', 'mage'][index % 3], team);
     const unit = state.units.at(-1);
