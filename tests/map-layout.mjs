@@ -74,6 +74,7 @@ for (const team of [0, 1]) {
     [1800, 600, 1, 0, 120, 160],
     [760, 850, 0, 1, 120, 160],
     [1500, 850, 0, 1, 420, Infinity],
+    [1580, 580, 0, 1, 420, Infinity],
   ];
   for (const [x, y, dx, dy, min, max] of widths) {
     const [px, py] = rotate(x, y);
@@ -86,9 +87,89 @@ for (let y = 850; y < 1350; y += 20) {
     assert(Sim.walk[cellAt(x, y)], 'Clairière centrale de 700 × 500');
   }
 }
-const lengths = Sim.lanes.map((lane) => lane.points.slice(1).reduce((sum, point, index) =>
-  sum + Math.hypot(point[0] - lane.points[index][0], point[1] - lane.points[index][1]), 0));
-for (const length of lengths.slice(1)) assert(length <= lengths[0] * 0.9, 'Flanc au moins 10 % plus court');
+// Dijkstra on the collision grid, with the same diagonals and corner rule as route().
+function shortestPath(blocked = () => false) {
+  const start = cellAt(state.bases[0].x, state.bases[0].y);
+  const target = cellAt(state.bases[1].x, state.bases[1].y);
+  const distances = new Float64Array(Sim.walk.length).fill(Infinity);
+  const previous = new Int32Array(Sim.walk.length).fill(-1);
+  const open = new Set([start]);
+  const available = (cell) => Sim.walk[cell] && !blocked(
+    (cell % Sim.COLS) * Sim.CELL + Sim.CELL / 2,
+    Math.floor(cell / Sim.COLS) * Sim.CELL + Sim.CELL / 2,
+  );
+  distances[start] = 0;
+  while (open.size) {
+    let cell = -1;
+    for (const candidate of open) {
+      if (cell === -1 || distances[candidate] < distances[cell]) cell = candidate;
+    }
+    open.delete(cell);
+    if (cell === target) {
+      const points = [];
+      for (let step = target; step !== start; step = previous[step]) points.push(step);
+      return { length: distances[target], points };
+    }
+    const column = cell % Sim.COLS;
+    const row = Math.floor(cell / Sim.COLS);
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (!dx && !dy) continue;
+        const x = column + dx;
+        const y = row + dy;
+        const next = y * Sim.COLS + x;
+        if (x < 0 || y < 0 || x >= Sim.COLS || y >= Sim.ROWS || !available(next)) continue;
+        if (dx && dy && (!available(cell + dx) || !available(cell + dy * Sim.COLS))) continue;
+        const distance = distances[cell] + Sim.CELL * Math.hypot(dx, dy);
+        if (distance >= distances[next]) continue;
+        distances[next] = distance;
+        previous[next] = cell;
+        open.add(next);
+      }
+    }
+  }
+  assert.fail('Approche déconnectée');
+}
+// Cut the four connectors at their narrow sections. At the map's midline,
+// retain only the selected approach; the base/natural accesses stay shared.
+const passagesBlocked = (x, y) =>
+  (x >= 740 && x < 780 && y >= 780 && y < 920) ||
+  (x >= 3220 && x < 3260 && y >= 1280 && y < 1420) ||
+  (x >= 1720 && x < 1880 && y >= 580 && y < 620) ||
+  (x >= 2120 && x < 2280 && y >= 1580 && y < 1620);
+const centre = shortestPath((x, y) => passagesBlocked(x, y) ||
+  (x >= 1980 && x < 2020 && (y < 840 || y >= 1360)));
+const flanks = [0, 1].map((south) => shortestPath((x, y) => passagesBlocked(x, y) ||
+  (x >= 1980 && x < 2020 && (south ? y < 1360 : y >= 840))));
+const lengths = [centre.length, ...flanks.map((path) => path.length)];
+for (const flank of flanks) {
+  assert(flank.length <= centre.length * 0.9, `Flanc ${flank.length} ≤ 90 % du centre ${centre.length}`);
+}
+const free = shortestPath();
+assert(free.length <= Math.min(...flanks.map((path) => path.length)) + 1e-6);
+const crossings = free.points.filter((cell) => cell % Sim.COLS === 100);
+assert(crossings.length > 0);
+assert(crossings.every((cell) => {
+  const y = Math.floor(cell / Sim.COLS) * Sim.CELL + Sim.CELL / 2;
+  return y < 840 || y >= 1360;
+}), 'Le plus court chemin libre emprunte un flanc');
+const directOrder = Sim.route(state.bases[0].x, state.bases[0].y, state.bases[1].x, state.bases[1].y);
+const orderCrossings = directOrder.filter((point) => Math.floor(point.x / Sim.CELL) === 100);
+assert(orderCrossings.length > 0);
+assert(orderCrossings.every((point) => point.y < 840 || point.y >= 1360),
+  'Un ordre direct utilisant route emprunte aussi un flanc');
+for (const lane of Sim.lanes) {
+  for (let index = 1; index < lane.points.length; index++) {
+    const a = lane.points[index - 1];
+    const b = lane.points[index];
+    const steps = Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / 5);
+    for (let step = 0; step <= steps; step++) {
+      const x = a[0] + (b[0] - a[0]) * step / steps;
+      const y = a[1] + (b[1] - a[1]) * step / steps;
+      assert(Sim.walk[cellAt(x, y)], `${lane.name} suit le terrain praticable`);
+    }
+  }
+}
 for (const site of Sim.reservedSites.filter((site) => site.name.startsWith('camp-'))) {
   for (const lane of Sim.lanes) {
     for (let index = 1; index < lane.points.length; index++) {

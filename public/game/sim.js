@@ -46,9 +46,9 @@ const RULES = {
 const baseApproach = [[450, 1750], [760, 1750], [960, 1550], [1100, 1550]];
 const enemyApproach = baseApproach.map(([x, y]) => [W - x, H - y]).reverse();
 const lanes = [
-  { name: 'centre', width: 440, points: [...baseApproach, [1300, 850], [2500, 850], [2000, 1100], [1500, 1350], [2700, 1350], ...enemyApproach] },
-  { name: 'nord', width: 180, points: [...baseApproach, [650, 1100], [650, 450], [2000, 450], ...enemyApproach] },
-  { name: 'sud', width: 180, points: [...baseApproach, [2000, 1750], [3350, 1750], [3350, 1100], ...enemyApproach] },
+  { name: 'centre', width: 440, points: [...baseApproach, [1420, 750], [1660, 750], [2000, 1100], [2340, 1450], [2580, 1450], ...enemyApproach] },
+  { name: 'nord', width: 180, points: [...baseApproach, [1300, 850], [1500, 450], [2000, 450], ...enemyApproach] },
+  { name: 'sud', width: 180, points: [...baseApproach, [2000, 1750], [2500, 1750], [2700, 1350], ...enemyApproach] },
 ];
 const passages = [
   { name: 'nord-ouest', width: 140, points: [[650, 850], [1300, 850]] },
@@ -84,14 +84,29 @@ function homeTerrain(x, y) {
   }
   return null;
 }
+// Keep the outer branches serving the four connectors and the side pockets.
+const outerBranch = [[1100, 1550], [650, 1100], [650, 450], [2000, 450]];
+const centralCorridor = [
+  [1100, 1550], [1300, 1550], [1300, 850], [2000, 850],
+  [2000, 1350], [2700, 1350], [2700, 650], [2900, 650],
+];
 const peripheralGroves = [[240, 360, 110, 140], [1100, 120, 140, 70], [2300, 120, 180, 70]];
 function traversable(x, y) {
   const home = homeTerrain(x, y);
   if (home !== null) return home;
   const away = homeTerrain(W - x, H - y);
   if (away !== null) return away;
+  if (lanes.slice(1).some((lane) => onRoute(x, y, lane.points.slice(3, -3), lane.width))) return true;
+  // Broad shared approaches leave 440 px around the offset central entrances.
+  if ((x >= 1120 && x < 1680 && y >= 360 && y < 800) ||
+      (x > 2320 && x <= 2880 && y > 1400 && y <= 1840)) return true;
+  // Offset entrances force the central approach around both forest walls.
+  if ((x >= 1520 && x < 1640 && y >= 800 && y < 1900) ||
+      (x > 2360 && x <= 2480 && y > 300 && y <= 1400)) return false;
   if (x >= 1640 && x < 2360 && y >= 840 && y < 1360) return true;
-  if (lanes.some((lane) => onRoute(x, y, lane.points.slice(3, -3), lane.width))) return true;
+  if (onRoute(x, y, outerBranch, 180) ||
+      onRoute(W - x, H - y, outerBranch, 180)) return true;
+  if (onRoute(x, y, centralCorridor, 440)) return true;
   if (passages.some((passage) => onRoute(x, y, passage.points, passage.width))) return true;
   if (onRoute(x, y, baseApproach.slice(2), 300) || onRoute(x, y, enemyApproach.slice(0, 2), 300)) return true;
   if (peripheralGroves.some(([gx, gy, rx, ry]) =>

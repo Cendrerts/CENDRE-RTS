@@ -40,7 +40,8 @@ for (const team of [0, 1]) {
       unit.path = [];
     }
     for (const lane of Sim.lanes.filter((lane) => lane.name !== expected)) {
-      const [x, y] = lane.points[lane.name === 'centre' ? 5 : 6];
+      // Place resistance on the distinct middle of each revised approach.
+      const [x, y] = { centre: [2000, 1100], nord: [2000, 450], sud: [2000, 1750] }[lane.name];
       for (let index = 0; index < 8; index++) {
         Sim.spawn(state, 'knight', 1 - team);
         const enemy = state.units.at(-1);
