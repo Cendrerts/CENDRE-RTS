@@ -105,11 +105,20 @@ for (const team of [0, 1]) {
   const controller = createAI(0, 'brutal');
   controller.update(state);
   assert.equal(controller.metrics.waves, 1);
-  assert(state.units.every((unit) => Math.hypot(unit.attackDestination.x - state.bases[1].x, unit.attackDestination.y - state.bases[1].y) < 200));
+  const lane = Sim.lanes.find((candidate) => candidate.name === controller.metrics.lanes[0]);
+  for (const [x, y] of lane.points.slice(1, -1)) {
+    for (const unit of state.units) {
+      unit.x = x;
+      unit.y = y;
+    }
+    state.time++;
+    controller.update(state);
+  }
+  assert(state.units.every((unit) => unit.orderQueue.some((point) =>
+    Math.hypot(point.x - state.bases[1].x, point.y - state.bases[1].y) < 200)));
 }
 
-// A raid on an expansion evacuates workers without cancelling a wave
-// already on its way to the enemy base.
+// A raid on an undefended expansion evacuates workers and recalls the army.
 {
   const state = Sim.create();
   const worker = state.units.find((unit) => unit.team === 0);
@@ -143,12 +152,11 @@ for (const team of [0, 1]) {
   Sim.visibility(state);
   controller.update(state);
   assert(worker.retreat);
-  assert.deepEqual(army.map((unit) => unit.attackDestination), destinations);
+  assert(army.some((unit, index) => unit.attackDestination?.x !== destinations[index].x || unit.attackDestination?.y !== destinations[index].y));
 }
 
-// A mature assault commits to the visible main instead of endlessly
-// retargeting newly produced defenders and retreating without base damage.
-for (const team of [0, 1]) {
+// An outnumbered mature assault must not force a siege of the main.
+for (const [team, time] of [[0, 240], [1, 240], [0, 480], [1, 480]]) {
   const state = Sim.create();
   state.units = [];
   const enemyBase = state.bases[1 - team];
@@ -166,15 +174,14 @@ for (const team of [0, 1]) {
     unit.y = enemyBase.y;
     unit.path = [];
   }
-  state.time = 480;
+  state.time = time;
   state.rubies[team] = 0;
   Sim.visibility(state);
-  createAI(team, 'brutal').update(state);
+  const controller = createAI(team, 'brutal');
+  controller.metrics.waves = 2;
+  controller.update(state);
   const attackers = state.units.filter((unit) => unit.team === team);
-  assert(attackers.every((unit) => unit.target === enemyBase && !unit.retreat));
-  const health = enemyBase.hp;
-  Sim.tick(state, 0.01);
-  assert(enemyBase.hp < health);
+  assert(attackers.every((unit) => unit.target !== enemyBase));
 }
 
 // An unseen blockade cannot make the AI choose a longer lane.

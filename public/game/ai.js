@@ -26,6 +26,7 @@ export function createAI(team, difficulty = 'normal', state = null) {
   const metrics = { waves: 0, expansions: [], waveSizes: [], lanes: [] };
   let expedition = null;
   const deployed = new Set();
+  let waveRoute = null;
   const remembered = new Map();
   const knownBuildings = new Map();
   const established = new Set();
@@ -49,16 +50,14 @@ export function createAI(team, difficulty = 'normal', state = null) {
     }).sort((a, b) => a.score - b.score ||
       Number(b.name === (team ? 'sud' : 'nord')) - Number(a.name === (team ? 'sud' : 'nord')));
     const approach = approaches[0];
-    if (distance(destination, state.bases[1 - team]) < 320 && approach.name !== 'centre') {
-      const points = approach.points.slice(1, -1);
-      Sim.orderFormation(state, ids, points[0].x, points[0].y);
-      for (const point of points.slice(1)) {
-        Sim.orderFormation(state, ids, point.x, point.y, true);
-      }
-      Sim.orderFormation(state, ids, destination.x, destination.y, true);
-    } else {
-      Sim.orderFormation(state, ids, destination.x, destination.y);
-    }
+    const points = distance(destination, state.bases[1 - team]) < 320
+      ? [...approach.points.slice(1, -1), destination]
+      : [destination];
+    waveRoute = { ids: new Set(ids), points, index: 0 };
+    Sim.order(state, ids, points[0].x, points[0].y, null, false);
+    // Queue only the current stage: the next one is released by the AI
+    // once seventy percent of the surviving wave has reached this one.
+    Sim.order(state, ids, points[0].x, points[0].y, null, false, true);
     const speed = Math.min(...units.map((unit) => Sim.stats(unit.type, team).speed));
     waveTravelTime = Math.max(90, approach.length / speed + 60);
     metrics.lanes.push(approach.name);
@@ -257,11 +256,13 @@ export function createAI(team, difficulty = 'normal', state = null) {
       const base = state.bases[team];
       const rally = { x: base.x + (team ? -110 : 110), y: base.y + (team ? 65 : -65) };
       const invaders = (brutal ? observedArmy : enemies).filter((enemy) => owned.some((mine) => distance(enemy, mine) < (brutal ? 400 : 240)));
+      let threatenedEconomy = false;
       if (brutal) {
         for (const worker of workers) {
           const danger = observedArmy.filter((enemy) => distance(worker, enemy) < 260);
           const guards = army.filter((unit) => distance(worker, unit) < 280);
           if (power(danger) > power(guards)) {
+            threatenedEconomy = true;
             evacuated.add(worker.id);
             if (!worker.retreat || worker.harvest) Sim.order(state, [worker.id], base.x, base.y, null, true);
           } else if (!danger.length) {
@@ -269,7 +270,7 @@ export function createAI(team, difficulty = 'normal', state = null) {
           }
         }
         // An expansion skirmish must not cancel an army already attacking.
-        if (invaders.some((enemy) => distance(enemy, base) < 220)) {
+        if (threatenedEconomy || invaders.some((enemy) => distance(enemy, base) < 220)) {
           for (const unit of army) deployed.delete(unit.id);
         }
       }
@@ -289,7 +290,7 @@ export function createAI(team, difficulty = 'normal', state = null) {
       }
       // After the opening raids, finish the game instead of cycling forever
       // between recapturable depots scattered across the enlarged map.
-      const decisiveAttack = metrics.waves >= 2 || state.time >= 480;
+      const decisiveAttack = (metrics.waves >= 2 || state.time >= 480) && power(army) >= power(observedArmy);
       const destination = (!decisiveAttack && [...remembered.values()].sort((a, b) => distance(a, state.bases[team]) - distance(b, state.bases[team]))[0]) || intelligence.bases[0] || { x: enemyBase.x, y: enemyBase.y };
       if (brutal && !defending && lastWave > 0 && state.time - lastWave > waveTravelTime && lastRegroup < lastWave) {
         deployed.clear();
@@ -314,6 +315,22 @@ export function createAI(team, difficulty = 'normal', state = null) {
         Sim.order(state, assembly.map((unit) => unit.id), rally.x, rally.y, null, false);
         lastRegroup = state.time;
         actions++;
+      }
+      if (waveRoute) {
+        const members = army.filter((unit) => waveRoute.ids.has(unit.id) && deployed.has(unit.id) && !unit.retreat);
+        const point = waveRoute.points[waveRoute.index];
+        if (!members.length) {
+          waveRoute = null;
+        } else if (members.filter((unit) => distance(unit, point) < 140).length >= members.length * 0.7) {
+          waveRoute.index++;
+          if (waveRoute.index === waveRoute.points.length) {
+            waveRoute = null;
+          } else {
+            const next = waveRoute.points[waveRoute.index];
+            Sim.order(state, members.map((unit) => unit.id), next.x, next.y, null, false, true);
+            actions++;
+          }
+        }
       }
       if ((!brutal || attackers.length >= 5) && !defending && state.time >= retreatUntil && (enoughTroops || reserve.length > 0 && (saturated || overdue)) && assembled) {
         for (const unit of attackers) deployed.add(unit.id);
@@ -385,6 +402,12 @@ export function createAI(team, difficulty = 'normal', state = null) {
         } else if (targets.length && !unit.retreat) {
           if (unit.target !== targets[0]) {
             Sim.order(state, [unit.id], targets[0].x, targets[0].y, targets[0], false);
+            actions++;
+          }
+        } else if (!unit.path.length && !unit.target && waveRoute?.ids.has(unit.id) && deployed.has(unit.id) && !unit.retreat) {
+          const point = waveRoute.points[waveRoute.index];
+          if (distance(unit, point) >= 140) {
+            Sim.order(state, [unit.id], point.x, point.y, null, false, true);
             actions++;
           }
         } else if (!unit.path.length && !unit.target) {

@@ -61,7 +61,9 @@ for (const horde of [false, true]) {
           for (const unit of troops) {
             assert.equal(unit.retreat, false);
             assert(unit.path.length > 0);
-            assert(Math.hypot(unit.attackDestination.x - state.bases[1].x, unit.attackDestination.y - state.bases[1].y) < 200);
+            const lane = sim.lanes.find((candidate) => candidate.name === controller.metrics.lanes.at(-1));
+            const [x, y] = lane.points[1];
+            assert(unit.orderQueue.some((point) => Math.hypot(point.x - x, point.y - y) < 200));
           }
         }
       }
@@ -94,8 +96,11 @@ for (const horde of [false, true]) {
           const [, ids, x, y, target, retreat] = orders.at(-1);
           const army = state.units.filter((unit) => unit.team === 0 && unit.type !== 'commis');
           assert.deepEqual(ids, army.slice(2).map((unit) => unit.id));
-          assert.equal(x, expected.x);
-          assert.equal(y, expected.y);
+          const firstStage = Math.hypot(expected.x - state.bases[1].x, expected.y - state.bases[1].y) < 320
+            ? sim.lanes.find((lane) => lane.name === controller.metrics.lanes.at(-1)).points[1]
+            : [expected.x, expected.y];
+          assert.equal(x, firstStage[0]);
+          assert.equal(y, firstStage[1]);
           assert.equal(target, null);
           assert.equal(retreat, false);
           state.time = 121;
@@ -109,8 +114,9 @@ for (const horde of [false, true]) {
           state.time = 240;
           controller.update(state);
           assert.equal(controller.metrics.waves, 2);
-          assert.equal(orders.at(-1)[2], state.bases[1].x);
-          assert.equal(orders.at(-1)[3], state.bases[1].y);
+          const lane = sim.lanes.find((candidate) => candidate.name === controller.metrics.lanes.at(-1));
+          assert.equal(orders.at(-1)[2], lane.points[1][0]);
+          assert.equal(orders.at(-1)[3], lane.points[1][1]);
         } finally {
           sim.order = originalOrder;
         }
