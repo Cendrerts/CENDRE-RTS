@@ -59,7 +59,7 @@ export function createAI(team, difficulty = 'normal', state = null) {
     // once seventy percent of the surviving wave has reached this one.
     Sim.order(state, ids, points[0].x, points[0].y, null, false, true);
     const speed = Math.min(...units.map((unit) => Sim.stats(unit.type, team).speed));
-    waveTravelTime = Math.max(90, approach.length / speed + 60);
+    waveTravelTime = Math.min(150, Math.max(90, approach.length / speed + 60));
     metrics.lanes.push(approach.name);
   };
   return {
@@ -290,7 +290,8 @@ export function createAI(team, difficulty = 'normal', state = null) {
       }
       // After the opening raids, finish the game instead of cycling forever
       // between recapturable depots scattered across the enlarged map.
-      const decisiveAttack = (metrics.waves >= 2 || state.time >= 480) && power(army) >= power(observedArmy);
+      const decisiveAttack = (metrics.waves >= 2 || state.time >= 480) &&
+        (power(army) >= power(observedArmy) || saturated || state.rubies[team] >= 800 || state.time >= 600);
       const destination = (!decisiveAttack && [...remembered.values()].sort((a, b) => distance(a, state.bases[team]) - distance(b, state.bases[team]))[0]) || intelligence.bases[0] || { x: enemyBase.x, y: enemyBase.y };
       if (brutal && !defending && lastWave > 0 && state.time - lastWave > waveTravelTime && lastRegroup < lastWave) {
         deployed.clear();
@@ -423,8 +424,7 @@ export function createAI(team, difficulty = 'normal', state = null) {
       if (forceWave && state.time - lastWave >= 120) {
         const reliefArmy = army.slice(garrison);
         if (reliefArmy.length) {
-          const knownTargets = [...knownBuildings.values(), ...remembered.values(), ...intelligence.bases];
-          const goal = decisiveAttack ? enemyBase : knownTargets.sort((a, b) => distance(a, base) - distance(b, base))[0] || enemyBase;
+          const goal = enemyBase;
           const ids = reliefArmy.map((unit) => unit.id);
           launchAttack(state, reliefArmy, goal, observedArmy);
           for (const id of ids) {

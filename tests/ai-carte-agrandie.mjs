@@ -1,4 +1,8 @@
 import assert from 'node:assert/strict';
+import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { CendreSim as Sim } from '../public/game/sim.js';
 import { createAI } from '../public/game/ai.js';
 
@@ -209,3 +213,55 @@ for (const [team, time] of [[0, 240], [1, 240], [0, 480], [1, 480]]) {
   assert.equal(controller.metrics.lanes[0], 'centre');
 }
 console.log('PASS: natural expansions, three attack lanes, fog and long-distance wave timing.');
+
+// Reproduce the blocked tournament seeds, including faction and update order.
+const directory = await mkdtemp(join(tmpdir(), 'cendre-map-ai-'));
+try {
+  for (const file of ['sim.js', 'ai.js', 'ai-config.js', 'slots.js', 'rats-config.js', 'cooks-config.js']) {
+    let source = await readFile(new URL('../public/game/' + file, import.meta.url), 'utf8');
+    if (file === 'sim.js') {
+      source = source.replace("import { BrigadeCuisine } from './cooks-config.js';", "import { RatsGout as BrigadeCuisine } from './rats-config.js';");
+      source = source.replace("import { RatsGout } from './rats-config.js';", "import { BrigadeCuisine as RatsGout } from './cooks-config.js';");
+    }
+    await writeFile(join(directory, file), source);
+  }
+  await writeFile(join(directory, 'package.json'), '{"type":"module"}');
+  const { CendreSim: reversedSim } = await import(pathToFileURL(join(directory, 'sim.js')));
+  const { createAI: reversedAI } = await import(pathToFileURL(join(directory, 'ai.js')));
+  const results = [];
+  for (const initialSeed of [19, 22]) {
+    const reversed = initialSeed % 2 === 1;
+    const sim = reversed ? reversedSim : Sim;
+    const ai = reversed ? reversedAI : createAI;
+    let seed = initialSeed;
+    const random = () => {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+      return seed / 4294967296;
+    };
+    const state = sim.create();
+    const startDelays = [random() * 4, random() * 4];
+    for (const unit of state.units.filter((unit) => unit.type === 'commis')) {
+      const cell = sim.nearest(unit.x + random() * 120 - 60, unit.y + random() * 120 - 60);
+      unit.x = (cell % sim.COLS) * sim.CELL + 10;
+      unit.y = Math.floor(cell / sim.COLS) * sim.CELL + 10;
+    }
+    sim.visibility(state);
+    const controllers = [0, 1].map((team) => ai(team, 'brutal'));
+    for (let step = 0; step < 12000 && state.winner === null; step++) {
+      for (const team of reversed ? [1, 0] : [0, 1]) {
+        if (state.time >= startDelays[team]) {
+          controllers[team].update(state);
+        }
+      }
+      sim.tick(state, 0.1);
+    }
+    results.push({ seed: initialSeed, winner: state.winner, time: state.time });
+    console.log(`Seed ${initialSeed}: winner ${state.winner}, ${state.time.toFixed(1)}s.`);
+  }
+  for (const result of results) {
+    assert.notEqual(result.winner, null, `Seed ${result.seed}: no winner within 20 minutes`);
+    assert(result.time < 1200, `Seed ${result.seed}: match must finish before 20 minutes`);
+  }
+} finally {
+  await rm(directory, { recursive: true, force: true });
+}
