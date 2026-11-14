@@ -27,6 +27,7 @@ export function createAI(team, difficulty = 'normal', state = null) {
   let expedition = null;
   const deployed = new Set();
   let waveRoute = null;
+  let reducedWorkerTarget = false;
   const remembered = new Map();
   const knownBuildings = new Map();
   const established = new Set();
@@ -107,9 +108,13 @@ export function createAI(team, difficulty = 'normal', state = null) {
       }));
       const owned = mines.filter((mine) => mine.owner === team);
       const populationLimit = Sim.unitLimit?.(team) ?? 30;
-      const economyCapacity = Number(brutal) + settings.workers * (brutal ? Math.min(3, owned.length + 1) : 3) + Number(workers.some((worker) => worker.id === scout));
-      const militaryLimit = populationLimit - economyCapacity;
       const saturated = own.length + state.queues[team].length >= populationLimit;
+      if (brutal && saturated && state.rubies[team] >= 1000) reducedWorkerTarget = true;
+      if (state.rubies[team] < 400) reducedWorkerTarget = false;
+      const saturation = (mine) => settings.workers + Number(brutal && mine.index === team);
+      const workerTarget = reducedWorkerTarget ? 10 : Math.min(owned.reduce((sum, mine) => sum + saturation(mine), 0), settings.workers * 3 + Number(brutal));
+      const economyCapacity = Number(brutal) + settings.workers * (brutal ? Math.min(3, owned.length + 1) : 3) + Number(workers.some((worker) => worker.id === scout));
+      const militaryLimit = populationLimit - (reducedWorkerTarget ? workerTarget : economyCapacity);
       const surplus = state.rubies[team] > 800;
       const forceWave = state.time - lastWave >= 120 && (state.rubies[team] >= 800 || army.length >= populationLimit * 0.9);
       for (const [id, building] of knownBuildings) {
@@ -148,10 +153,8 @@ export function createAI(team, difficulty = 'normal', state = null) {
       }
       if (state.time >= nextMacro) {
         nextMacro = state.time + settings.macro;
-        const saturation = (mine) => settings.workers + Number(brutal && mine.index === team);
-        const workerTarget = Math.min(owned.reduce((sum, mine) => sum + saturation(mine), 0), settings.workers * 3 + Number(brutal));
         const queued = state.queues[team].filter((job) => job.type === 'commis').length;
-        if (workers.filter((worker) => worker.id !== scout).length + queued < workerTarget && Sim.recruit(state, 'commis', team)) actions++;
+        if (workers.filter((worker) => reducedWorkerTarget || worker.id !== scout).length + queued < workerTarget && Sim.recruit(state, 'commis', team)) actions++;
         // Rebalance only surplus or idle workers, preserving harvest trips.
         const assigned = new Map(owned.map((mine) => [mine.index, 0]));
         for (const worker of workers) {
@@ -293,10 +296,26 @@ export function createAI(team, difficulty = 'normal', state = null) {
       const decisiveAttack = (metrics.waves >= 2 || state.time >= 480) &&
         (power(army) >= power(observedArmy) || saturated || state.rubies[team] >= 800 || state.time >= 600);
       const destination = (!decisiveAttack && [...remembered.values()].sort((a, b) => distance(a, state.bases[team]) - distance(b, state.bases[team]))[0]) || intelligence.bases[0] || { x: enemyBase.x, y: enemyBase.y };
-      if (brutal && !defending && lastWave > 0 && state.time - lastWave > waveTravelTime && lastRegroup < lastWave) {
+      if (brutal && !(decisiveAttack && waveRoute) && !defending && lastWave > 0 && state.time - lastWave > waveTravelTime && lastRegroup < lastWave) {
         deployed.clear();
         Sim.order(state, army.map((unit) => unit.id), rally.x, rally.y, null, false);
         lastRegroup = state.time;
+      }
+      const reinforcing = decisiveAttack && waveRoute && !defending && state.time >= retreatUntil &&
+        army.some((unit) => waveRoute.ids.has(unit.id) && deployed.has(unit.id) && !unit.retreat);
+      if (reinforcing) {
+        const reinforcements = army.filter((unit) => !deployed.has(unit.id) && !unit.retreat && unit.id !== scout && !raiders.has(unit.id));
+        if (reinforcements.length) {
+          const ids = reinforcements.map((unit) => unit.id);
+          const point = waveRoute.points[waveRoute.index];
+          Sim.order(state, ids, point.x, point.y, null, false);
+          Sim.order(state, ids, point.x, point.y, null, false, true);
+          for (const id of ids) {
+            deployed.add(id);
+            waveRoute.ids.add(id);
+          }
+          actions++;
+        }
       }
       const reserve = army.filter((unit) => !deployed.has(unit.id) && unit.id !== scout && !raiders.has(unit.id));
       // Assemble reinforcements before launching; wave sizes never grow beyond
@@ -322,7 +341,8 @@ export function createAI(team, difficulty = 'normal', state = null) {
         const point = waveRoute.points[waveRoute.index];
         if (!members.length) {
           waveRoute = null;
-        } else if (members.filter((unit) => distance(unit, point) < 140).length >= members.length * 0.7) {
+        } else if (members.filter((unit) => distance(unit, point) < 140).length >= members.length * 0.7 &&
+          !(decisiveAttack && waveRoute.index === waveRoute.points.length - 1)) {
           waveRoute.index++;
           if (waveRoute.index === waveRoute.points.length) {
             waveRoute = null;

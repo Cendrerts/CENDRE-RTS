@@ -265,3 +265,32 @@ try {
 } finally {
   await rm(directory, { recursive: true, force: true });
 }
+
+// A rich, population-capped Brutal mirror must make room for its army.
+{
+  const state = Sim.create();
+  const controllers = [0, 1].map((team) => createAI(team, 'brutal'));
+  const surplusSince = [null, null];
+  const checked = [false, false];
+  let largestArmy = 0;
+  for (let step = 0; step < 18000 && state.winner === null; step++) {
+    for (const team of [0, 1]) {
+      controllers[team].update(state);
+      const units = state.units.filter((unit) => unit.team === team && unit.hp > 0);
+      const queue = state.queues[team];
+      const workers = units.filter((unit) => unit.type === 'commis').length + queue.filter((job) => job.type === 'commis').length;
+      largestArmy = Math.max(largestArmy, units.filter((unit) => unit.type !== 'commis').length);
+      if (state.time >= 720 && units.length + queue.length >= (Sim.unitLimit?.(team) ?? 30) && state.rubies[team] >= 1000 && surplusSince[team] === null) {
+        surplusSince[team] = state.time;
+      }
+      if (state.rubies[team] < 400) surplusSince[team] = null;
+      if (surplusSince[team] !== null && state.time >= surplusSince[team] + 30) {
+        assert(workers <= 10, `Team ${team}: ${workers} living or queued workers after 30s of surplus`);
+        checked[team] = true;
+      }
+    }
+    Sim.tick(state, 0.1);
+  }
+  assert(largestArmy > 14, `Brutal mirror: army never exceeded 14 (${largestArmy})`);
+  console.log(`Brutal mirror: largest army ${largestArmy}, surplus checks ${checked.join('/')}.`);
+}
