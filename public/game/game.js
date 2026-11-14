@@ -262,6 +262,7 @@ let queueArmed = false;
 let queueSelection = '';
 let productionUI = null;
 
+const observedTowerLosses = new Map();
 function updateUI() {
   let army = state.units.filter((u) => u.team === player);
   selected = new Set([...selected].filter((id) => army.some((u) => u.id === id)));
@@ -272,12 +273,13 @@ function updateUI() {
     String(Math.floor(state.time / 60)).padStart(2, '0') +
     ':' +
     String(Math.floor(state.time % 60)).padStart(2, '0');
-  $('#towerStatus').textContent =
-    state.tower.owner === player
-      ? '◉ Tour : vision étendue'
-      : state.tower.owner === 1 - player
-        ? '◉ Tour : occupée par l’adversaire'
-        : '◉ Tour : non contrôlée';
+  for (const tower of state.watchtowers) {
+    const losses = tower.losses[player];
+    const key = tower.name;
+    if (observedTowerLosses.has(key) && losses > observedTowerLosses.get(key)) notify('Tour de guet perdue');
+    observedTowerLosses.set(key, losses);
+  }
+  $('#towerStatus').textContent = `Tours : ${state.watchtowers.filter((tower) => tower.owner === player).length} / 2`;
   renderContextPanel();
   productionUI?.refresh(state, player, running);
   touchUI?.refresh();
@@ -313,6 +315,7 @@ $('#start').onclick = async () => {
   }
   $('#veil').classList.remove('match-ended');
   state = Sim.create();
+  observedTowerLosses.clear();
   controlGroupsUI?.reset();
   selected.clear();
   player = chosen;
@@ -999,6 +1002,7 @@ function drawMini() {
   drawMinimap(mc, {
     terrain,
     fog,
+    watchtowers: state.watchtowers,
     units: preparedUnits,
     mines: state.mines.filter((mine) => state.explored[player][Math.floor(mine.y / CELL) * COLS + Math.floor(mine.x / CELL)]),
     bases: state.bases.filter((base) => Sim.canSee(state, player, base)),
@@ -1037,16 +1041,19 @@ function draw() {
     ctx.ellipse(m.x, m.y, 42, 22, 0, 0, 7);
     ctx.stroke();
   }
-  let tw = state.tower;
-  if (Sim.visibleAt(state, player, tw.x, tw.y)) {
-    ctx.strokeStyle = tw.owner === player ? '#f4cb79' : '#998969';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.ellipse(tw.x, tw.y, 64, 33, 0, 0, 7);
-    ctx.stroke();
-    if (Math.abs(tw.progress) > 0) {
+  for (const tower of state.watchtowers) {
+    if (!Sim.visibleAt(state, player, tower.x, tower.y)) continue;
+    const color = tower.owner === -1 ? '#a0a0a0' : TEAM_COLORS[tower.owner];
+    ellipse(tower.x, tower.y + 4, 26, 12, '#11171988');
+    ctx.fillStyle = '#796e62';
+    ctx.fillRect(tower.x - 14, tower.y - 35, 28, 39);
+    line(tower.x, tower.y - 30, tower.x, tower.y - 80, '#eee0bf', 3);
+    poly([[tower.x, tower.y - 80], [tower.x + 33, tower.y - 70], [tower.x, tower.y - 58]], color, '#eee0bf');
+    if (tower.progress > 0) {
+      ctx.strokeStyle = TEAM_COLORS[tower.capturingTeam];
+      ctx.lineWidth = 4 / scale;
       ctx.beginPath();
-      ctx.arc(tw.x, tw.y, 43, -Math.PI / 2, -Math.PI / 2 + (Math.abs(tw.progress) / 4) * 6.28);
+      ctx.arc(tower.x, tower.y, 43, -Math.PI / 2, -Math.PI / 2 + tower.progress / Sim.RULES.towerCapture * Math.PI * 2);
       ctx.stroke();
     }
   }
@@ -1207,6 +1214,7 @@ function lobbyControls(connected) {
   $('#netBadge').hidden = !connected;
 }
 function resetNetwork() {
+  observedTowerLosses.clear();
   closePauseMenu();
   clearTimeout(netTimer);
   realtime?.close();

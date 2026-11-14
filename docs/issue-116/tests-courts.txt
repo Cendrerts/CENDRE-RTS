@@ -1,0 +1,267 @@
+$ node tests/abandon-duel.mjs --short
+PASS: no native dialogs; only Abandonner leaves; duel continues; end closes dialog.
+
+$ node tests/ai-carte-agrandie.mjs --short
+PASS: natural expansions, three attack lanes, fog and long-distance wave timing.
+SKIP: tournois longs (mode --short, suivi #113).
+
+$ node tests/ai-formation.mjs --short
+PASS: AI waypoints wait for 70% without changing unit speeds.
+
+SKIP tests/ai.mjs : tournois longs exclus par l’issue.
+$ node tests/ambience.mjs --short
+PASS: attenuation, silence, crossfade, single loop, shared context lifecycle and disposal during load.
+
+$ node tests/army-select.mjs --short
+PASS: army selection includes off-screen combat units, excludes workers, enemies and dead units.
+
+$ node tests/audio-unlock.mjs --short
+PASS: shared audio, synchronous gestures, silent buffer, lifecycle recovery, HUD and absent API.
+
+$ node tests/auto-pause.mjs --short
+PASS: auto-pause decisions, background events, frozen solo time and explicit resume.
+
+$ node tests/balance.mjs --short
+PASS: simultaneous lethal attacks, swap symmetry, non-grid cadence, timeout and faction config.
+
+$ node tests/camera.mjs --short
+PASS: minimap conversion, camera bounds, attack direction, zone cooldown and shared damage events.
+
+$ node tests/control-groups-display.mjs --short
+PASS: empty groups have no icon or count; populated groups show the dominant type and count.
+
+$ node tests/control-groups.mjs --short
+PASS: assignment, living selection, pruning, dominant type, hold threshold, double tap camera request, independent portraits and solo serialization.
+PASS: short taps assign empty groups, preserve full groups, and show timed first-group and empty-selection help.
+
+$ node tests/crowd.mjs --short
+passage: 40/40 arrivées ; maximum 9.15 s ; pause maximale 0.00 s
+crossing: 40/40 arrivées ; maximum 9.65 s ; pause maximale 0.00 s
+building: 30/30 arrivées ; maximum 3.15 s ; pause maximale 0.00 s
+
+$ node tests/damage-events.mjs --short
+PASS: bounded damage events, per-entity cooldown across requests, recent team events and offscreen alerts.
+
+$ node tests/double-tap-batiments.mjs --short
+PASS: double-tap bâtiments, sélection pure, charge, lot ×5 et ralliements, deux factions.
+
+$ node tests/double-tap-terrain.mjs --short
+PASS: field double-tap thresholds, reset, triple tap, tactile snapping and visible own living units.
+
+$ node tests/emblemes-factions.mjs --short
+PASS: emblèmes de faction, couleurs, taille et boutons du menu.
+
+SKIP tests/equilibrage-factions.mjs : tournois longs exclus par l’issue.
+$ node tests/expansion.mjs --short
+Team 0, mine 2: local 4.3s vs main 12.8s
+Team 0, mine 3: local 4.7s vs main 58.1s
+Team 0, mine 4: local 6.1s vs main 40.3s
+Team 0, mine 5: local 4.5s vs main 36.9s
+Team 0, mine 6: local 4.8s vs main 52.5s
+Team 0, mine 7: local 4.9s vs main 35.1s
+Team 0, mine 8: local 4.7s vs main 38.9s
+Team 1, mine 2: local 5.4s vs main 58.8s
+Team 1, mine 3: local 4.7s vs main 12.9s
+Team 1, mine 4: local 6.2s vs main 40.3s
+Team 1, mine 5: local 5.3s vs main 53.0s
+Team 1, mine 6: local 4.5s vs main 36.9s
+Team 1, mine 7: local 5.6s vs main 39.6s
+Team 1, mine 8: local 4.9s vs main 35.1s
+PASS: nine mines, accessible sites, costs, local delivery for both factions, capture reroute and fog.
+
+$ node tests/gestures.mjs --short
+PASS: camera drag, 8px threshold, micro-movement tap, pinch, pan, partial release, cancellation and reset.
+PASS: touch 14px threshold, quick tap after drag preview, strict 250ms/24px limits.
+PASS: hold at 300ms, selection toggle, bounded inertia and interruption.
+
+$ node tests/harvest.mjs --short
+PASS: worker trips, mining delay, delivery only, both factions, ruby, capture, interruption, ownership, death, no passive income, persistence and end state.
+
+$ node tests/horde-scenario.mjs --short
+horde-scenario: 45 rats, 30 cooks, 16 workers, 600 ticks with damage passed
+
+SKIP tests/ia-sans-blocage.mjs : tournois longs exclus par l’issue.
+$ node tests/icons-taille.mjs --short
+PASS: icônes 18/24 px, sélection renforcée et cibles tactiles ≥ 44 px.
+
+$ node tests/icons.mjs --short
+PASS: 24 icônes SVG, boutons sans pictogrammes Unicode.
+
+$ node tests/idle-workers.mjs --short
+PASS idle workers, depletion, destruction, reassignment and determinism
+
+SKIP tests/impitoyable.mjs : tournois longs exclus par l’issue.
+$ node tests/map-lanes.mjs --short
+PASS 0/centre/commis: 761 ticks
+PASS 0/centre/knight: 1140 ticks
+PASS 0/centre/archer: 1063 ticks
+PASS 0/centre/mage: 1362 ticks
+PASS 0/nord/commis: 667 ticks
+PASS 0/nord/knight: 1000 ticks
+PASS 0/nord/archer: 933 ticks
+PASS 0/nord/mage: 1194 ticks
+PASS 0/sud/commis: 667 ticks
+PASS 0/sud/knight: 1000 ticks
+PASS 0/sud/archer: 933 ticks
+PASS 0/sud/mage: 1194 ticks
+PASS 0/nord-ouest/commis: 766 ticks
+PASS 0/nord-ouest/knight: 1151 ticks
+PASS 0/nord-ouest/archer: 1074 ticks
+PASS 0/nord-ouest/mage: 1376 ticks
+PASS 0/nord-est/commis: 745 ticks
+PASS 0/nord-est/knight: 1118 ticks
+PASS 0/nord-est/archer: 1043 ticks
+PASS 0/nord-est/mage: 1337 ticks
+PASS 0/sud-est/commis: 846 ticks
+PASS 0/sud-est/knight: 1270 ticks
+PASS 0/sud-est/archer: 1184 ticks
+PASS 0/sud-est/mage: 1519 ticks
+PASS 0/sud-ouest/commis: 677 ticks
+PASS 0/sud-ouest/knight: 1017 ticks
+PASS 0/sud-ouest/archer: 948 ticks
+PASS 0/sud-ouest/mage: 1216 ticks
+PASS 1/centre/commis: 761 ticks
+PASS 1/centre/knight: 1062 ticks
+PASS 1/centre/archer: 947 ticks
+PASS 1/centre/mage: 1223 ticks
+PASS 1/nord/commis: 667 ticks
+PASS 1/nord/knight: 932 ticks
+PASS 1/nord/archer: 832 ticks
+PASS 1/nord/mage: 1073 ticks
+PASS 1/sud/commis: 667 ticks
+PASS 1/sud/knight: 932 ticks
+PASS 1/sud/archer: 832 ticks
+PASS 1/sud/mage: 1073 ticks
+PASS 1/nord-ouest/commis: 766 ticks
+PASS 1/nord-ouest/knight: 1073 ticks
+PASS 1/nord-ouest/archer: 956 ticks
+PASS 1/nord-ouest/mage: 1235 ticks
+PASS 1/nord-est/commis: 744 ticks
+PASS 1/nord-est/knight: 1040 ticks
+PASS 1/nord-est/archer: 928 ticks
+PASS 1/nord-est/mage: 1198 ticks
+PASS 1/sud-est/commis: 846 ticks
+PASS 1/sud-est/knight: 1183 ticks
+PASS 1/sud-est/archer: 1056 ticks
+PASS 1/sud-est/mage: 1364 ticks
+PASS 1/sud-ouest/commis: 679 ticks
+PASS 1/sud-ouest/knight: 949 ticks
+PASS 1/sud-ouest/archer: 848 ticks
+PASS 1/sud-ouest/mage: 1094 ticks
+PASS: carte, trois chemins et quatre passages dans les deux sens, quatre types, réserves, caméra et synchronisation.
+
+$ node tests/map-layout.mjs --short
+PASS disposition : forêt 25.2 %, trajets 4433/3838/3838 px, goulets, passages, camps, symétrie et accès.
+
+$ node tests/match-stats.mjs --short
+PASS: match counters, deposits, recruitment, combat, migration, determinism and final-only multiplayer disclosure.
+
+$ node tests/micro.mjs --short
+Micro: move, attack move and resumption, disengage, selection filtering and forced target passed
+
+$ node tests/monstres-neutres.mjs --short
+PASS : camps symétriques, chasse, butin, laisse, réapparition et état multijoueur.
+
+$ node tests/multiplayer.mjs --short
+(node:3538) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+PASS: rooms, authentication, capacity, concurrent commands, ownership, deduplication, fog filtering, reconnect, surrender and immutable outcome, cancellation, serialization.
+PASS: ordered command batches, deduplication, spend-once, error isolation and acknowledgement.
+
+$ node tests/network-motion.mjs --short
+PASS: continuous interpolation, jitter, no extrapolation, hidden-unit removal, immediate pending dispatch and error backoff.
+
+$ node tests/noms-unites.mjs --short
+PASS: noms singuliers et pluriels des deux factions, sélection, production, groupes et armée.
+
+$ node tests/order-feedback.mjs --short
+PASS: four pure descriptors, next-frame feedback before server response, optional vibration.
+
+$ node tests/order-queue.mjs --short
+order queue OK
+
+$ node tests/panel.mjs --short
+Panneau : quatre contextes, deux factions, capacité et annulation OK
+
+$ node tests/pause-menu.mjs --short
+PASS: solo pause, live multiplayer menu, settings, resume, X, outside tap and minimal header.
+
+$ node tests/production-globale.mjs --short
+PASS: production globale, deux factions, répartition 1/1/1, coût, file, rubis et population.
+
+$ node tests/production.mjs --short
+PASS: building gates, parallel and serial queues, spawn location, secondary workers, ownership, capture refunds, per-building capacity, population and persistence.
+
+$ node tests/radial.mjs --short
+PASS: radial directions/deadzone, no preview mutation, exact slot, occupied rejection, ownership, base restriction, invalid slot and persistence.
+
+$ node tests/rally.mjs --short
+PASS: rally production, worker movement without combat, attack move, harvest, ownership, bounds, defaults and following.
+
+$ node tests/realtime-client.mjs --short
+PASS: immediate commands, RTT, jitter at 60 FPS, local prediction, fog and session reconnect after 3 seconds.
+
+$ node tests/realtime-server.mjs --short
+PASS: realtime rooms, 20 Hz simulation, synchronous ack, ownership, costs, deduplication, fog, 10 Hz snapshots, reconnect, eviction, surrender, timeouts and routing.
+
+$ node tests/reconnect.mjs --short
+PASS: reconnect snapshot, continued orders and ticks, countdown, unknown token and exact 30 second defeat.
+PASS: silent disconnect detection, exact grace deadline and unique replacement socket.
+
+$ node tests/recruit-reason.mjs --short
+PASS: raisons de refus, priorités, lecture seule et lot partiel pour les deux factions.
+
+$ node tests/render-bench.mjs --short
+render-bench: sim + draw list 0.973 ms/frame (Node, no CPU throttling)
+render-bench: caches and cell-for-cell visibility equivalence passed
+
+$ node tests/ruby-migration.mjs --short
+PASS: legacy solo and server saves migrate to rubies without changing balances.
+
+$ node tests/selection.mjs --short
+PASS: camera bounds, edge inclusion, team/type/living filters, pan/zoom counts, 349/350ms taps, alternating portraits, triple tap and reset.
+PASS: box selection prioritizes combat, excludes enemies and dead units, includes edges and supports reversed corners.
+PASS: empty and enemy-only boxes preserve selection; nonempty boxes replace it.
+
+$ node tests/separation.mjs --short
+Séparation, formation, passage, anti-blocage, terrain, combat, déterminisme : OK ; 60 unités : 0.358 ms/tick
+
+$ node tests/settings.mjs --short
+settings: OK
+
+$ node tests/simulation.mjs --short
+PASS: recruitment, traversable routes to all objectives, fog for both teams, forest concealment and damage, ruby income, victory.
+PASS: Rats-Goût queue, timings, stats, splash, no friendly fire.
+PASS: asymmetric production for all eight units and elite chef splash.
+
+$ node tests/slots.mjs --short
+PASS: slot offsets, first free, cap, factions, authority, fog, persistence, legacy state and ended match.
+PASS: all six building prices, insufficient funds, exact balance and no charges on rejected construction.
+
+$ node tests/steering.mjs --short
+Steering: movement, stop, timeout, ownership, collision, persistence, combat priority passed
+
+$ node tests/tap-priority.mjs --short
+PASS: tap priorities, both teams, fog, construction without selection, empty long-press targets and purity.
+PASS: screen pixel hit zones, nearest target, 6 px priorities and snapping at game zooms 1, 2.6 and 3.5.
+
+$ node tests/targeting.mjs --short
+Targeting: priorities, retaliation cooldown, wounded enemies, player orders and determinism passed
+
+$ node tests/textes-lisibles.mjs --short
+PASS: aucune taille de police CSS sous 9 px hors menu d’accueil (.intro, .brand, .features, .note).
+
+$ node tests/unit-overlays.mjs --short
+PASS: constant screen health bars, feet anchors, team rings, ruby and minimap rendering.
+
+$ node tests/unit-speed.mjs --short
+PASS: Garde-Manger, 844 px en 10.050 s, dt=0.016666666666666666
+PASS: Garde-Manger, 844 px en 10.050 s, dt=0.05
+
+$ node tests/unit-voices.mjs --short
+PASS: cooldown, caching, pitch, faction mapping, pending spam, reset during load, failed download and disposal.
+
+$ node tests/watchtowers.mjs --short
+PASS : tours praticables et accessibles, capture militaire, contestation, reprise, vision, persistance et synchronisation.
+
+Syntaxe : tous les public/game/*.js vérifiés.

@@ -31,9 +31,9 @@ function stats(type, team) {
   return team === 1 ? RatsGout.unites[type] : TYPES[type];
 }
 const RULES = {
-  towerRadius: 65,
+  towerRadius: 90,
   towerCapture: 4,
-  baseBlindRadius: 200,
+  towerVision: 420,
   forestDamage: 2,
   forestReveal: 80,
   mineCost: 120,
@@ -57,6 +57,8 @@ const passages = [
   { name: 'sud-ouest', width: 140, points: [[2200, 1750], [2200, 1350]] },
 ];
 const reservedSites = [
+  { name: 'tour-nord', x: 1800, y: 650 },
+  { name: 'tour-sud', x: 2200, y: 1550 },
   { name: 'camp-nord-ouest', x: 450, y: 1300 },
   { name: 'camp-sud-est', x: 3550, y: 900 },
   { name: 'camp-nord-est', x: 1600, y: 200 },
@@ -118,7 +120,7 @@ function traversable(x, y) {
   if ((y < 300 && x < 2920) || (y > 1900 && x > 1080)) return true;
   if ((x > 760 && x < 1760 && y > 960 && y < 1240) ||
       (x < 3240 && x > 2240 && y < 1240 && y > 960)) return true;
-  if (reservedSites.some((site) => Math.hypot(x - site.x, y - site.y) < 180)) return true;
+  if (reservedSites.some((site) => !site.name.startsWith('tour-') && Math.hypot(x - site.x, y - site.y) < 180)) return true;
   return false;
 }
 // Concealing groves use the existing artwork and rules.
@@ -191,6 +193,39 @@ function configureIncome(s, team, bonus) {
   if (!s.incomeMultiplier) s.incomeMultiplier = [1, 1];
   s.incomeMultiplier[team] = 1 + bonus;
 }
+function createWatchtowers() {
+  return reservedSites.filter((site) => site.name.startsWith('tour-')).map((site) => ({
+    ...site,
+    owner: NEUTRAL,
+    capturingTeam: NEUTRAL,
+    progress: 0,
+    losses: [0, 0],
+  }));
+}
+function watchtowersTick(s, dt) {
+  for (const tower of s.watchtowers) {
+    const nearby = s.units.filter((unit) => unit.hp > 0 && unit.type !== 'commis' &&
+      (unit.team === 0 || unit.team === 1) && Math.hypot(unit.x - tower.x, unit.y - tower.y) < RULES.towerRadius);
+    const first = nearby.some((unit) => unit.team === 0);
+    const second = nearby.some((unit) => unit.team === 1);
+    const team = first !== second ? (first ? 0 : 1) : NEUTRAL;
+    if (team === NEUTRAL || team === tower.owner) {
+      tower.progress = 0;
+      tower.capturingTeam = NEUTRAL;
+      continue;
+    }
+    if (tower.capturingTeam !== team) tower.progress = 0;
+    tower.capturingTeam = team;
+    tower.progress = Math.min(RULES.towerCapture, tower.progress + dt);
+    if (tower.progress + 1e-9 >= RULES.towerCapture) {
+      if (tower.owner !== NEUTRAL) tower.losses[tower.owner]++;
+      tower.owner = team;
+      tower.progress = 0;
+      tower.capturingTeam = NEUTRAL;
+      visibility(s);
+    }
+  }
+}
 function create() {
   let s = {
     matchCounters: [emptyMatchCounters(), emptyMatchCounters()],
@@ -214,7 +249,7 @@ function create() {
       { x: 450, y: 1750, team: 0, hp: 1500, max: 1500, base: true },
       { x: 3550, y: 450, team: 1, hp: 1500, max: 1500, base: true },
     ],
-    tower: { x: 1948, y: 976, owner: -1, progress: 0 },
+    watchtowers: createWatchtowers(),
     mines: [
       { x: 535, y: 1770, owner: 0, name: 'Mine de la Braise', boost: false },
       { x: 3465, y: 430, owner: 1, name: 'Mine du Voile', boost: false },
@@ -434,6 +469,8 @@ function applyDamage(s, target, damage, attackerTeam = null, attackerId = null) 
 }
 // Shared migration for saved solo states and persisted server matches.
 function migrateState(s) {
+  s.watchtowers ??= createWatchtowers();
+  delete s.tower;
   s.ingredients ??= [0, 0];
   s.monsterId ??= 0;
   s.monsters ??= [];
@@ -751,6 +788,7 @@ function visibility(s) {
         .filter((u) => u.team === t)
         .map((u) => ({ x: u.x, y: u.y, vision: stats(u.type, u.team).vision })),
       ...s.mines.filter((m) => m.owner === t).map((m) => ({ ...m, vision: 105 })),
+      ...s.watchtowers.filter((tower) => tower.owner === t).map((tower) => ({ ...tower, vision: RULES.towerVision })),
     ];
     // Visit only cells inside each source's bounds instead of testing every
     // cell against every source. The strict radius test matches the old rule.
@@ -771,13 +809,6 @@ function visibility(s) {
       }
     }
     for (let i = 0; i < v.length; i++) {
-      if (!v[i] && s.tower.owner === t) {
-        const x = (i % COLS) * CELL + 10;
-        const y = Math.floor(i / COLS) * CELL + 10;
-        const outsideEnemyBase = Math.hypot(x - s.bases[1 - t].x, y - s.bases[1 - t].y) > RULES.baseBlindRadius;
-        const outsideEnemyMine = !s.mines.some((mine) => mine.owner === 1 - t && Math.hypot(x - mine.x, y - mine.y) < 140);
-        if (outsideEnemyBase && outsideEnemyMine) v[i] = 1;
-      }
       if (v[i]) s.explored[t][i] = 1;
     }
   }
@@ -844,19 +875,7 @@ function tick(s, dt) {
   s.damageEvents = (s.damageEvents || []).filter((event) => s.time - event.time < 5).slice(-24);
   s.fogClock += dt;
   s.aiClock += dt;
-  let near = s.units.filter(
-      (u) => Math.hypot(u.x - s.tower.x, u.y - s.tower.y) < RULES.towerRadius,
-    ),
-    a = near.some((u) => u.team === 0),
-    b = near.some((u) => u.team === 1);
-  if (!a && !b) {
-    s.tower.owner = -1;
-    s.tower.progress = 0;
-  } else if (a !== b) {
-    s.tower.progress = Math.max(-4, Math.min(4, s.tower.progress + (a ? dt : -dt)));
-    if (s.tower.progress >= 4) s.tower.owner = 0;
-    if (s.tower.progress <= -4) s.tower.owner = 1;
-  }
+  watchtowersTick(s, dt);
   if (s.fogClock > 0.18) {
     visibility(s);
     s.fogClock = 0;

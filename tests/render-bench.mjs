@@ -58,10 +58,10 @@ assert(state.units.reduce((sum, unit) => sum + unit.hp, 0) < health, 'Both armie
 console.log(`render-bench: sim + draw list ${((performance.now() - start) / 600).toFixed(3)} ms/frame (Node, no CPU throttling)`);
 
 // Compare every cell with the previous exhaustive visibility rule, including
-// tower exclusions, both teams, fractional positions and explored memory.
+// watchtower radii, both teams, fractional positions and explored memory.
 for (let sample = 0; sample < 8; sample++) {
   const scenario = combatScenario(Sim);
-  scenario.tower.owner = sample % 3 - 1;
+  scenario.watchtowers[sample % 2].owner = sample % 3 - 1;
   scenario.mines[sample % scenario.mines.length].owner = sample % 2;
   for (const [index, unit] of scenario.units.entries()) {
     unit.x = (index * 137.3 + sample * 23.7) % Sim.W;
@@ -73,14 +73,12 @@ for (let sample = 0; sample < 8; sample++) {
       ...Sim.baseSites(scenario, team).map((base) => ({ ...base, vision: 180 })),
       ...scenario.units.filter((unit) => unit.team === team).map((unit) => ({ ...unit, vision: Sim.stats(unit.type, team).vision })),
       ...scenario.mines.filter((mine) => mine.owner === team).map((mine) => ({ ...mine, vision: 105 })),
+      ...scenario.watchtowers.filter((tower) => tower.owner === team).map((tower) => ({ ...tower, vision: 420 })),
     ];
     for (let index = 0; index < expected[team].length; index++) {
       const x = index % Sim.COLS * Sim.CELL + 10;
       const y = Math.floor(index / Sim.COLS) * Sim.CELL + 10;
-      const tower = scenario.tower.owner === team &&
-        Math.hypot(x - scenario.bases[1 - team].x, y - scenario.bases[1 - team].y) > Sim.RULES.baseBlindRadius &&
-        !scenario.mines.some((mine) => mine.owner === 1 - team && Math.hypot(x - mine.x, y - mine.y) < 140);
-      expected[team][index] = Number(tower || sources.some((source) => (source.x - x) ** 2 + (source.y - y) ** 2 < source.vision ** 2));
+      expected[team][index] = Number(sources.some((source) => (source.x - x) ** 2 + (source.y - y) ** 2 < source.vision ** 2));
     }
   }
   const exploredBefore = scenario.explored.map((cells) => cells.slice());

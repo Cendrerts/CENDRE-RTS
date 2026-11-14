@@ -11,6 +11,9 @@ function recordingContext() {
     save() {},
     restore() {},
     beginPath() {},
+    arc(...args) {
+      calls.push(['arc', ...args]);
+    },
     closePath() {},
     moveTo(x, y) {
       calls.push(['moveTo', x, y]);
@@ -106,6 +109,7 @@ drawMinimap(mini, {
   fog: {},
   units: [{ x: 840, y: 470, team: 1 }, { x: 420, y: 235, team: 0 }],
   mines: [{ x: 100, y: 100 }],
+  watchtowers: [-1, 0, 1].map((owner) => ({ x: 1800, y: 650, owner })),
   camera: { x: 200, y: 100, width: 800, height: 400 },
   player: 1,
   worldWidth: 1680,
@@ -114,6 +118,9 @@ drawMinimap(mini, {
 assert.ok(mini.calls.some((call) => call[0] === 'fillRect' && call[1] === '#65ff97'));
 assert.ok(mini.calls.some((call) => call[0] === 'fillRect' && call[1] === '#ff4545'));
 assert.ok(mini.calls.some((call) => call[0] === 'fill' && call[1] === '#ffd477'));
+for (const color of ['#a0a0a0', ...TEAM_COLORS]) {
+  assert(mini.calls.some((call) => call[0] === 'fill' && call[1] === color), 'Couleur du propriétaire de tour sur la mini-carte');
+}
 assert.deepEqual(mini.calls.at(-1), ['strokeRect', '#fff2bd', 2, 20, 10, 80, 40]);
 
 for (const file of ['game.js', 'unit-overlays.js', 'minimap.js']) {

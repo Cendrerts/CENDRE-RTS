@@ -41,7 +41,7 @@ function section(x, y, dx, dy) {
 }
 const state = Sim.create();
 assert.equal(state.mines.length, 9);
-assert.equal(Sim.reservedSites.length, 6);
+assert.equal(Sim.reservedSites.length, 8);
 for (let cell = 0; cell < Sim.walk.length; cell++) {
   assert.equal(Sim.walk[cell], Sim.walk[Sim.walk.length - cell - 1], 'Rotation de 180°');
 }
