@@ -40,6 +40,9 @@ for (const team of [0, 1]) {
   for (const lane of S.lanes) {
     for (const type of ['commis', 'knight', 'archer', 'mage']) {
       const state = S.create();
+      // Isolate terrain travel from neutral camp combat.
+      state.monsters = [];
+      state.camps = [];
       state.units = [];
       S.spawn(state, type, team);
       const unit = state.units[0];

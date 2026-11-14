@@ -7,6 +7,9 @@ function advance(state, seconds) {
 }
 function fixture() {
   const state = S.create();
+  // Rally destinations cross a camp; isolate rally orders from neutral combat.
+  state.monsters = [];
+  state.camps = [];
   state.rubies[0] = 9999;
   state.units = [];
   S.construct(state, 0, S.BUILDINGS[0][0].id);
@@ -35,6 +38,9 @@ function fixture() {
 }
 {
   const state = S.create();
+  // Rally destinations cross a camp; isolate rally orders from neutral combat.
+  state.monsters = [];
+  state.camps = [];
   state.rubies[0] = 9999;
   state.units = [];
   // Use the same open lane as the combat unit's rally test.

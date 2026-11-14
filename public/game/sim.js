@@ -14,10 +14,20 @@ const CELL = 20;
 const COLS = W / CELL;
 const ROWS = H / CELL;
 const TYPES = BrigadeCuisine.unites;
+const NEUTRAL = -1;
+const BOAR = {
+  hp: 220,
+  damage: 12,
+  range: 25,
+  rate: 1.2,
+  speed: TYPES.commis.speed * 0.9,
+  name: 'Sanglier des cendres',
+};
 function unitLimit(team) {
   return (team === 1 ? RatsGout : BrigadeCuisine).unitLimit;
 }
 function stats(type, team) {
+  if (team === NEUTRAL) return BOAR;
   return team === 1 ? RatsGout.unites[type] : TYPES[type];
 }
 const RULES = {
@@ -39,7 +49,7 @@ const lanes = [
   { name: 'nord', points: [[450, 1750], [650, 1100], [650, 450], [1400, 450], [2000, 450], [2800, 450], [3550, 450]] },
   { name: 'sud', points: [[450, 1750], [1200, 1750], [2000, 1750], [2600, 1750], [3350, 1750], [3350, 1100], [3550, 450]] },
 ];
-// Reserved clearings: deliberately no entities, rewards or AI behaviour yet.
+// Symmetric clearings reserved by the enlarged map.
 const reservedSites = [
   { name: 'camp-nord-ouest', x: 1050, y: 450 },
   { name: 'camp-sud-est', x: 2950, y: 1750 },
@@ -149,6 +159,10 @@ function create() {
     time: 0,
     id: 0,
     rubies: [100, 100],
+    ingredients: [0, 0],
+    monsterId: 0,
+    monsters: [],
+    camps: reservedSites.filter((site) => site.name.startsWith('camp-')).map((site) => ({ ...site, respawnAt: null })),
     incomeMultiplier: [1, 1],
     units: [],
     shots: [],
@@ -176,11 +190,92 @@ function create() {
     explored: [new Uint8Array(walk.length), new Uint8Array(walk.length)],
   };
   for (const mine of s.mines) mine.remaining = RULES.mineReserve;
+  for (const camp of s.camps) spawnCamp(s, camp);
   spawn(s, 'commis', 0);
   spawn(s, 'commis', 1);
   ensureSlots(s);
   visibility(s);
   return s;
+}
+// Monsters use IDs, never object references, for targets across saved ticks.
+function spawnCamp(s, camp) {
+  for (const offset of [-24, 24]) {
+    s.monsters.push({
+      // Army IDs also determine collision ties; keep their sequence unchanged.
+      id: --s.monsterId,
+      type: 'sanglier',
+      team: NEUTRAL,
+      camp: camp.name,
+      x: camp.x + offset,
+      y: camp.y,
+      hp: BOAR.hp,
+      max: BOAR.hp,
+      cool: 0,
+      path: [],
+      targetId: null,
+      returning: false,
+    });
+  }
+  camp.respawnAt = null;
+}
+function returnMonster(monster, camp) {
+  monster.returning = true;
+  monster.targetId = null;
+  monster.lastAttackAt = undefined;
+  monster.hp = monster.max;
+  monster.path = route(monster.x, monster.y, camp.x, camp.y);
+}
+function monstersTick(s, dt) {
+  for (const monster of s.monsters) {
+    if (monster.hp <= 0) continue;
+    const camp = s.camps.find((camp) => camp.name === monster.camp);
+    monster.cool -= dt;
+    if (Math.hypot(monster.x - camp.x, monster.y - camp.y) > 260) {
+      returnMonster(monster, camp);
+    }
+    if (monster.returning) {
+      monster.hp = monster.max;
+      const point = monster.path[0] || camp;
+      const distance = Math.hypot(point.x - monster.x, point.y - monster.y);
+      const step = Math.min(distance, BOAR.speed * dt);
+      if (distance) moveSafely(monster, (point.x - monster.x) / distance * step, (point.y - monster.y) / distance * step);
+      if (distance <= step) monster.path.shift();
+      if (Math.hypot(monster.x - camp.x, monster.y - camp.y) < 2) monster.returning = false;
+      continue;
+    }
+    let target = s.units.find((unit) => unit.id === monster.targetId && unit.hp > 0);
+    if (!target) target = s.units.find((unit) => unit.hp > 0 && Math.hypot(unit.x - camp.x, unit.y - camp.y) < 90);
+    monster.targetId = target?.id ?? null;
+    if (!target) continue;
+    const distance = Math.hypot(target.x - monster.x, target.y - monster.y);
+    if (distance <= BOAR.range) {
+      if (monster.cool <= 0) {
+        monster.cool = BOAR.rate;
+        monster.lastAttackTargetId = target.id;
+        monster.lastAttackAt = s.time;
+        applyDamage(s, target, BOAR.damage);
+      }
+    } else {
+      // Route around walls so the leash also works near the clearing edge.
+      if (!monster.path.length || monster.repathAt <= s.time) {
+        monster.path = route(monster.x, monster.y, target.x, target.y);
+        monster.repathAt = s.time + 0.5;
+      }
+      const point = monster.path[0];
+      if (!point) continue;
+      const length = Math.hypot(point.x - monster.x, point.y - monster.y);
+      const step = Math.min(length, BOAR.speed * dt);
+      if (length) moveSafely(monster, (point.x - monster.x) / length * step, (point.y - monster.y) / length * step);
+      if (length <= step) monster.path.shift();
+      if (Math.hypot(monster.x - camp.x, monster.y - camp.y) > 260) returnMonster(monster, camp);
+    }
+  }
+  s.monsters = s.monsters.filter((monster) => monster.hp > 0);
+  for (const camp of s.camps) {
+    if (s.monsters.some((monster) => monster.camp === camp.name)) continue;
+    if (camp.respawnAt === null) camp.respawnAt = s.time + 120;
+    if (s.time >= camp.respawnAt) spawnCamp(s, camp);
+  }
 }
 // Resolve the persistent structure, since producers() returns presentation copies.
 function rallyBuilding(s, team, buildingId) {
@@ -279,10 +374,18 @@ function matchStats(s) {
     duration: s.time,
   };
 }
-function applyDamage(s, target, damage, attackerTeam = null) {
+function applyDamage(s, target, damage, attackerTeam = null, attackerId = null) {
+  if (target.team === NEUTRAL && target.returning) return;
   const wasAlive = target.hp > 0;
   target.hp -= damage;
   recordDamageEvent(s, target);
+  if (target.team === NEUTRAL) {
+    if (wasAlive && !target.returning && attackerTeam !== null) {
+      target.targetId = attackerId;
+    }
+    if (wasAlive && target.hp <= 0 && (attackerTeam === 0 || attackerTeam === 1)) s.ingredients[attackerTeam] += 15;
+    return;
+  }
   if (!wasAlive || target.hp > 0) return;
   if (!target.base) s.matchCounters[target.team].unitsLost++;
   if (attackerTeam === null || attackerTeam === target.team) return;
@@ -291,6 +394,10 @@ function applyDamage(s, target, damage, attackerTeam = null) {
 }
 // Shared migration for saved solo states and persisted server matches.
 function migrateState(s) {
+  s.ingredients ??= [0, 0];
+  s.monsterId ??= 0;
+  s.monsters ??= [];
+  s.camps ??= [];
   if (!s.incomeMultiplier) s.incomeMultiplier = [1, 1];
   s.matchCounters ??= [emptyMatchCounters(), emptyMatchCounters()];
   if (Object.hasOwn(s, 'gold')) {
@@ -448,7 +555,7 @@ function startWaypoint(s, unit, point) {
   unit.target = point.target
     ? point.target.base
       ? s.bases[point.target.team]
-      : s.units.find((candidate) => candidate.id === point.target.id) || null
+      : [...s.units, ...s.monsters].find((candidate) => candidate.id === point.target.id) || null
     : null;
   if (point.target && (!unit.target || unit.target.hp <= 0 || !canSee(s, unit.team, unit.target))) {
     unit.target = null;
@@ -657,8 +764,9 @@ function automaticTarget(s, unit, range, retaliating = false) {
   let priority = Infinity;
   let nearestDistance = Infinity;
   const candidates = [];
-  for (let index = 0; index <= s.units.length; index++) {
-    const candidate = index < s.units.length ? s.units[index] : s.bases[1 - unit.team];
+  const entities = [...s.units, ...s.monsters, s.bases[1 - unit.team]];
+  for (const candidate of entities) {
+    if (candidate.team === NEUTRAL && (candidate.returning || !candidate.targetId || candidate.lastAttackAt === undefined)) continue;
     if (candidate.team === unit.team || candidate.hp <= 0) continue;
     const distanceSquared = (candidate.x - unit.x) ** 2 + (candidate.y - unit.y) ** 2;
     if (distanceSquared > range * range || !canSee(s, unit.team, candidate)) continue;
@@ -713,8 +821,9 @@ function tick(s, dt) {
     visibility(s);
     s.fogClock = 0;
   }
+  monstersTick(s, dt);
   const fighting = new Set();
-  const entities = new Map(s.units.map((unit) => [unit.id, unit]));
+  const entities = new Map([...s.units, ...s.monsters].map((unit) => [unit.id, unit]));
   for (const base of s.bases) entities.set(targetKey(base), base);
   for (let u of s.units) {
     if (u.hp <= 0) continue;
@@ -748,7 +857,7 @@ function tick(s, dt) {
     // Allow the initial approach; abandon a target that escapes both the waypoint and pursuit range.
     const activeWaypoint = u.queueActive ? u.orderQueue?.[0] : null;
     const targetedWaypoint = activeWaypoint?.target;
-    if (target && (target.hp <= 0 || !canSee(s, u.team, target) ||
+    if (target && (target.returning || target.hp <= 0 || !canSee(s, u.team, target) ||
         (targetedWaypoint && u.chasing &&
           Math.hypot(target.x - activeWaypoint.x, target.y - activeWaypoint.y) > cfg.range + 75 +
             (target.base ? 45 : 0) &&
@@ -762,7 +871,7 @@ function tick(s, dt) {
     }
     if (!target && !u.retreat && !targetedWaypoint) {
       target = entities.get(u.autoTargetId);
-      if (target && (target.hp <= 0 || !canSee(s, u.team, target) ||
+      if (target && (target.returning || target.hp <= 0 || !canSee(s, u.team, target) ||
           Math.hypot(target.x - u.x, target.y - u.y) > cfg.range + 75 + (target.base ? 45 : 0))) {
         target = null;
         if (u.chasing) u.path = [];
@@ -813,16 +922,16 @@ function tick(s, dt) {
         u.cool = cfg.rate;
         u.lastAttackTargetId = target.id ?? null;
         u.lastAttackAt = s.time;
-        applyDamage(s, target, cfg.damage, u.team);
+        applyDamage(s, target, cfg.damage, u.team, u.id);
         if (cfg.splash) {
-          for (const v of s.units)
+          for (const v of [...s.units, ...s.monsters])
             if (
               v !== target &&
               v.team !== u.team &&
               v.hp > 0 &&
               Math.hypot(v.x - target.x, v.y - target.y) <= cfg.splash
             ) {
-              applyDamage(s, v, cfg.damage, u.team);
+              applyDamage(s, v, cfg.damage, u.team, u.id);
             }
         }
         s.shots.push({
@@ -873,6 +982,9 @@ function tick(s, dt) {
         if (!u.path.length && !u.orderQueue?.length) u.retreat = false;
       }
     }
+  }
+  for (const camp of s.camps) {
+    if (camp.respawnAt === null && !s.monsters.some((monster) => monster.camp === camp.name && monster.hp > 0)) camp.respawnAt = s.time + 120;
   }
   separate(s.units, fighting, dt);
   for (const u of s.units) {

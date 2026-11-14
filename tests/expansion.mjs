@@ -20,6 +20,9 @@ function trip(withDepot, team, index) {
   const s = S.create(),
     u = s.units.find((u) => u.team === team),
     m = s.mines[index];
+  // Measure depot travel without neutral camp combat along the route.
+  s.monsters = [];
+  s.camps = [];
   place(u, m.x, m.y);
   s.rubies[team] = 500;
   if (withDepot) {

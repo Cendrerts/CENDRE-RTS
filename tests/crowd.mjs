@@ -18,6 +18,9 @@ function addGroup(state, count, x, y) {
 
 function scenario(kind) {
   const state = S.create();
+  // Isolate crowd movement from neutral camp combat.
+  state.monsters = [];
+  state.camps = [];
   state.units = [];
   // Cross the northern forest corridor in both directions, then approach a base.
   if (kind === 'building') {
