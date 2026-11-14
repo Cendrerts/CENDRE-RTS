@@ -295,13 +295,14 @@ export function createAI(team, difficulty = 'normal', state = null) {
       // between recapturable depots scattered across the enlarged map.
       const decisiveAttack = (metrics.waves >= 2 || state.time >= 480) &&
         (power(army) >= power(observedArmy) || saturated || state.rubies[team] >= 800 || state.time >= 600);
+      const lateSiege = brutal && saturated && state.time >= 720;
       const destination = (!decisiveAttack && [...remembered.values()].sort((a, b) => distance(a, state.bases[team]) - distance(b, state.bases[team]))[0]) || intelligence.bases[0] || { x: enemyBase.x, y: enemyBase.y };
-      if (brutal && !(decisiveAttack && waveRoute) && !defending && lastWave > 0 && state.time - lastWave > waveTravelTime && lastRegroup < lastWave) {
+      if (brutal && !(lateSiege && decisiveAttack && waveRoute) && !defending && lastWave > 0 && state.time - lastWave > waveTravelTime && lastRegroup < lastWave) {
         deployed.clear();
         Sim.order(state, army.map((unit) => unit.id), rally.x, rally.y, null, false);
         lastRegroup = state.time;
       }
-      const reinforcing = decisiveAttack && waveRoute && !defending && state.time >= retreatUntil &&
+      const reinforcing = lateSiege && decisiveAttack && waveRoute && !defending && state.time >= retreatUntil &&
         army.some((unit) => waveRoute.ids.has(unit.id) && deployed.has(unit.id) && !unit.retreat);
       if (reinforcing) {
         const reinforcements = army.filter((unit) => !deployed.has(unit.id) && !unit.retreat && unit.id !== scout && !raiders.has(unit.id));
@@ -342,7 +343,7 @@ export function createAI(team, difficulty = 'normal', state = null) {
         if (!members.length) {
           waveRoute = null;
         } else if (members.filter((unit) => distance(unit, point) < 140).length >= members.length * 0.7 &&
-          !(decisiveAttack && waveRoute.index === waveRoute.points.length - 1)) {
+          !(lateSiege && decisiveAttack && waveRoute.index === waveRoute.points.length - 1)) {
           waveRoute.index++;
           if (waveRoute.index === waveRoute.points.length) {
             waveRoute = null;

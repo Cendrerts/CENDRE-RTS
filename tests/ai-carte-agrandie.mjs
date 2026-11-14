@@ -122,6 +122,47 @@ for (const team of [0, 1]) {
     Math.hypot(point.x - state.bases[1].x, point.y - state.bases[1].y) < 200)));
 }
 
+// Streaming reinforcements require Brutal, the population cap and 720 seconds.
+for (const [difficulty, time, capped, expected] of [
+  ['normal', 800, true, false],
+  ['difficile', 800, true, false],
+  ['brutal', 718, true, false],
+  ['brutal', 800, false, false],
+  ['brutal', 720, true, true],
+  ['impitoyable', 720, true, true],
+]) {
+  const state = Sim.create();
+  state.units = [];
+  for (let index = 0; index < 14; index++) {
+    Sim.spawn(state, 'knight', 0);
+    const unit = state.units.at(-1);
+    unit.x = state.bases[0].x + 110;
+    unit.y = state.bases[0].y - 65;
+    unit.path = [];
+  }
+  state.rubies[0] = 0;
+  state.time = time;
+  state.visible[0].fill(0);
+  const controller = createAI(0, difficulty);
+  controller.update(state);
+  assert.equal(controller.metrics.waves, 1);
+  Sim.spawn(state, 'knight', 0);
+  const reinforcement = state.units.at(-1);
+  reinforcement.x = 2000;
+  reinforcement.y = 1100;
+  reinforcement.path = [];
+  if (capped) {
+    while (state.units.length + state.queues[0].length < Sim.unitLimit(0)) {
+      state.queues[0].push({ type: 'knight' });
+    }
+  }
+  state.time++;
+  controller.update(state);
+  assert.equal(controller.metrics.waves, 1);
+  assert.equal(reinforcement.orderQueue.length > 0, expected,
+    `${difficulty} at ${state.time}s, capped=${capped}: streaming reinforcements`);
+}
+
 // A raid on an undefended expansion evacuates workers and recalls the army.
 {
   const state = Sim.create();
