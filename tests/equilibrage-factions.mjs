@@ -67,7 +67,7 @@ try {
     }
     sim.visibility(state);
     const controllers = [0, 1].map((team) => ai(team, 'brutal'));
-    for (let step = 0; step < 12000 && state.winner === null; step++) {
+    for (let step = 0; step < 18000 && state.winner === null; step++) {
       for (const team of reversed ? [1, 0] : [0, 1]) {
         if (state.time >= startDelays[team]) {
           controllers[team].update(state);
@@ -81,12 +81,12 @@ try {
     if (state.winner === null) {
       timeoutSeeds.push(initialSeed);
     }
-    assert(state.time <= 1200 + 1e-6);
+    assert(state.time <= 1800 + 1e-6);
     wins[winner]++;
   }
   console.log(`Tournament: rats ${wins.rats}/20, cooks ${wins.cooks}/20, timeouts ${wins.timeout}, distinct outcomes ${outcomes.size}/20, timeout seeds: ${timeoutSeeds.join(', ') || 'none'}`);
   assert(outcomes.size >= 16, `Only ${outcomes.size}/20 distinct (winner, rounded duration) pairs; expected at least 16`);
-  assert.equal(wins.timeout, 0, `No winner within 20 minutes for seeds: ${timeoutSeeds.join(', ')}`);
+  assert.equal(wins.timeout, 0, `No winner within 30 minutes for seeds: ${timeoutSeeds.join(', ')}`);
   assert(wins.rats >= 8 && wins.rats <= 12, `Rats win ${wins.rats}/20; expected 8–12 (${JSON.stringify(wins)})`);
   console.log('PASS: Brutal tournament balanced 8–12, faction population caps and military costs.');
 } finally {

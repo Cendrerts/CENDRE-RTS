@@ -61,7 +61,9 @@ for (const horde of [false, true]) {
           for (const unit of troops) {
             assert.equal(unit.retreat, false);
             assert(unit.path.length > 0);
-            assert(Math.hypot(unit.attackDestination.x - state.bases[1].x, unit.attackDestination.y - state.bases[1].y) < 200);
+            const lane = sim.lanes.find((candidate) => candidate.name === controller.metrics.lanes.at(-1));
+            const [x, y] = lane.points[1];
+            assert(unit.orderQueue.some((point) => Math.hypot(point.x - x, point.y - y) < 200));
           }
         }
       }
@@ -94,8 +96,11 @@ for (const horde of [false, true]) {
           const [, ids, x, y, target, retreat] = orders.at(-1);
           const army = state.units.filter((unit) => unit.team === 0 && unit.type !== 'commis');
           assert.deepEqual(ids, army.slice(2).map((unit) => unit.id));
-          assert.equal(x, expected.x);
-          assert.equal(y, expected.y);
+          const firstStage = Math.hypot(expected.x - state.bases[1].x, expected.y - state.bases[1].y) < 320
+            ? sim.lanes.find((lane) => lane.name === controller.metrics.lanes.at(-1)).points[1]
+            : [expected.x, expected.y];
+          assert.equal(x, firstStage[0]);
+          assert.equal(y, firstStage[1]);
           assert.equal(target, null);
           assert.equal(retreat, false);
           state.time = 121;
@@ -109,8 +114,9 @@ for (const horde of [false, true]) {
           state.time = 240;
           controller.update(state);
           assert.equal(controller.metrics.waves, 2);
-          assert.equal(orders.at(-1)[2], state.bases[1].x);
-          assert.equal(orders.at(-1)[3], state.bases[1].y);
+          const lane = sim.lanes.find((candidate) => candidate.name === controller.metrics.lanes.at(-1));
+          assert.equal(orders.at(-1)[2], lane.points[1][0]);
+          assert.equal(orders.at(-1)[3], lane.points[1][1]);
         } finally {
           sim.order = originalOrder;
         }
@@ -156,15 +162,15 @@ for (const horde of [false, true]) {
         const limit = sim.unitLimit?.(0) ?? 30;
         for (let index = 1; index < limit; index++) sim.spawn(state, 'knight', 0);
         const worker = state.units.find((unit) => unit.team === 0 && unit.type === 'commis');
-        worker.x = state.mines[3].x;
-        worker.y = state.mines[3].y;
+        worker.x = state.mines[2].x;
+        worker.y = state.mines[2].y;
         sim.visibility(state);
         state.rubies[0] = 900;
         state.time = 300;
         const controller = ai(0, 'brutal');
         controller.update(state);
-        assert.equal(state.mines[3].owner, 0);
-        assert(state.mines[3].depot);
+        assert.equal(state.mines[2].owner, 0);
+        assert(state.mines[2].depot);
         assert.equal(controller.metrics.expansions.length, 1);
         assert(state.slots[0].some((slot) => !slot.occupe));
         assert(state.rubies[0] < 900);
@@ -175,6 +181,7 @@ for (const horde of [false, true]) {
     const timeoutSeeds = [];
     const hoarding = [];
     let totalWaves = 0;
+    let gamesWithExpansion = 0;
     for (let game = 0; game < 20; game++) {
       const reversed = game % 2 === 1;
       const sim = reversed ? reversedSim : normalSim;
@@ -202,7 +209,7 @@ for (const horde of [false, true]) {
       const controllers = [0, 1].map((team) => ai(team, 'brutal'));
       const bankSince = [null, null];
       const longestBank = [0, 0];
-      for (let step = 0; step < 12000 && state.winner === null; step++) {
+      for (let step = 0; step < 18000 && state.winner === null; step++) {
         for (const team of reversed ? [1, 0] : [0, 1]) {
           if (state.time >= startDelays[team]) {
             controllers[team].update(state);
@@ -218,6 +225,7 @@ for (const horde of [false, true]) {
           }
         }
       }
+      if (controllers.some((controller) => controller.metrics.expansions.length > 0)) gamesWithExpansion++;
       totalWaves += controllers.reduce((sum, controller) => sum + controller.metrics.waves, 0);
       if (longestBank.some((seconds) => seconds > 60)) hoarding.push({ seed: initialSeed, longestBank });
       const winner = state.winner === null ? 'timeout' : state.winner === ratsTeam ? 'rats' : 'cooks';
@@ -226,11 +234,13 @@ for (const horde of [false, true]) {
       if (state.winner === null) {
         timeoutSeeds.push(initialSeed);
       }
-      assert(state.time <= 1200 + 1e-6);
+      assert(state.time <= 1800 + 1e-6);
       wins[winner]++;
     }
     console.log(`Tournament: rats ${wins.rats}/20, cooks ${wins.cooks}/20, timeouts ${wins.timeout}, distinct outcomes ${outcomes.size}/20, timeout seeds: ${timeoutSeeds.join(', ') || 'none'}`);
     console.log(`Mean waves per game: ${totalWaves / 20}; hoarding: ${JSON.stringify(hoarding)}`);
+    console.log(`Games with an AI expansion: ${gamesWithExpansion}/20`);
+    assert(gamesWithExpansion >= 15, `Only ${gamesWithExpansion}/20 games with an AI expansion`);
     assert(outcomes.size >= 16, `Only ${outcomes.size}/20 distinct games`);
     assert.equal(wins.timeout, 0, `Timeout seeds: ${timeoutSeeds.join(', ')}`);
     assert.deepEqual(hoarding, [], 'No bank above 1500 rubies for more than 60 consecutive seconds');

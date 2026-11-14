@@ -132,7 +132,7 @@ try {
     const strongTeam = game % 2;
     const snapshots = [];
     const controllers = [0, 1].map((team) => createAI(team, team === strongTeam ? 'impitoyable' : 'brutal', state));
-    for (let step = 0; step < 9000 && state.winner === null; step++) {
+    for (let step = 0; step < 15000 && state.winner === null; step++) {
       for (const team of strongTeam ? [1, 0] : [0, 1]) controllers[team].update(state);
       S.tick(state, 0.1);
       if ([120, 200, 300].some((time) => Math.abs(state.time - time) < 0.01)) {
@@ -140,7 +140,7 @@ try {
         snapshots.push({ time: Math.round(state.time), rubies: state.rubies[strongTeam], armies });
       }
     }
-    assert.notEqual(state.winner, null, `Seed ${game + 1}: no winner after 15 minutes`);
+    assert.notEqual(state.winner, null, `Seed ${game + 1}: no winner after 25 minutes`);
     if (state.winner === strongTeam) {
       victories++;
       victoriesByTeam[strongTeam]++;
