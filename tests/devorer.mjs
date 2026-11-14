@@ -107,14 +107,16 @@ for (const interruption of ['move', 'hold', 'steer', 'retreat', 'patrol', 'queue
   assert.equal(state.units.filter((candidate) => candidate.devour).length, 1);
   assert(second.path.length > 0);
   assert(view(state, 1).corpses.some((item) => item.id === corpse.id));
+  rat.x = corpse.x - 100;
+  second.x = corpse.x - 150;
   for (const scale of [0.4, 1, 2]) {
     const action = resolveTap(state, 1, new Set([rat.id]), { x: corpse.x + 21 / scale, y: corpse.y }, scale);
     assert.equal(action.kind, 'devour', 'Zone tactile de 44 px');
   }
-  const enemy = unit(state, 0, 'archer', corpse.x + 15, corpse.y + 20);
+  const enemy = unit(state, 0, 'archer', corpse.x, corpse.y + 20);
   assert.equal(resolveTap(state, 1, new Set([rat.id]), corpse).kind, 'attack');
   state.units = state.units.filter((candidate) => candidate !== enemy);
-  const cook = unit(state, 0);
+  const cook = unit(state, 0, 'knight', corpse.x - 100, corpse.y);
   const rats = state.units.filter((candidate) => candidate.team === 1);
   state.units = state.units.filter((candidate) => candidate.team !== 1);
   assert.equal(resolveTap(state, 0, new Set([cook.id]), corpse).kind, 'move');
@@ -122,6 +124,27 @@ for (const interruption of ['move', 'hold', 'steer', 'retreat', 'patrol', 'queue
   state.time = corpse.expiresAt - 0.1;
   advance(state, 0.2);
   assert.equal(rat.devour, null);
+}
+{
+  const { state, corpse } = fixture();
+  const worker = unit(state, 1, 'commis', corpse.x - 100, corpse.y);
+  const mine = state.mines[1];
+  Object.assign(mine, { x: corpse.x + 5, y: corpse.y, owner: 1 });
+  let target = null;
+  const gather = resolveTap(state, 1, new Set([worker.id]), mine, 1, (winner) => {
+    target = winner.target;
+  });
+  assert.equal(gather.kind, 'gather', 'Le cadavre voisin ne vole pas la mine au commis Rat');
+  assert.equal(target, mine, 'Le ciblage appelle onTarget');
+}
+{
+  const { state, corpse } = fixture();
+  state.units = [];
+  const cook = unit(state, 0, 'knight', corpse.x - 100, corpse.y);
+  assert.equal(resolveTap(state, 0, new Set([cook.id]), corpse).kind, 'move');
+  const slot = state.slots[0][0];
+  Object.assign(slot, { x: corpse.x + 5, y: corpse.y, occupe: true, batiment: { type: S.BUILDINGS[0][0].id } });
+  assert.equal(resolveTap(state, 0, new Set([cook.id]), slot).kind, 'production', 'Le cadavre voisin ne vole pas le bâtiment Cuistot');
 }
 {
   const { state, rat, corpse } = fixture();

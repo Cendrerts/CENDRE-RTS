@@ -1082,10 +1082,16 @@ function draw() {
     if (!Sim.visibleAt(state, player, corpse.x, corpse.y)) continue;
     ctx.save();
     ctx.globalAlpha = Math.max(0, Math.min(1, (corpse.expiresAt - state.time) / 5));
+    ctx.strokeStyle = '#b8a994';
+    ctx.lineWidth = 2 / scale;
     ellipse(corpse.x, corpse.y, corpse.type === 'sanglier' ? 25 : 20, 7, '#242326');
+    ctx.stroke();
     ellipse(corpse.x + 19, corpse.y - 2, 7, 6, '#302b30');
+    ctx.stroke();
     line(corpse.x - 8, corpse.y, corpse.x - 18, corpse.y + 10, '#242326', 5);
     line(corpse.x + 6, corpse.y, corpse.x + 14, corpse.y + 9, '#242326', 5);
+    line(corpse.x - 5, corpse.y - 4, corpse.x + 5, corpse.y + 4, '#b8a994', 2 / scale);
+    line(corpse.x - 5, corpse.y + 4, corpse.x + 5, corpse.y - 4, '#b8a994', 2 / scale);
     ctx.restore();
   }
   preparedUnits.forEach(unit);

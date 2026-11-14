@@ -25,10 +25,12 @@ export function resolveTap(state, player, selection, point, scale = 1, onTarget 
   );
   const workers = selected.filter((unit) => unit.type === 'commis');
   const combat = selected.some((unit) => unit.type !== 'commis');
+  const ratMilitary = player === 1 && combat;
   const candidates = [];
   const priorities = workers.length
     ? ['mine', 'unit', 'enemy', 'building', 'slot']
     : combat ? ['enemy', 'unit', 'building', 'mine', 'slot'] : ['unit', 'enemy', 'building', 'slot', 'mine'];
+  if (ratMilitary) priorities.splice(priorities.indexOf('enemy') + 1, 0, 'corpse');
   function add(target, category, radius, action, bounds = null, sprite = false) {
     const center = sprite
       ? { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 }
@@ -48,9 +50,10 @@ export function resolveTap(state, player, selection, point, scale = 1, onTarget 
     else add(unit, combat && !workers.length ? 'enemy' : 'unit', 26, selected.length ? { kind: 'attack', target: unit } : { kind: 'none' }, unitHitbox(unit), true);
   }
   for (const corpse of state.corpses || []) {
+    if (!ratMilitary) continue;
     if (corpse.expiresAt <= state.time || !Sim.visibleAt(state, player, corpse.x, corpse.y)) continue;
-    if (selected.length) add(corpse, 'corpse', 22, {
-      kind: player === 1 && combat ? 'devour' : 'move',
+    add(corpse, 'corpse', 22, {
+      kind: 'devour',
       ids: selected.map((unit) => unit.id),
       corpseId: corpse.id,
     });
@@ -86,13 +89,6 @@ export function resolveTap(state, player, selection, point, scale = 1, onTarget 
   if (!candidates.length) return { kind: selected.length ? 'move' : 'none' };
   const ownUnits = selected.length ? [] : candidates.filter((candidate) => candidate.action.kind === 'select');
   const eligible = ownUnits.length ? ownUnits : candidates;
-  const corpseHit = eligible.some((candidate) => candidate.category === 'corpse');
-  if (corpseHit) {
-    const winner = eligible.filter((candidate) => candidate.category === 'corpse' ||
-      (candidate.target.hp > 0 && candidate.target.team !== player))
-      .sort((a, b) => (a.category === 'corpse' ? 1 : 0) - (b.category === 'corpse' ? 1 : 0) || a.distance - b.distance)[0];
-    return winner.action;
-  }
   const nearest = Math.min(...eligible.map((candidate) => candidate.distance));
   const tied = eligible.filter((candidate) => candidate.distance <= nearest + 6);
   tied.sort((a, b) => priorities.indexOf(a.category) - priorities.indexOf(b.category) || a.distance - b.distance);

@@ -24,6 +24,7 @@ window.prepareDevour = () => {
   Sim.visibility(state);
   Sim.order(state, [rat.id], victim.x, victim.y, victim);
   Sim.tick(state, 0.05);
+  state.corpses.push({ ...state.corpses[0], id: 'isolated-corpse', x: 2110, y: 1140 });
   selected = new Set([rat.id]);
   cameraX = 2000;
   cameraY = 1100;
