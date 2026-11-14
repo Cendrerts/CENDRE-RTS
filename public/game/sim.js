@@ -525,6 +525,7 @@ function order(s, ids, x, y, target = null, retreat = !target, queue = false) {
       }
       return;
     }
+    u.orderSpeed = null;
     u.orderQueue = [];
     u.queueActive = false;
     u.followId = null;
@@ -544,6 +545,17 @@ function order(s, ids, x, y, target = null, retreat = !target, queue = false) {
     u.stuck = null;
   });
 }
+// Move a wave at its slowest member's pace so long routes do not turn
+// archers, infantry and mages into three isolated attacks. Combat and retreat
+// orders restore each unit's normal speed through order().
+function orderFormation(s, ids, x, y, queue = false) {
+  const units = s.units.filter((unit) => ids.includes(unit.id) && unit.hp > 0);
+  if (!units.length) return;
+  const speed = Math.min(...units.map((unit) => stats(unit.type, unit.team).speed));
+  CendreSim.order(s, ids, x, y, null, false, queue);
+  for (const unit of units) unit.orderSpeed = speed;
+}
+
 function patrol(s, ids, x, y) {
   const origins = new Map(
     s.units
@@ -858,7 +870,7 @@ function tick(s, dt) {
           if (Math.hypot(probe.x - next.x, probe.y - next.y) > 0.01) break;
           u.path.shift();
         }
-        let remaining = cfg.speed * dt;
+        let remaining = Math.min(cfg.speed, u.orderSpeed ?? cfg.speed) * dt;
         while (remaining > 0 && u.path.length) {
           const point = u.path[0];
           const dx = point.x - u.x;
@@ -1129,7 +1141,7 @@ function predictMotion(state, unit, command, dt) {
     return;
   }
   if (!unit.path?.length) return;
-  let distance = stats(unit.type, unit.team).speed * dt;
+  let distance = Math.min(stats(unit.type, unit.team).speed, unit.orderSpeed ?? Infinity) * dt;
   while (distance > 0 && unit.path.length) {
     const point = unit.path[0];
     const dx = point.x - unit.x;
@@ -1189,6 +1201,7 @@ export const CendreSim = {
   unitLimit,
   recruitBlockReason,
   order,
+  orderFormation,
   patrol,
   build,
   visibleAt,

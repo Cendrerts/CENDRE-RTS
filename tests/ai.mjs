@@ -235,19 +235,19 @@ for (const team of [0, 1]) {
 {
   const state = S.create();
   const worker = state.units.find((unit) => unit.team === 0);
-  worker.x = state.mines[3].x;
-  worker.y = state.mines[3].y;
+  worker.x = state.mines[2].x;
+  worker.y = state.mines[2].y;
   state.rubies[0] = 1000;
   state.time = 150;
   S.visibility(state);
   const controller = createAI(0, 'difficile');
   controller.update(state);
-  assert.equal(state.mines[3].owner, 0);
-  state.mines[3].owner = 1;
+  assert.equal(state.mines[2].owner, 0);
+  state.mines[2].owner = 1;
   const before = state.rubies[0];
   state.time = 151;
   controller.update(state);
-  assert.equal(state.mines[3].owner, 0);
+  assert.equal(state.mines[2].owner, 0);
   assert(state.rubies[0] <= before - S.RULES.mineCost);
 }
 
