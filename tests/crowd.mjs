@@ -19,16 +19,15 @@ function addGroup(state, count, x, y) {
 function scenario(kind) {
   const state = S.create();
   state.units = [];
-  // The real map has one forest ellipse, not two forest obstacles. Its narrow
-  // northern ramp (x=820..920, y=260..310) is the existing bottleneck fixture.
+  // Cross the northern forest corridor in both directions, then approach a base.
   if (kind === 'building') {
-    const group = addGroup(state, 30, 770, 570);
+    const group = addGroup(state, 30, 600, 1690);
     S.order(state, group.map((unit) => unit.id), state.bases[0].x + 20, state.bases[0].y);
   } else {
-    const north = addGroup(state, kind === 'crossing' ? 20 : 40, 770, 90);
-    const south = kind === 'crossing' ? addGroup(state, 20, 830, 570) : [];
-    S.order(state, north.map((unit) => unit.id), 910, 610);
-    if (south.length) S.order(state, south.map((unit) => unit.id), 850, 150);
+    const west = addGroup(state, kind === 'crossing' ? 20 : 40, 650, 360);
+    const east = kind === 'crossing' ? addGroup(state, 20, 1350, 400) : [];
+    S.order(state, west.map((unit) => unit.id), 1400, 450);
+    if (east.length) S.order(state, east.map((unit) => unit.id), 650, 450);
   }
   const measurements = state.units.map((unit) => {
     const destination = { ...unit.path.at(-1) };
@@ -53,7 +52,7 @@ function scenario(kind) {
       const { unit, destination } = item;
       assert(S.walk[Math.floor(unit.y / S.CELL) * S.COLS + Math.floor(unit.x / S.CELL)], 'Terrain marchable à chaque tick');
       const distance = Math.hypot(unit.x - destination.x, unit.y - destination.y);
-      if (unit.y >= 280 && unit.y < 300) item.crossed = true;
+      if (unit.x >= 990 && unit.x < 1010) item.crossed = true;
       if (item.arrival !== null) {
         if (distance < 40) continue;
         item.arrival = null;

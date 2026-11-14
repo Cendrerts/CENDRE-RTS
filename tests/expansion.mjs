@@ -7,10 +7,10 @@ const place = (u, x, y) => {
   u.y = Math.floor(c / S.COLS) * 20 + 10;
 };
 const s = S.create();
-assert.equal(s.mines.length, 7);
-assert.equal(s.mines.filter((m) => m.name.startsWith('Plateau nord')).length, 2);
-assert.equal(s.mines.filter((m) => m.name.startsWith('Faille sud')).length, 2);
-for (let i = 2; i < 7; i++) {
+assert.equal(s.mines.length, 9);
+assert.equal(s.mines.filter((m) => m.name.startsWith('Naturelle')).length, 2);
+assert.equal(s.mines.filter((m) => m.name.startsWith('Flanc nord')).length, 2);
+for (let i = 2; i < s.mines.length; i++) {
   const m = s.mines[i];
   assert(m.site);
   assert(S.route(m.x, m.y, m.site.x, m.site.y).length);
@@ -35,7 +35,7 @@ function trip(withDepot, team, index) {
   return s.time;
 }
 for (let team = 0; team < 2; team++)
-  for (const i of [2, 3, 4, 5, 6]) {
+  for (const i of [2, 3, 4, 5, 6, 7, 8]) {
     const local = trip(true, team, i),
       far = trip(false, team, i);
     assert(local < far, `No gain ${team}/${i}: ${local}/${far}`);
@@ -60,5 +60,5 @@ for (let team = 0; team < 2; team++)
   assert.equal(view(s, 1).mines[2].depot, false);
 }
 console.log(
-  'PASS: seven mines, accessible sites, costs, local delivery for both factions, capture reroute and fog.',
+  'PASS: nine mines, accessible sites, costs, local delivery for both factions, capture reroute and fog.',
 );

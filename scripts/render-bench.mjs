@@ -84,8 +84,14 @@ try {
         const { ratSprites } = await import('/public/game/rats.js');
         await Promise.all([...Object.values(cookSprites), ...Object.values(ratSprites)].map((image) => image.decode()));
         const terrain = new Image();
-        terrain.src = '/public/game/assets/terres-brulees.png';
+        const atlas = new Image();
+        atlas.src = '/public/game/assets/terres-brulees.png';
+        await atlas.decode();
+        const { createSkirmishTerrain } = await import('/public/game/terrain.js');
+        const blob = await new Promise((resolve) => createSkirmishTerrain(atlas, sim).toBlob(resolve));
+        terrain.src = URL.createObjectURL(blob);
         await terrain.decode();
+        URL.revokeObjectURL(terrain.src);
         const startingHealth = state.units.reduce((sum, unit) => sum + unit.hp, 0);
         const samples = [];
         let minUnits = startingUnits;
@@ -94,7 +100,7 @@ try {
           const started = performance.now();
           sim.tick(state, 1 / 60);
           const units = prepareDrawList(state, 0, sim.canSee);
-          cache.terrain(terrain, 844, 390, 0, 0, 1, sim.W, sim.H);
+          cache.terrain(terrain, 844, 390, 422 - sim.W / 2, 195 - sim.H / 2, 1, sim.W, sim.H);
           cache.updateFog(context, state.visible[0], state.explored[0], sim.COLS);
           for (const unit of units) {
             const size = unit.type === 'archer' ? 52 : 46;

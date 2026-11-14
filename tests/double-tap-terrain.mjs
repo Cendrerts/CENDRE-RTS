@@ -32,6 +32,7 @@ for (const player of [0, 1]) {
     const state = Sim.create();
     state.visible[player].fill(1);
     state.slots[player] = [];
+    state.mines = [];
     const unit = { id: 100, team: player, type: 'commis', hp: 50, x: 700, y: 500 };
     state.units = [
       unit,

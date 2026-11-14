@@ -8,11 +8,11 @@ import {
 } from './slots.js';
 import { BrigadeCuisine } from './cooks-config.js';
 import { RatsGout } from './rats-config.js';
-const W = 1680,
-  H = 940,
-  CELL = 20,
-  COLS = 84,
-  ROWS = 47;
+const W = 4000;
+const H = 2200;
+const CELL = 20;
+const COLS = W / CELL;
+const ROWS = H / CELL;
 const TYPES = BrigadeCuisine.unites;
 function unitLimit(team) {
   return (team === 1 ? RatsGout : BrigadeCuisine).unitLimit;
@@ -32,127 +32,56 @@ const RULES = {
   harvestTime: 3,
   harvestSpeed: 60,
 };
-// Traversable terrain joined by the map's ramps; cliffs and lava stay outside.
-const polygons = [
-  [
-    [180, 600],
-    [355, 530],
-    [490, 558],
-    [610, 660],
-    [705, 716],
-    [672, 812],
-    [554, 845],
-    [395, 839],
-    [275, 770],
-    [150, 701],
-  ],
-  [
-    [470, 552],
-    [557, 558],
-    [660, 634],
-    [618, 673],
-  ],
-  [
-    [565, 352],
-    [705, 308],
-    [1040, 310],
-    [1140, 365],
-    [1133, 525],
-    [1035, 585],
-    [947, 722],
-    [802, 765],
-    [704, 714],
-    [644, 634],
-    [580, 587],
-    [556, 487],
-  ],
-  [
-    [710, 78],
-    [1017, 45],
-    [1050, 210],
-    [986, 258],
-    [765, 260],
-    [710, 211],
-  ],
-  [
-    [822, 237],
-    [924, 237],
-    [924, 332],
-    [810, 335],
-  ],
-  [
-    [1096, 210],
-    [1200, 134],
-    [1444, 166],
-    [1512, 321],
-    [1440, 384],
-    [1270, 369],
-    [1165, 320],
-  ],
-  [
-    [1135, 301],
-    [1221, 321],
-    [1157, 393],
-    [1080, 369],
-  ],
-  [
-    [1133, 544],
-    [1320, 527],
-    [1453, 604],
-    [1460, 717],
-    [1345, 803],
-    [1161, 767],
-    [1050, 710],
-  ],
-  [
-    [1011, 522],
-    [1120, 521],
-    [1176, 590],
-    [1083, 637],
-  ],
-  [
-    [751, 790],
-    [877, 781],
-    [946, 864],
-    [932, 937],
-    [707, 937],
-    [665, 886],
-  ],
-  [
-    [762, 697],
-    [843, 694],
-    [874, 823],
-    [747, 828],
-  ],
-  [
-    [281, 240],
-    [426, 217],
-    [491, 282],
-    [445, 351],
-    [330, 381],
-    [266, 320],
-  ],
-  [
-    [407, 299],
-    [491, 297],
-    [605, 352],
-    [577, 412],
-    [464, 374],
-  ],
+// Rotational symmetry gives both starts identical distances and choke widths.
+// Waypoints also document the three distinct base-to-base approaches.
+const lanes = [
+  { name: 'centre', points: [[450, 1750], [1100, 1550], [1600, 1250], [2000, 1100], [2400, 950], [2900, 650], [3550, 450]] },
+  { name: 'nord', points: [[450, 1750], [650, 1100], [650, 450], [1400, 450], [2000, 450], [2800, 450], [3550, 450]] },
+  { name: 'sud', points: [[450, 1750], [1200, 1750], [2000, 1750], [2600, 1750], [3350, 1750], [3350, 1100], [3550, 450]] },
 ];
-function inside(x, y, p) {
-  let c = false;
-  for (let i = 0, j = p.length - 1; i < p.length; j = i++) {
-    let a = p[i],
-      b = p[j];
-    if (a[1] > y !== b[1] > y && x < ((b[0] - a[0]) * (y - a[1])) / (b[1] - a[1]) + a[0]) c = !c;
-  }
-  return c;
+// Reserved clearings: deliberately no entities, rewards or AI behaviour yet.
+const reservedSites = [
+  { name: 'camp-nord-ouest', x: 1050, y: 450 },
+  { name: 'camp-sud-est', x: 2950, y: 1750 },
+  { name: 'camp-nord-est', x: 2550, y: 450 },
+  { name: 'camp-sud-ouest', x: 1450, y: 1750 },
+  { name: 'braises-ouest', x: 1450, y: 1350 },
+  { name: 'braises-est', x: 2550, y: 850 },
+];
+const clearings = [
+  { x: 450, y: 1750, radius: 320 },
+  { x: 3550, y: 450, radius: 320 },
+  { x: 750, y: 1450, radius: 230 },
+  { x: 3250, y: 750, radius: 230 },
+  { x: 650, y: 450, radius: 260 },
+  { x: 3350, y: 1750, radius: 260 },
+  { x: 1400, y: 450, radius: 220 },
+  { x: 2600, y: 1750, radius: 220 },
+  { x: 2000, y: 1100, radius: 290 },
+  ...reservedSites.map((site) => ({ ...site, radius: 160 })),
+];
+function segmentDistance(x, y, a, b) {
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const ratio = Math.max(0, Math.min(1, ((x - a[0]) * dx + (y - a[1]) * dy) / (dx * dx + dy * dy)));
+  return Math.hypot(x - a[0] - ratio * dx, y - a[1] - ratio * dy);
 }
+function traversable(x, y) {
+  if (clearings.some((site) => Math.hypot(x - site.x, y - site.y) < site.radius)) return true;
+  return lanes.some((lane) => lane.points.slice(1).some((point, index) =>
+    segmentDistance(x, y, lane.points[index], point) < 110));
+}
+// Concealing, damaging groves remain separate from impassable forest walls.
+const groves = [
+  { x: 1600, y: 1250, rx: 90, ry: 60 },
+  { x: 2400, y: 950, rx: 90, ry: 60 },
+];
 const walk = new Uint8Array(COLS * ROWS);
-for (let y = 0; y < ROWS; y++)
-  for (let x = 0; x < COLS; x++)
-    walk[y * COLS + x] = polygons.some((p) => inside(x * CELL + 10, y * CELL + 10, p)) ? 1 : 0;
+for (let y = 0; y < ROWS; y++) {
+  for (let x = 0; x < COLS; x++) {
+    walk[y * COLS + x] = traversable(x * CELL + CELL / 2, y * CELL + CELL / 2) ? 1 : 0;
+  }
+}
 function nearest(x, y) {
   let best = -1,
     d = Infinity;
@@ -206,7 +135,7 @@ function route(x, y, tx, ty) {
   return out.reverse();
 }
 function forest(u) {
-  return ((u.x - 800) / 150) ** 2 + ((u.y - 445) / 110) ** 2 < 1;
+  return groves.some((grove) => ((u.x - grove.x) / grove.rx) ** 2 + ((u.y - grove.y) / grove.ry) ** 2 < 1);
 }
 function configureIncome(s, team, bonus) {
   if (!s.incomeMultiplier) s.incomeMultiplier = [1, 1];
@@ -228,46 +157,20 @@ function create() {
     aiClock: 0,
     fogClock: 0,
     bases: [
-      { x: 390, y: 667, team: 0, hp: 1500, max: 1500, base: true },
-      { x: 1360, y: 265, team: 1, hp: 1500, max: 1500, base: true },
+      { x: 450, y: 1750, team: 0, hp: 1500, max: 1500, base: true },
+      { x: 3550, y: 450, team: 1, hp: 1500, max: 1500, base: true },
     ],
-    tower: { x: 381, y: 299, owner: -1, progress: 0 },
+    tower: { x: 1948, y: 976, owner: -1, progress: 0 },
     mines: [
-      { x: 475, y: 688, owner: 0, name: 'Mine de la Braise', boost: false },
-      { x: 1390, y: 343, owner: 1, name: 'Mine du Voile', boost: false },
-      {
-        x: 819,
-        y: 183,
-        owner: -1,
-        name: 'Plateau nord — ouest',
-        boost: false,
-        site: { x: 750, y: 170 },
-      },
-      {
-        x: 810,
-        y: 866,
-        owner: -1,
-        name: 'Faille sud — ouest',
-        boost: false,
-        site: { x: 730, y: 890 },
-      },
-      { x: 1275, y: 682, owner: -1, name: 'Veine riche', boost: true, site: { x: 1200, y: 710 } },
-      {
-        x: 970,
-        y: 130,
-        owner: -1,
-        name: 'Plateau nord — est',
-        boost: false,
-        site: { x: 970, y: 210 },
-      },
-      {
-        x: 900,
-        y: 890,
-        owner: -1,
-        name: 'Faille sud — est',
-        boost: false,
-        site: { x: 870, y: 830 },
-      },
+      { x: 535, y: 1770, owner: 0, name: 'Mine de la Braise', boost: false },
+      { x: 3465, y: 430, owner: 1, name: 'Mine du Voile', boost: false },
+      { x: 790, y: 1450, owner: -1, name: 'Naturelle de la Braise', boost: false, site: { x: 710, y: 1450 } },
+      { x: 3210, y: 750, owner: -1, name: 'Naturelle du Voile', boost: false, site: { x: 3290, y: 750 } },
+      { x: 2000, y: 1100, owner: -1, name: 'Veine riche', boost: true, site: { x: 2052, y: 1224 } },
+      { x: 650, y: 410, owner: -1, name: 'Flanc nord — ouest', boost: false, site: { x: 650, y: 490 } },
+      { x: 3350, y: 1790, owner: -1, name: 'Flanc sud — est', boost: false, site: { x: 3350, y: 1710 } },
+      { x: 1440, y: 450, owner: -1, name: 'Flanc nord — est', boost: false, site: { x: 1360, y: 450 } },
+      { x: 2560, y: 1750, owner: -1, name: 'Flanc sud — ouest', boost: false, site: { x: 2640, y: 1750 } },
     ],
     visible: [new Uint8Array(walk.length), new Uint8Array(walk.length)],
     explored: [new Uint8Array(walk.length), new Uint8Array(walk.length)],
@@ -1270,6 +1173,10 @@ export const CendreSim = {
   RULES,
   stats,
   walk,
+  lanes,
+  clearings,
+  reservedSites,
+  groves,
   nearest,
   route,
   forest,

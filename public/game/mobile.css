@@ -211,3 +211,9 @@ body.large-interface{--control:100px;--deck-height:102px;--deck-width:430px}body
 #pauseMenu:has(#abandonActions:not([hidden])) #pauseStatus {
   padding-right: 52px;
 }
+
+/* Match the 4000 × 2200 world without stretching the minimap. */
+#minimap {
+  height: auto;
+  aspect-ratio: 20 / 11;
+}

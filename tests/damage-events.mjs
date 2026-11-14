@@ -10,8 +10,8 @@ state.units = Array.from({ length: 20 }, (_, index) => ({
   id: index + 1,
   team: index % 2,
   type: 'archer',
-  x: 770 + index * 3,
-  y: 445,
+  x: Sim.groves[0].x - 30 + index * 3,
+  y: Sim.groves[0].y,
   hp: 100000,
   max: 100000,
   harvest: null,
@@ -24,8 +24,8 @@ let alerts = [];
 let combatTicks = 0;
 for (let tick = 0; tick < 200; tick++) {
   for (const unit of state.units) {
-    unit.x = 770 + (unit.id - 1) * 3;
-    unit.y = 445;
+    unit.x = Sim.groves[0].x - 30 + (unit.id - 1) * 3;
+    unit.y = Sim.groves[0].y;
     unit.target = state.units.find((enemy) => enemy.team !== unit.team);
     assert.ok(Sim.forest(unit));
   }

@@ -65,7 +65,7 @@ assert.deepEqual(S.migrateState(legacy), legacy);
 // Environmental losses belong to the victim only.
 const forest = S.create();
 const worker = forest.units[0];
-Object.assign(worker, { x: 800, y: 445, hp: 0.001 });
+Object.assign(worker, { x: S.groves[0].x, y: S.groves[0].y, hp: 0.001 });
 S.tick(forest, 0.05);
 assert.equal(S.matchStats(forest).teams[0].unitsLost, 1);
 assert.equal(S.matchStats(forest).teams[1].unitsKilled, 0);
