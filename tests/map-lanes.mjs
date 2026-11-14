@@ -8,8 +8,8 @@ assert.equal(S.W, 4000);
 assert.equal(S.H, 2200);
 assert.equal(initial.mines.length, 9);
 assert.equal(S.lanes.length, 3);
-assert.equal(S.reservedSites.length, 6);
-assert.equal(new Set(S.reservedSites.map((site) => site.name)).size, 6);
+assert.equal(S.reservedSites.length, 8);
+assert.equal(new Set(S.reservedSites.map((site) => site.name)).size, 8);
 assert.equal(initial.mines[4].x, S.W / 2);
 assert.equal(initial.mines[4].y, S.H / 2);
 for (let index = 0; index < S.walk.length; index++) {
@@ -26,7 +26,7 @@ for (const team of [0, 1]) {
   assert(distance(natural) < distance(initial.mines[5 + team]));
   assert(distance(natural) < distance(initial.mines[7 + team]));
 }
-for (const objective of [initial.tower, initial.mines[4], initial.mines[4].site]) {
+for (const objective of [initial.mines[4], initial.mines[4].site]) {
   const distances = initial.bases.map((base) => Math.hypot(base.x - objective.x, base.y - objective.y));
   assert(Math.abs(distances[0] - distances[1]) < 1e-9, 'Objectif central équidistant des départs');
 }

@@ -104,7 +104,7 @@ assert.equal(restored.units[0].target, restored.units[1]);
 assert.equal(restored.units[1].target, restored.units[0]);
 s.units[1].x = S.groves[0].x;
 s.units[1].y = S.groves[0].y;
-s.tower.owner = 0;
+s.watchtowers[0].owner = 0;
 S.visibility(s);
 assert(!view(s, 0).units.some((u) => u.id === s.units[1].id));
 assert.throws(() => command(s, 0, { kind: 'move', ids: [1], x: NaN, y: 10 }));

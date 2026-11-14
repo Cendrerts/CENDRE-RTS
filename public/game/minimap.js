@@ -1,8 +1,10 @@
+import { TEAM_COLORS } from './unit-overlays.js';
+
 export function minimapPoint(x, y, width, height, worldWidth, worldHeight) {
   return { x: x * width / worldWidth, y: y * height / worldHeight };
 }
 
-export function drawMinimap(ctx, { terrain, fog, units, mines, bases = [], camera, player, worldWidth, worldHeight }) {
+export function drawMinimap(ctx, { terrain, fog, units, mines, bases = [], watchtowers = [], camera, player, worldWidth, worldHeight }) {
   const { width, height } = ctx.canvas;
   const point = (x, y) => minimapPoint(x, y, width, height, worldWidth, worldHeight);
   ctx.save();
@@ -19,6 +21,13 @@ export function drawMinimap(ctx, { terrain, fog, units, mines, bases = [], camer
     ctx.lineTo(position.x, position.y + 3);
     ctx.lineTo(position.x - 3, position.y);
     ctx.closePath();
+    ctx.fill();
+  }
+  for (const tower of watchtowers) {
+    const position = point(tower.x, tower.y);
+    ctx.fillStyle = tower.owner === -1 ? '#a0a0a0' : TEAM_COLORS[tower.owner];
+    ctx.beginPath();
+    ctx.arc(position.x, position.y, 3, 0, Math.PI * 2);
     ctx.fill();
   }
   for (const base of bases) {

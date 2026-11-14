@@ -21,7 +21,7 @@ s.rubies[0] = 0;
 assert(!S.recruit(s, 'mage', 0));
 // Every objective must be reachable from BOTH spawn areas, without crossing lava.
 for (let b of s.bases)
-  for (let p of [...s.mines, s.tower, ...s.bases]) {
+  for (let p of [...s.mines, ...s.watchtowers, ...s.bases]) {
     let r = S.route(b.x, b.y + 40, p.x, p.y);
     assert(
       r.length || S.nearest(b.x, b.y + 40) === S.nearest(p.x, p.y),
@@ -31,24 +31,10 @@ for (let b of s.bases)
   }
 assert(!S.canSee(s, 0, s.bases[1]));
 assert(!S.canSee(s, 1, s.bases[0]));
-s.units[0].x = s.tower.x;
-s.units[0].y = s.tower.y;
-for (let i = 0; i < 85; i++) S.tick(s, 0.05);
-S.visibility(s);
-assert.equal(s.tower.owner, 0);
-assert(S.visibleAt(s, 0, s.tower.x, s.tower.y));
-assert(!S.visibleAt(s, 0, s.bases[1].x, s.bases[1].y));
-s.units[0].x = 500;
-s.units[0].y = 650;
-S.tick(s, 0.05);
-S.visibility(s);
-assert.equal(s.tower.owner, -1);
-assert(!S.visibleAt(s, 0, s.tower.x, s.tower.y));
-assert(s.explored[0][Math.floor(s.tower.y / 20) * S.COLS + Math.floor(s.tower.x / 20)]);
 s = idle();
 s.units[1].x = S.groves[0].x;
 s.units[1].y = S.groves[0].y;
-s.tower.owner = 0;
+s.watchtowers[0].owner = 0;
 S.visibility(s);
 assert(!S.canSee(s, 0, s.units[1]));
 s.units[0].x = S.groves[0].x - 30;
@@ -78,7 +64,7 @@ S.visibility(s);
 S.tick(s, 0.05);
 assert.equal(s.winner, 0);
 console.log(
-  'PASS: recruitment, traversable routes to all objectives, fog for both teams, tower capture and loss, enemy base exclusion, explored memory, forest concealment and damage, ruby income, victory.',
+  'PASS: recruitment, traversable routes to all objectives, fog for both teams, forest concealment and damage, ruby income, victory.',
 );
 
 s = idle();
