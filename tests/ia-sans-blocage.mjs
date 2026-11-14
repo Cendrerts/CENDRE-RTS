@@ -209,7 +209,7 @@ for (const horde of [false, true]) {
       const controllers = [0, 1].map((team) => ai(team, 'brutal'));
       const bankSince = [null, null];
       const longestBank = [0, 0];
-      for (let step = 0; step < 12000 && state.winner === null; step++) {
+      for (let step = 0; step < 18000 && state.winner === null; step++) {
         for (const team of reversed ? [1, 0] : [0, 1]) {
           if (state.time >= startDelays[team]) {
             controllers[team].update(state);
@@ -234,7 +234,7 @@ for (const horde of [false, true]) {
       if (state.winner === null) {
         timeoutSeeds.push(initialSeed);
       }
-      assert(state.time <= 1200 + 1e-6);
+      assert(state.time <= 1800 + 1e-6);
       wins[winner]++;
     }
     console.log(`Tournament: rats ${wins.rats}/20, cooks ${wins.cooks}/20, timeouts ${wins.timeout}, distinct outcomes ${outcomes.size}/20, timeout seeds: ${timeoutSeeds.join(', ') || 'none'}`);

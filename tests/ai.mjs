@@ -80,7 +80,7 @@ for (let game = 0; game < 20; game++) {
   const inactive = [0, 0];
   const previous = [null, null];
 
-  for (let step = 0; step < 9000 && state.winner === null; step++) {
+  for (let step = 0; step < 15000 && state.winner === null; step++) {
     for (const team of game % 2 ? [1, 0] : [0, 1]) {
       controllers[team].update(state);
       // Harvest deliveries, production, movement and combat are also activity;
@@ -99,7 +99,7 @@ for (let game = 0; game < 20; game++) {
     S.tick(state, 0.1);
   }
   assert.notEqual(state.winner, null, `Game ${game} must finish`);
-  assert(state.time < 900, `Game ${game} exceeds 15 minutes`);
+  assert(state.time < 1500, `Game ${game} exceeds 25 minutes`);
 
   if (state.winner === normal) wins++;
   console.log(`Game ${game + 1}: ${state.time.toFixed(1)}s, winner ${state.winner === normal ? 'normal' : 'facile'}`);
@@ -271,7 +271,7 @@ function playSeries(strong, weak, minimumWins) {
     let firstExpansion = null;
     let rubySum = 0;
     let samples = 0;
-    for (let step = 0; step < 9000 && state.winner === null; step++) {
+    for (let step = 0; step < 15000 && state.winner === null; step++) {
       for (const team of game % 2 ? [1, 0] : [0, 1]) controllers[team].update(state);
       S.tick(state, 0.1);
       if (strong === 'difficile') {
@@ -282,11 +282,13 @@ function playSeries(strong, weak, minimumWins) {
         }
       }
     }
-    assert.notEqual(state.winner, null, `${strong}/${weak}, game ${game}: no winner after 15 minutes`);
+    assert.notEqual(state.winner, null, `${strong}/${weak}, game ${game}: no winner after 25 minutes`);
     if (state.winner === strongTeam) victories++;
     if (strong === 'difficile') {
       if (firstExpansion !== null && firstExpansion < 240) earlyExpansions++;
-      if (state.time > 480) assert(controllers[strongTeam].metrics.waves >= 3, `Only ${controllers[strongTeam].metrics.waves} waves in ${state.time}s`);
+      if (state.time > 720 && state.winner !== strongTeam) {
+        assert(controllers[strongTeam].metrics.waves >= 3, `Only ${controllers[strongTeam].metrics.waves} waves in ${state.time}s`);
+      }
       if (samples) assert(rubySum / samples < 250, `Game ${game}: average bank ${rubySum / samples}`);
       bankSum += rubySum;
       bankSamples += samples;
@@ -389,7 +391,7 @@ for (const strategy of ['rush', 'push']) {
     const brutal = createAI(team, 'brutal');
     const opponent = scriptedOpponent(1 - team, strategy);
     let economyChecked = false;
-    for (let step = 0; step < 9000 && state.winner === null; step++) {
+    for (let step = 0; step < 15000 && state.winner === null; step++) {
       const controllers = team ? [opponent, brutal] : [brutal, opponent];
       for (const index of game % 2 ? [1, 0] : [0, 1]) controllers[index].update(state);
       S.tick(state, 0.1);

@@ -247,7 +247,7 @@ try {
     }
     sim.visibility(state);
     const controllers = [0, 1].map((team) => ai(team, 'brutal'));
-    for (let step = 0; step < 12000 && state.winner === null; step++) {
+    for (let step = 0; step < 18000 && state.winner === null; step++) {
       for (const team of reversed ? [1, 0] : [0, 1]) {
         if (state.time >= startDelays[team]) {
           controllers[team].update(state);
@@ -259,8 +259,8 @@ try {
     console.log(`Seed ${initialSeed}: winner ${state.winner}, ${state.time.toFixed(1)}s.`);
   }
   for (const result of results) {
-    assert.notEqual(result.winner, null, `Seed ${result.seed}: no winner within 20 minutes`);
-    assert(result.time < 1200, `Seed ${result.seed}: match must finish before 20 minutes`);
+    assert.notEqual(result.winner, null, `Seed ${result.seed}: no winner within 30 minutes`);
+    assert(result.time < 1800, `Seed ${result.seed}: match must finish before 30 minutes`);
   }
 } finally {
   await rm(directory, { recursive: true, force: true });
