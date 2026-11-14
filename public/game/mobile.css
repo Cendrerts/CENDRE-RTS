@@ -191,3 +191,23 @@ body.large-interface{--control:100px;--deck-height:102px;--deck-width:430px}body
 @media (orientation:portrait) {
   #selectionToggle { bottom:calc(262px + env(safe-area-inset-bottom)); }
 }
+
+#abandonActions[hidden] {
+  display: none;
+}
+#abandonActions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+#abandonDuel {
+  background: #922f36;
+  border-color: #e77880;
+  color: #fff0ed;
+}
+#abandonDuel:hover {
+  background: #b13b44;
+}
+#pauseMenu:has(#abandonActions:not([hidden])) #pauseStatus {
+  padding-right: 52px;
+}

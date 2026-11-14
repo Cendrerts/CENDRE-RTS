@@ -137,7 +137,7 @@ export function createRadialMenu(api) {
   $('#radialBack').onclick = categories;
   $('#radialConfirm').onclick = () => {
     refresh();
-    if (session && !$('#radialConfirm').disabled && api.confirm()) close();
+    if (session && !$('#radialConfirm').disabled && api.confirmPlacement()) close();
   };
   root.addEventListener('click', (e) => {
     if (e.target === root && phase !== 'ghost') close();

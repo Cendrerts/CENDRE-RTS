@@ -4,6 +4,7 @@ import { panelModel, panelVisibility } from './panel.js';
 import { readSettings, writeSettings } from './settings.js';
 import { bindAudioUnlock } from './audio-unlock.js';
 import { shouldAutoPause } from './auto-pause.js';
+import { handleAbandonChoice } from './abandon-duel.js';
 import { minimapToWorld, clampCamera, attackDirection, groupAttackAlerts } from './camera.js';
 'use strict';
 import { CuistotsAmbience } from './cuistots-ambience.js';
@@ -384,6 +385,7 @@ applySettings();
 function closePauseMenu() {
   if ($('#pauseMenu').hidden) return;
   $('#pauseMenu').hidden = true;
+  $('#abandonActions').hidden = true;
   if (!net) paused = false;
   updateAmbience();
   $('#pause').focus();
@@ -394,6 +396,7 @@ function openPauseMenu() {
   radial?.close();
   $('#pauseMenu').hidden = false;
   $('#settingsPanel').hidden = true;
+  $('#abandonActions').hidden = true;
   $('#pauseActions').hidden = false;
   $('#pauseTitle').textContent = 'Pause';
   $('#pauseStatus').textContent = net ? 'Partie en cours' : 'Partie en pause';
@@ -429,16 +432,32 @@ $('#openSettings').onclick = () => {
 };
 $('#backPause').onclick = () => {
   $('#settingsPanel').hidden = true;
+  $('#abandonActions').hidden = true;
   $('#pauseActions').hidden = false;
   $('#pauseTitle').textContent = 'Pause';
   $('#openSettings').focus();
 };
+function openAbandonDialog() {
+  if (!net || !running || net.finished) return;
+  openPauseMenu();
+  $('#pauseActions').hidden = true;
+  $('#abandonActions').hidden = false;
+  $('#pauseTitle').textContent = 'Abandonner le duel ?';
+  $('#pauseStatus').textContent = 'La partie continue. Quitter compte comme un abandon.';
+  $('#continueDuel').focus();
+}
+function resolveAbandonDialog(choice) {
+  if ($('#pauseMenu').hidden || $('#abandonActions').hidden) return;
+  closePauseMenu();
+  handleAbandonChoice(choice, () => {
+    if (net && running && !net.finished) void leaveRoom();
+  });
+}
+$('#continueDuel').onclick = () => resolveAbandonDialog('continue');
+$('#abandonDuel').onclick = () => resolveAbandonDialog('abandon');
 $('#quitGame').onclick = () => {
   if (net) {
-    if (confirm('Quitter le duel ? Cela compte comme un abandon.')) {
-      closePauseMenu();
-      void leaveRoom();
-    }
+    openAbandonDialog();
     return;
   }
   closePauseMenu();
@@ -1157,6 +1176,7 @@ function lobbyControls(connected) {
   $('#netBadge').hidden = !connected;
 }
 function resetNetwork() {
+  closePauseMenu();
   clearTimeout(netTimer);
   realtime?.close();
   realtime = null;
@@ -1383,7 +1403,11 @@ async function leaveRoom() {
 }
 $('#cancelRoom').onclick = leaveRoom;
 $('#leaveMatch').onclick = () => {
-  if (!running || confirm('Quitter le duel ? Cela compte comme un abandon.')) leaveRoom();
+  if (running) {
+    openAbandonDialog();
+    return;
+  }
+  void leaveRoom();
 };
 const invite = normalizeRoomCode(new URL(location.href).searchParams.get('room'));
 if (invite) {
@@ -1905,7 +1929,7 @@ radial = createRadialMenu({
     };
   },
   ghostStatus,
-  confirm: () => {
+  confirmPlacement: () => {
     if (!ghostStatus().valid) return false;
     const { context, option, slotId } = buildGhost;
     if (net) {
