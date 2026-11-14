@@ -42,7 +42,7 @@ export function resolveTap(state, player, selection, point, scale = 1, onTarget 
     const hit = insideBounds || (sprite && distance <= radius);
     if (hit) candidates.push({ target, category, distance, action, bounds, radius, center, sprite });
   }
-  for (const unit of state.units) {
+  for (const unit of [...state.units, ...(state.monsters || [])]) {
     if (unit.hp <= 0 || (unit.team !== player && !Sim.canSee(state, player, unit))) continue;
     if (unit.team === player) add(unit, 'unit', 26, { kind: 'select', id: unit.id }, unitHitbox(unit), true);
     else add(unit, combat && !workers.length ? 'enemy' : 'unit', 26, selected.length ? { kind: 'attack', target: unit } : { kind: 'none' }, unitHitbox(unit), true);

@@ -5,7 +5,7 @@ export function orderQueuePoints(state, player, queue) {
     if (!point.target) return point;
     const target = point.target.base
       ? state.bases[point.target.team]
-      : state.units.find((candidate) => candidate.id === point.target.id);
+      : [...state.units, ...(state.monsters || [])].find((candidate) => candidate.id === point.target.id);
     if (!target || !Sim.canSee(state, player, target)) return point;
     return { ...point, x: target.x, y: target.y };
   });

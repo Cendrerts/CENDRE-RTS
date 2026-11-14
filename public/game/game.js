@@ -265,6 +265,7 @@ let productionUI = null;
 function updateUI() {
   let army = state.units.filter((u) => u.team === player);
   selected = new Set([...selected].filter((id) => army.some((u) => u.id === id)));
+  $('#ingredients').textContent = Math.floor(state.ingredients?.[player] || 0);
   $('#rubies').textContent = Math.floor(state.rubies[player]);
   $('#population').textContent = army.length + ' / ' + Sim.unitLimit(player);
   $('#clock').textContent =
@@ -1052,6 +1053,25 @@ function draw() {
   drawSlots();
   drawRally();
   preparedUnits.forEach(unit);
+  for (const monster of state.monsters || []) {
+    if (monster.hp <= 0 || !Sim.canSee(state, player, monster)) continue;
+    const { x, y } = monster;
+    ellipse(x, y + 3, 23, 9, '#11171988');
+    ellipse(x, y - 13, 23, 14, '#796e62');
+    ellipse(x + 19, y - 10, 11, 9, '#9a8d7c');
+    ctx.fillStyle = '#4e4943';
+    ctx.fillRect(x - 15, y - 7, 6, 13);
+    ctx.fillRect(x + 7, y - 7, 6, 13);
+    ctx.fillStyle = '#eee0bf';
+    ctx.beginPath();
+    ctx.moveTo(x + 22, y - 7);
+    ctx.lineTo(x + 28, y - 19);
+    ctx.lineTo(x + 29, y - 5);
+    ctx.fill();
+    ctx.fillStyle = '#161719';
+    ctx.fillRect(x + 20, y - 15, 3, 3);
+    bar(x, y - 35, monster.hp, monster.max, 44);
+  }
   for (let b of state.bases)
     if (Sim.canSee(state, player, b)) {
       bar(b.x, b.y - 80, b.hp, b.max, 85);
@@ -1063,7 +1083,7 @@ function draw() {
   drawOrderQueues();
   if (marker) {
     const elapsed = (performance.now() - marker.started) / 1000;
-    const target = marker.base ? state.bases[1 - player] : state.units.find((unit) => unit.id === marker.targetId);
+    const target = marker.base ? state.bases[1 - player] : [...state.units, ...(state.monsters || [])].find((unit) => unit.id === marker.targetId);
     const position = target && Sim.canSee(state, player, target) ? (net ? motion.position(target, performance.now()) : target) : marker;
     drawOrderFeedback(ctx, { ...marker, x: position.x, y: position.y }, elapsed, scale);
     if (elapsed >= marker.duration) marker = null;

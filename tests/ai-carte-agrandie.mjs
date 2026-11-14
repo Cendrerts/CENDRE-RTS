@@ -310,6 +310,10 @@ try {
 // A rich, population-capped Brutal mirror must make room for its army.
 {
   const state = Sim.create();
+  // Keep this economy benchmark free of neutral hunting losses. Real camps
+  // remain enabled in the seeded matches above and scripts/monstres-duels.mjs.
+  state.monsters = [];
+  state.camps = [];
   const controllers = [0, 1].map((team) => createAI(team, 'brutal'));
   const surplusSince = [null, null];
   const checked = [false, false];
