@@ -25,10 +25,12 @@ export function resolveTap(state, player, selection, point, scale = 1, onTarget 
   );
   const workers = selected.filter((unit) => unit.type === 'commis');
   const combat = selected.some((unit) => unit.type !== 'commis');
+  const ratMilitary = player === 1 && combat;
   const candidates = [];
   const priorities = workers.length
     ? ['mine', 'unit', 'enemy', 'building', 'slot']
     : combat ? ['enemy', 'unit', 'building', 'mine', 'slot'] : ['unit', 'enemy', 'building', 'slot', 'mine'];
+  if (ratMilitary) priorities.splice(priorities.indexOf('enemy') + 1, 0, 'corpse');
   function add(target, category, radius, action, bounds = null, sprite = false) {
     const center = sprite
       ? { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 }
@@ -46,6 +48,15 @@ export function resolveTap(state, player, selection, point, scale = 1, onTarget 
     if (unit.hp <= 0 || (unit.team !== player && !Sim.canSee(state, player, unit))) continue;
     if (unit.team === player) add(unit, 'unit', 26, { kind: 'select', id: unit.id }, unitHitbox(unit), true);
     else add(unit, combat && !workers.length ? 'enemy' : 'unit', 26, selected.length ? { kind: 'attack', target: unit } : { kind: 'none' }, unitHitbox(unit), true);
+  }
+  for (const corpse of state.corpses || []) {
+    if (!ratMilitary) continue;
+    if (corpse.expiresAt <= state.time || !Sim.visibleAt(state, player, corpse.x, corpse.y)) continue;
+    add(corpse, 'corpse', 22, {
+      kind: 'devour',
+      ids: selected.map((unit) => unit.id),
+      corpseId: corpse.id,
+    });
   }
   for (const base of state.bases) {
     if (base.hp <= 0 || !Sim.canSee(state, player, base)) continue;

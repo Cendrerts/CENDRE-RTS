@@ -124,7 +124,11 @@ for (const color of ['#a0a0a0', ...TEAM_COLORS]) {
 assert.deepEqual(mini.calls.at(-1), ['strokeRect', '#fff2bd', 2, 20, 10, 80, 40]);
 
 for (const file of ['game.js', 'unit-overlays.js', 'minimap.js']) {
-  const source = readFileSync(new URL('../public/game/' + file, import.meta.url), 'utf8');
+  let source = readFileSync(new URL('../public/game/' + file, import.meta.url), 'utf8');
+  // Issue #107 : seul le gain numérique de dévoration flotte sur le champ de bataille.
+  if (file === 'game.js') {
+    source = source.replace(/ctx\.fillText\('\+' \+ event\.amount, [^;\n]+\);/g, '');
+  }
   assert.doesNotMatch(source, /\.(?:fillText|strokeText)\s*\(/, 'No floating canvas text in ' + file);
 }
 console.log('PASS: constant screen health bars, feet anchors, team rings, ruby and minimap rendering.');

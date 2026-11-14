@@ -360,6 +360,7 @@ $('#hold').onclick = () => {
   state.units
     .filter((u) => selected.has(u.id))
     .forEach((u) => {
+      Sim.cancelDevour(u);
       u.orderQueue = [];
       u.queueActive = false;
       u.patrol = null;
@@ -702,6 +703,12 @@ function handleFieldTap(e, duration) {
     selected = new Set([action.id]);
     playSelectionVoice(state.units.filter((unit) => unit.id === action.id));
     updateUI();
+    return;
+  }
+  if (action.kind === 'devour') {
+    if (net) sendCommand(action);
+    else Sim.devour(state, player, action.ids, action.corpseId);
+    notify('Dévorer · 4 s sans interruption');
     return;
   }
   if (action.kind === 'gather') {
@@ -1071,7 +1078,34 @@ function draw() {
   }
   drawSlots();
   drawRally();
+  for (const corpse of state.corpses || []) {
+    if (!Sim.visibleAt(state, player, corpse.x, corpse.y)) continue;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, Math.min(1, (corpse.expiresAt - state.time) / 5));
+    ctx.strokeStyle = '#b8a994';
+    ctx.lineWidth = 2 / scale;
+    ellipse(corpse.x, corpse.y, corpse.type === 'sanglier' ? 25 : 20, 7, '#242326');
+    ctx.stroke();
+    ellipse(corpse.x + 19, corpse.y - 2, 7, 6, '#302b30');
+    ctx.stroke();
+    line(corpse.x - 8, corpse.y, corpse.x - 18, corpse.y + 10, '#242326', 5);
+    line(corpse.x + 6, corpse.y, corpse.x + 14, corpse.y + 9, '#242326', 5);
+    line(corpse.x - 5, corpse.y - 4, corpse.x + 5, corpse.y + 4, '#b8a994', 2 / scale);
+    line(corpse.x - 5, corpse.y + 4, corpse.x + 5, corpse.y - 4, '#b8a994', 2 / scale);
+    ctx.restore();
+  }
   preparedUnits.forEach(unit);
+  for (const event of state.devourEvents || []) {
+    if (!Sim.visibleAt(state, player, event.x, event.y)) continue;
+    const age = state.time - event.time;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, 1 - age / 1.5);
+    ctx.fillStyle = '#8ef1ce';
+    ctx.font = 'bold ' + 18 / scale + 'px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('+' + event.amount, event.x, event.y - 55 - age * 20);
+    ctx.restore();
+  }
   for (const monster of state.monsters || []) {
     if (monster.hp <= 0 || !Sim.canSee(state, player, monster)) continue;
     const { x, y } = monster;
@@ -1499,6 +1533,7 @@ function drawCook(u) {
   const sprite = renderCache.sprite(img, u.type, u.team, scale * canvas.width / viewWidth, size, size * 1.125);
   if (sprite) ctx.drawImage(sprite, x - size / 2, y - size + 5 + bob, size, size * 1.125);
   const headY = y - size + bob;
+  if (u.devour?.startedAt != null) bar(x, headY - 16, state.time - u.devour.startedAt, 4, 44);
   drawCargoRuby(ctx, x, headY, scale, u);
   drawHealthBar(ctx, u, x, headY, scale, player, selected.has(u.id));
 }
