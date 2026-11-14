@@ -266,7 +266,9 @@ const observedTowerLosses = new Map();
 function updateUI() {
   let army = state.units.filter((u) => u.team === player);
   selected = new Set([...selected].filter((id) => army.some((u) => u.id === id)));
-  $('#ingredients').textContent = Math.floor(state.ingredients?.[player] || 0);
+  const ragoutSeconds = Math.max(0, Math.ceil((state.ragout?.expiresAt || 0) - state.time));
+  $('#ingredients').textContent = Math.floor(state.ingredients?.[player] || 0) +
+    (player === 0 && ragoutSeconds > 0 ? ' · Ragoût ' + ragoutSeconds + ' s' : '');
   $('#rubies').textContent = Math.floor(state.rubies[player]);
   $('#population').textContent = army.length + ' / ' + Sim.unitLimit(player);
   $('#clock').textContent =
@@ -992,6 +994,16 @@ function building(b) {
 }
 function unit(u) {
   drawCook(u);
+  if (Sim.ragoutActive(state, u)) {
+    for (const offset of [-7, 7]) {
+      ctx.beginPath();
+      ctx.moveTo(u.x + offset, u.y - 58);
+      ctx.bezierCurveTo(u.x + offset - 8, u.y - 66, u.x + offset + 8, u.y - 68, u.x + offset, u.y - 76);
+      ctx.strokeStyle = '#ffe2a3';
+      ctx.lineWidth = 2 / scale;
+      ctx.stroke();
+    }
+  }
 }
 function drawFog() {
   renderCache.updateFog(fc, state.visible[player], state.explored[player], COLS);
@@ -1082,6 +1094,9 @@ function draw() {
   for (let b of state.bases)
     if (Sim.canSee(state, player, b)) {
       bar(b.x, b.y - 80, b.hp, b.max, 85);
+      if (b.team === 0 && state.ragout?.readyAt != null) {
+        bar(b.x, b.y - 94, 20 - (state.ragout.readyAt - state.time), 20, 85);
+      }
     }
   for (let s of state.shots)
     if (Sim.visibleAt(state, player, s.x, s.y) && Sim.visibleAt(state, player, s.tx, s.ty))
@@ -2118,6 +2133,14 @@ function requestRecruit(command, count = 1, producerIds = null) {
 }
 function panelCommand(command) {
   if (!running || paused) return;
+  if (command.kind === 'cookDish') {
+    const reason = Sim.cookDishBlockReason(state, player);
+    if (reason) notify(reason);
+    else if (net) sendCommand(command);
+    else Sim.cookDish(state, player);
+    updateUI();
+    return;
+  }
   if (command.kind === 'recruit') {
     requestRecruit(command);
     return;
@@ -2166,7 +2189,7 @@ function renderContextPanel() {
   const currentHealthText = $('#contextIdentity .health-text');
   if (currentHealthText)
     currentHealthText.textContent = `${Math.ceil(model.left.hp)}/${Math.ceil(model.left.max)}`;
-  const signature = JSON.stringify([model, paused, patrolArmed, rallyArmed, queueArmed], (key, value) =>
+  const signature = JSON.stringify([model, paused, patrolArmed, rallyArmed, queueArmed, Sim.cookDishBlockReason(state, player)], (key, value) =>
     ['remaining', 'hp', 'status'].includes(key) ? undefined : value,
   );
   if (signature === panelSignature) return;
@@ -2369,6 +2392,19 @@ function renderContextPanel() {
     actions.append($('#hold'), patrol, queue, ability, $('#retreat'));
   } else {
     const opened = openedRallyBuilding();
+    if (player === 0 && opened?.id === 'main_0') {
+      const ragout = document.createElement('button');
+      ragout.id = 'ragoutAction';
+      ragout.innerHTML = iconSvg('ragout') + ' Ragoût · 40';
+      ragout.style.minHeight = '44px';
+      ragout.style.minWidth = '44px';
+      const reason = Sim.cookDishBlockReason(state, player);
+      ragout.setAttribute('aria-disabled', String(Boolean(reason)));
+      ragout.style.opacity = reason ? '0.5' : '1';
+      ragout.title = reason || '20 s de cuisson · +15 % de dégâts pendant 45 s';
+      ragout.onclick = () => panelCommand({ kind: 'cookDish' });
+      actions.append(ragout);
+    }
     if (opened) {
       const rally = document.createElement('button');
       rally.id = 'rallyAction';

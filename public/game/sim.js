@@ -235,6 +235,7 @@ function create() {
     id: 0,
     rubies: [100, 100],
     ingredients: [0, 0],
+    ragout: { readyAt: null, expiresAt: 0 },
     monsterId: 0,
     monsters: [],
     camps: reservedSites.filter((site) => site.name.startsWith('camp-')).map((site) => ({ ...site, respawnAt: null })),
@@ -472,6 +473,7 @@ function migrateState(s) {
   s.watchtowers ??= createWatchtowers();
   delete s.tower;
   s.ingredients ??= [0, 0];
+  s.ragout ??= { readyAt: null, expiresAt: 0 };
   s.monsterId ??= 0;
   s.monsters ??= [];
   s.camps ??= [];
@@ -486,6 +488,43 @@ function migrateState(s) {
     if (mine.boost) mine.name = 'Veine riche';
   }
   return s;
+}
+const RAGOUT_REASONS = {
+  faction: 'Seuls les Cuistots peuvent préparer le Ragoût.',
+  tower: 'Tour principale indisponible.',
+  cooking: 'Ragoût déjà en cuisson.',
+  ingredients: 'Ingrédients insuffisants : 40 nécessaires.',
+  ended: 'La partie est terminée.',
+};
+function cookDishBlockReason(s, team) {
+  if (team !== 0) return RAGOUT_REASONS.faction;
+  if (s.winner !== null) return RAGOUT_REASONS.ended;
+  if (!(s.bases[team]?.hp > 0)) return RAGOUT_REASONS.tower;
+  if (s.ragout?.readyAt != null) return RAGOUT_REASONS.cooking;
+  if ((s.ingredients?.[team] || 0) < 40) return RAGOUT_REASONS.ingredients;
+  return null;
+}
+function cookDish(s, team) {
+  const reason = cookDishBlockReason(s, team);
+  if (reason) return { ok: false, reason };
+  migrateState(s);
+  s.ingredients[team] -= 40;
+  s.ragout.readyAt = s.time + 20;
+  return { ok: true, reason: null };
+}
+function ragoutActive(s, unit) {
+  return unit.team === 0 && unit.type !== 'commis' && unit.hp > 0 &&
+    (unit.ragoutUntil || 0) > s.time + 1e-9;
+}
+function ragoutTick(s) {
+  if (s.ragout.readyAt === null || s.time + 1e-9 < s.ragout.readyAt) return;
+  s.ragout.expiresAt = s.ragout.readyAt + 45;
+  s.ragout.readyAt = null;
+  for (const unit of s.units) {
+    if (unit.team === 0 && unit.type !== 'commis' && unit.hp > 0) {
+      unit.ragoutUntil = s.ragout.expiresAt;
+    }
+  }
 }
 function ensureSlots(s) {
   migrateState(s);
@@ -872,6 +911,7 @@ function tick(s, dt) {
   if (s.winner !== null) return;
   productionTick(s, dt);
   s.time += dt;
+  ragoutTick(s);
   s.damageEvents = (s.damageEvents || []).filter((event) => s.time - event.time < 5).slice(-24);
   s.fogClock += dt;
   s.aiClock += dt;
@@ -981,7 +1021,8 @@ function tick(s, dt) {
         u.cool = cfg.rate;
         u.lastAttackTargetId = target.id ?? null;
         u.lastAttackAt = s.time;
-        applyDamage(s, target, cfg.damage, u.team, u.id);
+        const damage = cfg.damage * (ragoutActive(s, u) ? 1.15 : 1);
+        applyDamage(s, target, damage, u.team, u.id);
         if (cfg.splash) {
           for (const v of [...s.units, ...s.monsters])
             if (
@@ -990,7 +1031,7 @@ function tick(s, dt) {
               v.hp > 0 &&
               Math.hypot(v.x - target.x, v.y - target.y) <= cfg.splash
             ) {
-              applyDamage(s, v, cfg.damage, u.team, u.id);
+              applyDamage(s, v, damage, u.team, u.id);
             }
         }
         s.shots.push({
@@ -1318,6 +1359,9 @@ function predictMotion(state, unit, command, dt) {
 }
 
 export const CendreSim = {
+  cookDish,
+  cookDishBlockReason,
+  ragoutActive,
   idleWorkers,
   leastLoadedProducer,
   setRally,

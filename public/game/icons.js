@@ -2,6 +2,7 @@ import { TEAM_COLORS } from './unit-overlays.js';
 
 // Shared button icons: no font or external asset required.
 const paths = {
+  "ragout": "M4 10h16v5a6 6 0 0 1-6 6h-4a6 6 0 0 1-6-6ZM8 7c-3-2 3-3 0-5m8 5c-3-2 3-3 0-5M1 12h3m16 0h3",
   "minus": "M4 12h16",
   "hold": "M12 3 4 6v6c0 5 8 9 8 9s8-4 8-9V6Z",
   "attack": "m5 19 13-13 2-2v6L9 21M3 14l7 7M6 18l-3 3",
