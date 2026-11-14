@@ -42,33 +42,27 @@ const RULES = {
   harvestTime: 3,
   harvestSpeed: 60,
 };
-// Rotational symmetry gives both starts identical distances and choke widths.
-// Waypoints also document the three distinct base-to-base approaches.
+// All dimensions are world pixels; the collision grid is shared with the server.
+const baseApproach = [[450, 1750], [760, 1750], [960, 1550], [1100, 1550]];
+const enemyApproach = baseApproach.map(([x, y]) => [W - x, H - y]).reverse();
 const lanes = [
-  { name: 'centre', points: [[450, 1750], [1100, 1550], [1600, 1250], [2000, 1100], [2400, 950], [2900, 650], [3550, 450]] },
-  { name: 'nord', points: [[450, 1750], [650, 1100], [650, 450], [1400, 450], [2000, 450], [2800, 450], [3550, 450]] },
-  { name: 'sud', points: [[450, 1750], [1200, 1750], [2000, 1750], [2600, 1750], [3350, 1750], [3350, 1100], [3550, 450]] },
+  { name: 'centre', width: 440, points: [...baseApproach, [1420, 750], [1660, 750], [2000, 1100], [2340, 1450], [2580, 1450], ...enemyApproach] },
+  { name: 'nord', width: 180, points: [...baseApproach, [1300, 850], [1500, 450], [2000, 450], ...enemyApproach] },
+  { name: 'sud', width: 180, points: [...baseApproach, [2000, 1750], [2500, 1750], [2700, 1350], ...enemyApproach] },
 ];
-// Symmetric clearings reserved by the enlarged map.
+const passages = [
+  { name: 'nord-ouest', width: 140, points: [[650, 850], [1300, 850]] },
+  { name: 'nord-est', width: 140, points: [[1800, 450], [1800, 850]] },
+  { name: 'sud-est', width: 140, points: [[3350, 1350], [2700, 1350]] },
+  { name: 'sud-ouest', width: 140, points: [[2200, 1750], [2200, 1350]] },
+];
 const reservedSites = [
-  { name: 'camp-nord-ouest', x: 1050, y: 450 },
-  { name: 'camp-sud-est', x: 2950, y: 1750 },
-  { name: 'camp-nord-est', x: 2550, y: 450 },
-  { name: 'camp-sud-ouest', x: 1450, y: 1750 },
-  { name: 'braises-ouest', x: 1450, y: 1350 },
-  { name: 'braises-est', x: 2550, y: 850 },
-];
-const clearings = [
-  { x: 450, y: 1750, radius: 320 },
-  { x: 3550, y: 450, radius: 320 },
-  { x: 750, y: 1450, radius: 230 },
-  { x: 3250, y: 750, radius: 230 },
-  { x: 650, y: 450, radius: 260 },
-  { x: 3350, y: 1750, radius: 260 },
-  { x: 1400, y: 450, radius: 220 },
-  { x: 2600, y: 1750, radius: 220 },
-  { x: 2000, y: 1100, radius: 290 },
-  ...reservedSites.map((site) => ({ ...site, radius: 160 })),
+  { name: 'camp-nord-ouest', x: 450, y: 1300 },
+  { name: 'camp-sud-est', x: 3550, y: 900 },
+  { name: 'camp-nord-est', x: 1600, y: 200 },
+  { name: 'camp-sud-ouest', x: 2400, y: 2000 },
+  { name: 'braises-ouest', x: 950, y: 850 },
+  { name: 'braises-est', x: 3050, y: 1350 },
 ];
 function segmentDistance(x, y, a, b) {
   const dx = b[0] - a[0];
@@ -76,15 +70,61 @@ function segmentDistance(x, y, a, b) {
   const ratio = Math.max(0, Math.min(1, ((x - a[0]) * dx + (y - a[1]) * dy) / (dx * dx + dy * dy)));
   return Math.hypot(x - a[0] - ratio * dx, y - a[1] - ratio * dy);
 }
-function traversable(x, y) {
-  if (clearings.some((site) => Math.hypot(x - site.x, y - site.y) < site.radius)) return true;
-  return lanes.some((lane) => lane.points.slice(1).some((point, index) =>
-    segmentDistance(x, y, lane.points[index], point) < 110));
+function onRoute(x, y, points, width) {
+  return points.slice(1).some((point, index) => segmentDistance(x, y, points[index], point) < width / 2);
 }
-// Concealing, damaging groves remain separate from impassable forest walls.
+function homeTerrain(x, y) {
+  // The chamber and natural pocket have no other opening through their walls.
+  if (x < 820 && y > 1460) {
+    return (x >= 120 && x < 680 && y >= 1520 && y < 2100) || (x >= 680 && y >= 1670 && y < 1830);
+  }
+  if (x >= 800 && x < 1120 && y > 1260) {
+    return (x >= 820 && x < 1020 && y >= 1380 && y < 1860) ||
+      (x >= 1020 && y >= 1400 && y < 1700);
+  }
+  return null;
+}
+// Keep the outer branches serving the four connectors and the side pockets.
+const outerBranch = [[1100, 1550], [650, 1100], [650, 450], [2000, 450]];
+const centralCorridor = [
+  [1100, 1550], [1300, 1550], [1300, 850], [2000, 850],
+  [2000, 1350], [2700, 1350], [2700, 650], [2900, 650],
+];
+const peripheralGroves = [[240, 360, 110, 140], [1100, 120, 140, 70], [2300, 120, 180, 70]];
+function traversable(x, y) {
+  const home = homeTerrain(x, y);
+  if (home !== null) return home;
+  const away = homeTerrain(W - x, H - y);
+  if (away !== null) return away;
+  if (lanes.slice(1).some((lane) => onRoute(x, y, lane.points.slice(3, -3), lane.width))) return true;
+  // Broad shared approaches leave 440 px around the offset central entrances.
+  if ((x >= 1120 && x < 1680 && y >= 360 && y < 800) ||
+      (x > 2320 && x <= 2880 && y > 1400 && y <= 1840)) return true;
+  // Offset entrances force the central approach around both forest walls.
+  if ((x >= 1520 && x < 1640 && y >= 800 && y < 1900) ||
+      (x > 2360 && x <= 2480 && y > 300 && y <= 1400)) return false;
+  if (x >= 1640 && x < 2360 && y >= 840 && y < 1360) return true;
+  if (onRoute(x, y, outerBranch, 180) ||
+      onRoute(W - x, H - y, outerBranch, 180)) return true;
+  if (onRoute(x, y, centralCorridor, 440)) return true;
+  if (passages.some((passage) => onRoute(x, y, passage.points, passage.width))) return true;
+  if (onRoute(x, y, baseApproach.slice(2), 300) || onRoute(x, y, enemyApproach.slice(0, 2), 300)) return true;
+  if (peripheralGroves.some(([gx, gy, rx, ry]) =>
+    ((x - gx) / rx) ** 2 + ((y - gy) / ry) ** 2 < 1 ||
+    ((W - x - gx) / rx) ** 2 + ((H - y - gy) / ry) ** 2 < 1)) return false;
+  // Broad side clearings break up the forest. Narrow strips retain the flank
+  // corridors; the openings at their ends lead into these optional pockets.
+  if ((x < 500 && y < 1260) || (x > 3500 && y > 940)) return true;
+  if ((y < 300 && x < 2920) || (y > 1900 && x > 1080)) return true;
+  if ((x > 760 && x < 1760 && y > 960 && y < 1240) ||
+      (x < 3240 && x > 2240 && y < 1240 && y > 960)) return true;
+  if (reservedSites.some((site) => Math.hypot(x - site.x, y - site.y) < 180)) return true;
+  return false;
+}
+// Concealing groves use the existing artwork and rules.
 const groves = [
-  { x: 1600, y: 1250, rx: 90, ry: 60 },
-  { x: 2400, y: 950, rx: 90, ry: 60 },
+  { x: 1450, y: 1100, rx: 90, ry: 60 },
+  { x: 2550, y: 1100, rx: 90, ry: 60 },
 ];
 const walk = new Uint8Array(COLS * ROWS);
 for (let y = 0; y < ROWS; y++) {
@@ -178,8 +218,8 @@ function create() {
     mines: [
       { x: 535, y: 1770, owner: 0, name: 'Mine de la Braise', boost: false },
       { x: 3465, y: 430, owner: 1, name: 'Mine du Voile', boost: false },
-      { x: 790, y: 1450, owner: -1, name: 'Naturelle de la Braise', boost: false, site: { x: 710, y: 1450 } },
-      { x: 3210, y: 750, owner: -1, name: 'Naturelle du Voile', boost: false, site: { x: 3290, y: 750 } },
+      { x: 940, y: 1550, owner: -1, name: 'Naturelle de la Braise', boost: false, site: { x: 860, y: 1550 } },
+      { x: 3060, y: 650, owner: -1, name: 'Naturelle du Voile', boost: false, site: { x: 3140, y: 650 } },
       { x: 2000, y: 1100, owner: -1, name: 'Veine riche', boost: true, site: { x: 2052, y: 1224 } },
       { x: 650, y: 410, owner: -1, name: 'Flanc nord — ouest', boost: false, site: { x: 650, y: 490 } },
       { x: 3350, y: 1790, owner: -1, name: 'Flanc sud — est', boost: false, site: { x: 3350, y: 1710 } },
@@ -1286,7 +1326,7 @@ export const CendreSim = {
   stats,
   walk,
   lanes,
-  clearings,
+  passages,
   reservedSites,
   groves,
   nearest,

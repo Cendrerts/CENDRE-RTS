@@ -1,0 +1,15 @@
+{
+  "startingUnits": 60,
+  "damageDealt": 10905,
+  "frames": 600,
+  "cpuThrottling": 4,
+  "viewport": "844x390",
+  "units": 60,
+  "minVisibleUnits": 60,
+  "meanMs": 4.644666666667715,
+  "p95Ms": 10.199999999953434,
+  "p99Ms": 14.399999999965075,
+  "maxMs": 24.100000000034925,
+  "overBudgetFrames": 351,
+  "chrome": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36"
+}

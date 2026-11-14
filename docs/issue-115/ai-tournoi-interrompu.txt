@@ -1,0 +1,4 @@
+PASS: natural expansions, three attack lanes, fog and long-distance wave timing.
+Seed 19: winner null, 1800.0s.
+
+Run interrompu pendant la seed 22 après absence de vainqueur pour la seed 19.

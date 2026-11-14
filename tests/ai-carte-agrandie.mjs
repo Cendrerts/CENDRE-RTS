@@ -40,7 +40,8 @@ for (const team of [0, 1]) {
       unit.path = [];
     }
     for (const lane of Sim.lanes.filter((lane) => lane.name !== expected)) {
-      const [x, y] = lane.points[3];
+      // Place resistance on the distinct middle of each revised approach.
+      const [x, y] = { centre: [2000, 1100], nord: [2000, 450], sud: [2000, 1750] }[lane.name];
       for (let index = 0; index < 8; index++) {
         Sim.spawn(state, 'knight', 1 - team);
         const enemy = state.units.at(-1);
@@ -64,7 +65,7 @@ for (const team of [0, 1]) {
     state.visible[team].fill(0);
     controller.update(state);
     assert.equal(controller.metrics.waves, 1);
-    assert(attackers.every((unit) => Math.hypot(unit.path.at(-1).x - base.x, unit.path.at(-1).y - base.y) > 400));
+    assert(attackers.every((unit) => !unit.retreat && unit.orderQueue.length > 0), 'La vague poursuit ses points de passage après 90 secondes');
   }
 }
 // A losing army in the middle of the enlarged map retreats all the way
@@ -114,7 +115,9 @@ for (const team of [0, 1]) {
     for (const unit of state.units) {
       unit.x = x;
       unit.y = y;
+      unit.path = [];
     }
+    Sim.tick(state, 0.05);
     state.time++;
     controller.update(state);
   }
@@ -229,7 +232,7 @@ for (const [team, time] of [[0, 240], [1, 240], [0, 480], [1, 480]]) {
   assert(attackers.every((unit) => unit.target !== enemyBase));
 }
 
-// An unseen blockade cannot make the AI choose a longer lane.
+// An unseen blockade cannot affect the choice of a shorter flank.
 {
   const state = Sim.create();
   state.units = [];
@@ -251,9 +254,15 @@ for (const [team, time] of [[0, 240], [1, 240], [0, 480], [1, 480]]) {
   state.visible[0].fill(0);
   const controller = createAI(0, 'brutal');
   controller.update(state);
-  assert.equal(controller.metrics.lanes[0], 'centre');
+  assert.equal(controller.metrics.lanes[0], 'nord');
 }
 console.log('PASS: natural expansions, three attack lanes, fog and long-distance wave timing.');
+
+// The map issue excludes long tournaments; keep their default execution intact.
+if (process.argv.includes('--short')) {
+  console.log('SKIP: tournois longs (mode --short, suivi #113).');
+  process.exit(0);
+}
 
 // Reproduce the blocked tournament seeds, including faction and update order.
 const directory = await mkdtemp(join(tmpdir(), 'cendre-map-ai-'));
