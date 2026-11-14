@@ -24,6 +24,7 @@ let realtime = null;
 import { ratSVG, ratSprites } from './rats.js';
 import { cookSVG, cookSprites } from './cooks.js';
 import { drawMinimap } from './minimap.js';
+import { createSkirmishTerrain } from './terrain.js';
 import { TEAM_COLORS, drawHealthBar, selectionRing, unitFeet, drawCargoRuby, drawMine } from './unit-overlays.js';
 import { createRenderCache, prepareDrawList } from './render-cache.js';
 import { CendreSim as Sim } from './sim.js';
@@ -44,7 +45,15 @@ if (debugDisplay) {
 }
 let preparedUnits = [];
 const terrain = new Image();
-terrain.src = 'assets/terres-brulees.png';
+const terrainAtlas = new Image();
+terrainAtlas.onload = () => {
+  createSkirmishTerrain(terrainAtlas, Sim).toBlob((blob) => {
+    const url = URL.createObjectURL(blob);
+    terrain.onload = () => URL.revokeObjectURL(url);
+    terrain.src = url;
+  });
+};
+terrainAtlas.src = 'assets/terres-brulees.png';
 const fog = document.createElement('canvas');
 fog.width = COLS;
 fog.height = ROWS;
@@ -166,7 +175,8 @@ function setupPortraits() {
 }
 function layout() {
   fieldDoubleTap.reset();
-  scale = Math.max(viewWidth / W, viewHeight / H) * zoom;
+  // Keep units and touch targets at their established screen size on the larger map.
+  scale = Math.max(viewWidth / 1680, viewHeight / 940) * zoom;
   const center = clampCamera(cameraX, cameraY, viewWidth, viewHeight, scale, W, H);
   cameraX = center.x;
   cameraY = center.y;
@@ -309,8 +319,8 @@ $('#start').onclick = async () => {
   running = true;
   paused = false;
   zoom = 2.6;
-  cameraX = state.bases[player].x + (player ? -50 : 65);
-  cameraY = state.bases[player].y + 70;
+  cameraX = state.bases[player].x;
+  cameraY = state.bases[player].y;
   layout();
   setupPortraits();
   $('#veil').style.display = 'none';
@@ -989,7 +999,8 @@ function drawMini() {
     terrain,
     fog,
     units: preparedUnits,
-    mines: state.mines.filter((mine) => Sim.visibleAt(state, player, mine.x, mine.y)),
+    mines: state.mines.filter((mine) => state.explored[player][Math.floor(mine.y / CELL) * COLS + Math.floor(mine.x / CELL)]),
+    bases: state.bases.filter((base) => Sim.canSee(state, player, base)),
     camera: { x: -ox / scale, y: -oy / scale, width: viewWidth / scale, height: viewHeight / scale },
     player,
     worldWidth: W,
@@ -1221,7 +1232,7 @@ function showSnapshot(data) {
     paused = false;
     zoom = 2.6;
     cameraX = state.bases[player].x;
-    cameraY = state.bases[player].y + 70;
+    cameraY = state.bases[player].y;
     layout();
     setupPortraits();
     $('#veil').style.display = 'none';

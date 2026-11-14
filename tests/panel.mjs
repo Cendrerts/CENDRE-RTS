@@ -59,7 +59,7 @@ for (const player of [0, 1]) {
   const beforeModel = JSON.stringify(state);
   const bases = panelModel(state, player, new Set(), { bases: true });
   assert.equal(JSON.stringify(state), beforeModel, 'Le modèle ne modifie pas la simulation');
-  assert.equal(bases.grid.flat().length, 6, 'Base principale et cinq mines découvertes');
+  assert.equal(bases.grid.flat().length, state.mines.length - 1, 'Base principale et sept mines découvertes');
   for (const model of [empty, units, base, emplacement, production, bases]) {
     assert(model.tabs.length <= 3);
     for (const page of model.grid) assert(page.length <= panelCapacity(844).capacity);

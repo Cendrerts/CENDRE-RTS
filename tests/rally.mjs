@@ -13,24 +13,24 @@ function fixture() {
   const slot = state.slots[0].find((slot) => slot.occupe);
   // An open lane isolates rally behaviour from the production building's map position.
   slot.x = 710;
-  slot.y = 570;
+  slot.y = 430;
   return { state, slot };
 }
 {
   const { state, slot } = fixture();
-  command(state, 0, { kind: 'setRally', buildingId: slot.id, x: 1030, y: 590 });
+  command(state, 0, { kind: 'setRally', buildingId: slot.id, x: 1030, y: 450 });
   S.recruit(state, 'knight', 0, slot.id);
   advance(state, S.stats('knight', 0).production);
   const guard = state.units[0];
   assert.equal(guard.attackDestination.x, 1030);
-  assert.equal(guard.attackDestination.y, 590);
+  assert.equal(guard.attackDestination.y, 450);
   S.spawn(state, 'commis', 1);
   const enemy = state.units.at(-1);
-  Object.assign(enemy, { x: 870, y: 590, hp: 1, harvest: null, hold: true, path: [] });
+  Object.assign(enemy, { x: 870, y: 450, hp: 1, harvest: null, hold: true, path: [] });
   S.visibility(state);
   advance(state, 20);
   assert.equal(guard.lastAttackTargetId, enemy.id, 'The produced guard attacks an enemy on its way');
-  assert(Math.hypot(guard.x - 1030, guard.y - 590) < 25, 'The guard resumes and reaches its rally');
+  assert(Math.hypot(guard.x - 1030, guard.y - 450) < 25, 'The guard resumes and reaches its rally');
   assert.deepEqual(unpack(pack(state)).slots[0][0].rally, slot.rally);
 }
 {
@@ -38,17 +38,17 @@ function fixture() {
   state.rubies[0] = 9999;
   state.units = [];
   // Use the same open lane as the combat unit's rally test.
-  Object.assign(state.bases[0], { x: 710, y: 570 });
-  command(state, 0, { kind: 'setRally', buildingId: 'main_0', x: 1030, y: 590 });
+  Object.assign(state.bases[0], { x: 710, y: 430 });
+  command(state, 0, { kind: 'setRally', buildingId: 'main_0', x: 1030, y: 450 });
   S.recruit(state, 'commis', 0, 'main_0');
   advance(state, S.stats('commis', 0).production);
   const worker = state.units[0];
   assert.equal(worker.attackDestination, null);
   assert(worker.path.length > 0, 'The produced worker has a path to its ground rally');
-  assert.deepEqual(worker.path.at(-1), { x: 1030, y: 590 });
+  assert.deepEqual(worker.path.at(-1), { x: 1030, y: 450 });
   S.spawn(state, 'commis', 1);
   const enemy = state.units.at(-1);
-  Object.assign(enemy, { x: 870, y: 610, harvest: null, hold: true, retreat: true, path: [] });
+  Object.assign(enemy, { x: 870, y: 470, harvest: null, hold: true, retreat: true, path: [] });
   S.visibility(state);
   for (let tick = 0; tick < 400; tick++) {
     S.tick(state, 0.05);
@@ -56,7 +56,7 @@ function fixture() {
     assert.equal(worker.autoTargetId, null, 'The worker never acquires an automatic target');
     assert.equal(worker.lastAttackTargetId, undefined, 'The worker never attacks on its way');
   }
-  assert(Math.hypot(worker.x - 1030, worker.y - 590) < 25, 'The worker reaches its ground rally');
+  assert(Math.hypot(worker.x - 1030, worker.y - 450) < 25, 'The worker reaches its ground rally');
 }
 {
   const state = S.create();
@@ -96,7 +96,7 @@ function fixture() {
   const { state, slot } = fixture();
   S.spawn(state, 'knight', 0);
   const leader = state.units[0];
-  Object.assign(leader, { x: 970, y: 590, hold: true, path: [] });
+  Object.assign(leader, { x: 970, y: 450, hold: true, path: [] });
   command(state, 0, { kind: 'setRally', buildingId: slot.id, unitId: leader.id });
   S.recruit(state, 'knight', 0, slot.id);
   advance(state, S.stats('knight', 0).production + 10);
@@ -106,7 +106,7 @@ function fixture() {
   leader.x = 1130;
   advance(state, 8);
   assert(Math.hypot(follower.x - leader.x, follower.y - leader.y) < 65);
-  S.order(state, [follower.id], 750, 590, null, true);
+  S.order(state, [follower.id], 750, 450, null, true);
   assert.equal(follower.followId, null, 'An explicit order cancels following');
 }
 {

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { performance } from 'node:perf_hooks';
 import { CendreSim as S } from '../public/game/sim.js';
 
-function group(count, x = 390, y = 670) {
+function group(count, x = 390, y = 1750) {
   const state = S.create();
   state.units = [];
   for (let index = 0; index < count; index++) {
@@ -22,12 +22,12 @@ function tick(state) {
 }
 function arrival() {
   const state = group(12);
-  S.order(state, state.units.map((unit) => unit.id), 850, 650);
+  S.order(state, state.units.map((unit) => unit.id), 850, 1750);
   for (let step = 0; step < 500; step++) tick(state);
   assert.equal(state.units.length, 12);
   for (const [index, unit] of state.units.entries()) {
     assert.equal(unit.path.length, 0, 'Arrivée effective');
-    assert(Math.hypot(unit.x - 850, unit.y - 650) < 80);
+    assert(Math.hypot(unit.x - 850, unit.y - 1750) < 80);
     for (const other of state.units.slice(index + 1)) {
       assert(Math.hypot(unit.x - other.x, unit.y - other.y) >= 14);
     }
@@ -50,10 +50,10 @@ function pathLength(x, y, path) {
 const line = group(9);
 for (const [index, unit] of line.units.entries()) {
   unit.x = 930 - index * 20;
-  unit.y = 650;
+  unit.y = 1750;
 }
 const leftToRight = [...line.units].sort((a, b) => a.x - b.x);
-S.order(line, line.units.map((unit) => unit.id), 850, 550);
+S.order(line, line.units.map((unit) => unit.id), 850, 1650);
 for (const unit of line.units) {
   const destination = unit.path.at(-1);
   assert(pathLength(unit.x, unit.y, unit.path) <=
@@ -87,9 +87,9 @@ for (const [x, y] of [[1130, 450], [710, 250], [1050, 210]]) {
   }
 }
 
-// The northern ramp is only about 100 px wide.
-const passage = group(20, 770, 150);
-S.order(passage, passage.units.map((unit) => unit.id), 950, 650);
+// The northern forest corridor narrows to 220 px between clearings.
+const passage = group(20, 650, 450);
+S.order(passage, passage.units.map((unit) => unit.id), 1400, 450);
 const progress = new Map(passage.units.map((unit) => [unit.id, { x: unit.x, y: unit.y, elapsed: 0 }]));
 for (let step = 0; step < 650; step++) {
   tick(passage);
@@ -108,24 +108,24 @@ for (let step = 0; step < 650; step++) {
 assert(passage.units.every((unit) => unit.path.length === 0));
 
 // A stale waypoint against a cliff must be replaced after a second.
-const blocked = group(1, 710, 90);
+const blocked = group(1, 650, 210);
 const unit = blocked.units[0];
-unit.path = [{ x: 650, y: 90 }, { x: 850, y: 150 }];
+unit.path = [{ x: 650, y: 100 }, { x: 650, y: 450 }];
 for (let step = 0; step < 50; step++) tick(blocked);
-assert(!unit.path.some((point) => point.x === 650 && point.y === 90));
+assert(!unit.path.some((point) => point.x === 650 && point.y === 100));
 
 // Coincident units at the edge must separate without entering the adjacent void.
-const edge = group(12, 710, 90);
+const edge = group(12, 650, 210);
 for (const unit of edge.units) {
-  unit.x = 710;
-  unit.y = 90;
+  unit.x = 650;
+  unit.y = 210;
   unit.path = [];
 }
 for (let step = 0; step < 200; step++) tick(edge);
-assert(edge.units.some((unit) => Math.hypot(unit.x - 710, unit.y - 90) > 10));
+assert(edge.units.some((unit) => Math.hypot(unit.x - 650, unit.y - 210) > 10));
 
 // Combatants stay in range even with an overlapping ally.
-const combat = group(2, 850, 650);
+const combat = group(2, 850, 1750);
 S.spawn(combat, 'knight', 1);
 const [fighter, ally, enemy] = combat.units;
 ally.x = fighter.x;
@@ -141,7 +141,7 @@ assert.equal(fighter.x, position.x);
 assert.equal(fighter.y, position.y);
 
 const benchmark = group(60);
-S.order(benchmark, benchmark.units.map((unit) => unit.id), 950, 650);
+S.order(benchmark, benchmark.units.map((unit) => unit.id), 950, 1750);
 for (let step = 0; step < 100; step++) S.tick(benchmark, 0.01);
 const start = performance.now();
 for (let step = 0; step < 1000; step++) S.tick(benchmark, 0.01);

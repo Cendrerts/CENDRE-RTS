@@ -20,9 +20,10 @@ for (let frame = 0; frame < 600; frame++) {
   }
   for (const unit of state.units) {
     assert(Number.isFinite(unit.x) && Number.isFinite(unit.y));
+    assert(sim.walk[Math.floor(unit.y / sim.CELL) * sim.COLS + Math.floor(unit.x / sim.CELL)]);
     // Camera centered on the battle, including room for a 52 px sprite.
-    assert(Math.abs(unit.x - 844) < 844 / 2 - 26);
-    assert(Math.abs(unit.y - 585) < 390 / 2 - 30);
+    assert(Math.abs(unit.x - sim.W / 2) < 844 / 2 - 26);
+    assert(Math.abs(unit.y - sim.H / 2) < 390 / 2 - 30);
   }
   if (frame === 0) {
     assert(state.units.reduce((sum, unit) => sum + unit.hp, 0) < startingHealth, 'Combat starts on the first tick');

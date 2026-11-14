@@ -120,16 +120,16 @@ function mineYield(count, withAllies) {
   for (let index = 0; index < count; index++) {
     S.spawn(state, 'commis', 0);
     const worker = state.units.at(-1);
-    worker.x = 470;
-    worker.y = 690;
+    worker.x = state.mines[0].x - 5;
+    worker.y = state.mines[0].y;
     S.gather(state, 0, [worker.id], 0);
   }
   if (withAllies) {
     for (let index = 0; index < 6; index++) {
       S.spawn(state, 'knight', 0);
       const ally = state.units.at(-1);
-      ally.x = 470;
-      ally.y = 690;
+      ally.x = state.mines[0].x - 5;
+      ally.y = state.mines[0].y;
       ally.hold = true;
     }
   }
