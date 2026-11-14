@@ -36,8 +36,20 @@ for (const site of S.reservedSites) {
 }
 // Exercise real commands and ticks, not only the route finder. Each waypoint
 // must be visited; a direct route to the enemy would only prove one approach.
+const routes = [
+  ...S.lanes,
+  ...S.passages.map((passage) => ({
+    name: passage.name,
+    points: [
+      ...S.lanes[0].points.slice(0, 4),
+      ...passage.points,
+      ...S.lanes[0].points.slice(-4),
+    ],
+  })),
+];
+const travelled = new Map();
 for (const team of [0, 1]) {
-  for (const lane of S.lanes) {
+  for (const lane of routes) {
     for (const type of ['commis', 'knight', 'archer', 'mage']) {
       const state = S.create();
       // Isolate terrain travel from neutral camp combat.
@@ -48,6 +60,7 @@ for (const team of [0, 1]) {
       const unit = state.units[0];
       const points = team === 0 ? lane.points : [...lane.points].reverse();
       let ticks = 0;
+      let distance = 0;
       for (const [x, y] of points.slice(1)) {
         command(state, team, { kind: 'move', ids: [unit.id], x, y });
         const destination = unit.path.at(-1);
@@ -56,7 +69,9 @@ for (const team of [0, 1]) {
         let lastY = unit.y;
         let stalled = 0;
         for (let step = 0; unit.path.length && step < 4000; step++) {
+          const previous = { x: unit.x, y: unit.y };
           S.tick(state, 0.05);
+          distance += Math.hypot(unit.x - previous.x, unit.y - previous.y);
           ticks++;
           assert(unit.hp > 0, 'Unité vivante après les bosquets');
           assert(S.walk[Math.floor(unit.y / S.CELL) * S.COLS + Math.floor(unit.x / S.CELL)], 'Terrain praticable à chaque tick');
@@ -74,7 +89,16 @@ for (const team of [0, 1]) {
       }
       const enemy = state.bases[1 - team];
       assert(Math.hypot(unit.x - enemy.x, unit.y - enemy.y) < 25);
+      travelled.set(`${team}/${lane.name}/${type}`, distance);
       console.log(`PASS ${team}/${lane.name}/${type}: ${ticks} ticks`);
+    }
+  }
+}
+for (const team of [0, 1]) {
+  for (const type of ['commis', 'knight', 'archer', 'mage']) {
+    const centre = travelled.get(`${team}/centre/${type}`);
+    for (const flank of ['nord', 'sud']) {
+      assert(travelled.get(`${team}/${flank}/${type}`) <= centre * 0.9, 'Trajet réel du flanc au moins 10 % plus court');
     }
   }
 }
@@ -88,4 +112,4 @@ for (const team of [0, 1]) {
   assert.deepEqual(clampCamera(base.x, base.y, 844, 390, 1.3, S.W, S.H), { x: base.x, y: base.y });
 }
 assert.deepEqual(minimapToWorld(140, 80, 140, 80, S.W, S.H), { x: S.W, y: S.H });
-console.log('PASS: carte, trois chemins dans les deux sens, quatre types, réserves, caméra et synchronisation.');
+console.log('PASS: carte, trois chemins et quatre passages dans les deux sens, quatre types, réserves, caméra et synchronisation.');

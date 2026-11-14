@@ -15,9 +15,9 @@ function combat() {
   }
   unit.type = 'archer';
   unit.x = 790;
-  unit.y = 570;
+  unit.y = 450;
   enemy.x = 850;
-  enemy.y = 570;
+  enemy.y = 450;
   S.visibility(state);
   return { state, unit, enemy };
 }
@@ -28,7 +28,7 @@ function advance(state, seconds) {
 // Commands use the same movement/combat rules as solo.
 {
   const { state, unit, enemy } = combat();
-  command(state, 0, { kind: 'move', ids: [unit.id], x: 650, y: 570 });
+  command(state, 0, { kind: 'move', ids: [unit.id], x: 650, y: 450 });
   const hp = enemy.hp;
   advance(state, 0.5);
   assert.equal(enemy.hp, hp, 'A simple move never retaliates in transit');
@@ -38,7 +38,7 @@ function advance(state, seconds) {
 }
 {
   const { state, unit, enemy } = combat();
-  command(state, 0, { kind: 'attackMove', ids: [unit.id], x: 950, y: 570 });
+  command(state, 0, { kind: 'attackMove', ids: [unit.id], x: 950, y: 450 });
   advance(state, 0.1);
   assert(enemy.hp < 10000, 'Attack move engages an encountered enemy');
   assert.equal(unit.retreat, false);
@@ -80,7 +80,7 @@ function advance(state, seconds) {
   S.spawn(state, 'commis', 1);
   const other = state.units.at(-1);
   other.x = 815;
-  other.y = 570;
+  other.y = 450;
   other.harvest = null;
   other.hold = true;
   S.visibility(state);
@@ -96,7 +96,7 @@ function advance(state, seconds) {
   advance(state, 0.1);
   assert.equal(unit.target, null, 'An invisible target is released');
   enemy.x = 850;
-  enemy.y = 570;
+  enemy.y = 450;
   S.visibility(state);
   S.order(state, [unit.id], enemy.x, enemy.y, enemy);
   enemy.hp = 0;
@@ -109,7 +109,7 @@ function advance(state, seconds) {
   // Acquire an enemy outside weapon range, then resume the original route after contact.
   enemy.x = 950;
   S.visibility(state);
-  S.order(state, [unit.id], 1130, 570, null, false);
+  S.order(state, [unit.id], 1130, 450, null, false);
   const destination = unit.attackDestination;
   advance(state, 0.1);
   assert.equal(unit.chasing, true);
@@ -128,7 +128,7 @@ console.log(
   enemy.x = 1300;
   enemy.y = 330;
   const origin = { x: unit.x, y: unit.y };
-  command(state, 0, { kind: 'patrol', ids: [unit.id, enemy.id], x: 950, y: 570 });
+  command(state, 0, { kind: 'patrol', ids: [unit.id, enemy.id], x: 950, y: 450 });
   assert.equal(enemy.patrol, null, 'Une patrouille ne commande pas un ennemi');
   assert.deepEqual(unit.patrol.points[0], origin);
   let changes = 0;
@@ -141,13 +141,13 @@ console.log(
     }
   }
   assert(changes >= 3, 'La patrouille alterne plusieurs fois entre les deux points');
-  command(state, 0, { kind: 'move', ids: [unit.id], x: 790, y: 570 });
+  command(state, 0, { kind: 'move', ids: [unit.id], x: 790, y: 450 });
   assert.equal(unit.patrol, null, 'Un nouvel ordre annule la patrouille');
-  assert.throws(() => command(state, 0, { kind: 'patrol', ids: [unit.id], x: NaN, y: 570 }));
+  assert.throws(() => command(state, 0, { kind: 'patrol', ids: [unit.id], x: NaN, y: 450 }));
 }
 {
   const { state, unit, enemy } = combat();
-  command(state, 0, { kind: 'patrol', ids: [unit.id], x: 950, y: 570 });
+  command(state, 0, { kind: 'patrol', ids: [unit.id], x: 950, y: 450 });
   advance(state, 0.1);
   assert(enemy.hp < 10000, 'La patrouille engage les ennemis en chemin');
   const restored = unpack(pack(state));

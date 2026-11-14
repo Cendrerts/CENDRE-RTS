@@ -58,14 +58,14 @@ try {
   await page.goto(`http://127.0.0.1:${server.address().port}/game/`);
   await page.waitForFunction(() => window.mapProbe?.().terrainReady);
   await page.locator('#start').click();
-  await mkdir('docs/issue-103', { recursive: true });
+  await mkdir('docs/issue-115', { recursive: true });
   for (const team of [0, 1]) {
     await page.evaluate((team) => window.mapStart(team), team);
     await page.waitForTimeout(100);
     const probe = await page.evaluate(() => window.mapProbe());
     assert.deepEqual(probe.camera, probe.base, 'Vue initiale centrée sur la base');
     assert(probe.scale > 1, 'Échelle tactile conservée');
-    await page.screenshot({ path: `docs/issue-103/depart-${team}-844x390.png` });
+    await page.screenshot({ path: `docs/issue-115/depart-${team}-844x390.png` });
   }
   const mini = await page.locator('#minimap').boundingBox();
   assert(mini.width >= 44 && mini.height >= 44);
@@ -90,7 +90,7 @@ try {
   await page.addStyleTag({ content: 'body > :not(#field) { visibility: hidden !important; }' });
   await page.evaluate(() => window.mapOverview());
   await page.waitForTimeout(100);
-  await page.screenshot({ path: 'docs/issue-103/carte-entiere.png' });
+  await page.screenshot({ path: 'docs/issue-115/carte-entiere.png' });
   assert.deepEqual(errors, []);
   console.log('PASS: départs 844×390, caméra, mini-carte glissable souris/tactile et vue entière 4000×2200.');
 } finally {

@@ -6,6 +6,8 @@ import { execFileSync } from 'node:child_process';
 import { resolve, extname } from 'node:path';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const root = resolve('.');
+const mapBaseline = process.argv.includes('--map-baseline');
+const outputDirectory = process.env.BENCH_OUTPUT || 'artifacts/issue-17';
 const server = createServer(async (request, response) => {
   const pathname = decodeURIComponent(new URL(request.url, 'http://localhost').pathname);
   if (pathname === '/render-bench') {
@@ -19,7 +21,9 @@ const server = createServer(async (request, response) => {
     return;
   }
   try {
-    const content = await readFile(path);
+    const content = mapBaseline && path.endsWith('/public/game/sim.js')
+      ? execFileSync('git', ['show', `${process.env.BASELINE_REF || 'HEAD'}:public/game/sim.js`])
+      : await readFile(path);
     const types = { '.js': 'text/javascript', '.mjs': 'text/javascript', '.html': 'text/html', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png' };
     response.setHeader('Content-Type', types[extname(path)] || 'application/octet-stream');
     response.end(content);
@@ -51,8 +55,8 @@ try {
     await Promise.all([...document.images].map((image) => image.decode().catch(() => {})));
   });
   await page.waitForTimeout(500);
-  await mkdir('artifacts/issue-17', { recursive: true });
-  await page.screenshot({ path: `artifacts/issue-17/${baseline ? 'before' : 'after'}.png` });
+  await mkdir(outputDirectory, { recursive: true });
+  await page.screenshot({ path: `${outputDirectory}/${baseline ? 'before' : 'after'}.png` });
   if (errors.length) throw new Error(errors.join('\n'));
   if (!baseline) {
     await page.goto(origin + '/public/game/?debug=1');
@@ -130,12 +134,25 @@ try {
       console.log(scenarioName, JSON.stringify(result, null, 2));
       const horde = scenarioName === 'hordeScenario';
       const filename = horde ? 'benchmark-horde.json' : 'benchmark.json';
-      await writeFile(`artifacts/issue-17/${filename}`, JSON.stringify(result, null, 2) + '\n');
+      await writeFile(`${outputDirectory}/${filename}`, JSON.stringify(result, null, 2) + '\n');
       const expectedUnits = horde ? 91 : 60;
       const maxBudget = horde ? 8 : 4;
+      let regression = false;
+      if (process.env.BENCH_COMPARE) {
+        const reference = JSON.parse(await readFile(`${process.env.BENCH_COMPARE}/${filename}`, 'utf8'));
+        const comparison = {
+          meanRatio: result.meanMs / reference.meanMs,
+          p95Ratio: result.p95Ms / reference.p95Ms,
+        };
+        await writeFile(`${outputDirectory}/comparison-${filename}`, JSON.stringify(comparison, null, 2) + '\n');
+        console.log('Map comparison', comparison);
+        regression = comparison.meanRatio > 1.1 || comparison.p95Ratio > 1.1;
+      }
+      const absoluteBudgetExceeded = !mapBaseline && !process.env.BENCH_COMPARE &&
+        (result.p95Ms >= 4 || result.maxMs >= maxBudget);
       if (result.startingUnits !== expectedUnits || result.units !== expectedUnits ||
           result.minVisibleUnits !== expectedUnits || result.damageDealt <= 0 ||
-          result.p95Ms >= 4 || result.maxMs >= maxBudget) {
+          absoluteBudgetExceeded || regression) {
         process.exitCode = 1;
       }
     }

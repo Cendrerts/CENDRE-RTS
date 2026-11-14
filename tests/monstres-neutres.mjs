@@ -107,8 +107,8 @@ for (const team of [0, 1]) {
   S.tick(state, 0.05);
   assert.equal(unit.hp, unit.max - 12);
   assert.equal(unit.autoTargetId, monster.id, 'Riposte au sanglier qui attaque');
-  monster.x = camp.x + 270;
-  monster.y = camp.y;
+  monster.x = camp.x;
+  monster.y = camp.y - 270;
   monster.hp = 10;
   S.tick(state, 0.05);
   assert(monster.returning);
