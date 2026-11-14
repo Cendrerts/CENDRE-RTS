@@ -238,6 +238,8 @@ function create() {
     ragout: { readyAt: null, expiresAt: 0 },
     monsterId: 0,
     monsters: [],
+    corpses: [],
+    devourEvents: [],
     camps: reservedSites.filter((site) => site.name.startsWith('camp-')).map((site) => ({ ...site, respawnAt: null })),
     incomeMultiplier: [1, 1],
     units: [],
@@ -454,6 +456,10 @@ function applyDamage(s, target, damage, attackerTeam = null, attackerId = null) 
   if (target.team === NEUTRAL && target.returning) return;
   const wasAlive = target.hp > 0;
   target.hp -= damage;
+  if (damage > 0 && target.devour?.startedAt != null) cancelDevour(target);
+  if (wasAlive && target.hp <= 0 && !target.base && target.type !== 'commis') {
+    s.corpses.push({ id: target.id, x: target.x, y: target.y, type: target.type, team: target.team, expiresAt: s.time + 30 });
+  }
   recordDamageEvent(s, target);
   if (target.team === NEUTRAL) {
     if (wasAlive && !target.returning && attackerTeam !== null) {
@@ -476,6 +482,8 @@ function migrateState(s) {
   s.ragout ??= { readyAt: null, expiresAt: 0 };
   s.monsterId ??= 0;
   s.monsters ??= [];
+  s.corpses ??= [];
+  s.devourEvents ??= [];
   s.camps ??= [];
   if (!s.incomeMultiplier) s.incomeMultiplier = [1, 1];
   s.matchCounters ??= [emptyMatchCounters(), emptyMatchCounters()];
@@ -726,6 +734,7 @@ function order(s, ids, x, y, target = null, retreat = !target, queue = false) {
   destinations.sort(byOffset);
   units.forEach((u, index) => {
     const destination = destinations[index % destinations.length];
+    cancelDevour(u);
     if (queue === true) {
       u.orderQueue ??= [];
       if (u.orderQueue.length >= 8) return;
@@ -766,6 +775,60 @@ function order(s, ids, x, y, target = null, retreat = !target, queue = false) {
     u.repath = 0;
     u.stuck = null;
   });
+}
+function cancelDevour(unit) {
+  if (!unit.devour) return;
+  unit.devour = null;
+  unit.path = [];
+  unit.retreat = false;
+  unit.stuck = null;
+}
+function devour(s, team, ids, corpseId) {
+  const corpse = s.corpses.find((item) => item.id === corpseId && item.expiresAt > s.time);
+  const units = s.units.filter((unit) => ids.includes(unit.id) && unit.team === team && unit.hp > 0);
+  if (!corpse || !visibleAt(s, team, corpse.x, corpse.y)) return false;
+  order(s, units.map((unit) => unit.id), corpse.x, corpse.y);
+  const eater = units.filter((unit) => unit.team === 1 && unit.type !== 'commis')
+    .sort((a, b) => Math.hypot(a.x - corpse.x, a.y - corpse.y) - Math.hypot(b.x - corpse.x, b.y - corpse.y) || a.id - b.id)[0];
+  if (!eater) return false;
+  const companions = units.filter((unit) => unit !== eater).map((unit) => unit.id);
+  order(s, companions, corpse.x + 48, corpse.y);
+  eater.devour = { corpseId, startedAt: null };
+  eater.path = route(eater.x, eater.y, corpse.x, corpse.y);
+  return true;
+}
+function devourTick(s, unit, dt) {
+  const corpse = s.corpses.find((item) => item.id === unit.devour.corpseId);
+  if (!corpse) {
+    cancelDevour(unit);
+    return;
+  }
+  if (unit.devour.startedAt == null) {
+    if (Math.hypot(unit.x - corpse.x, unit.y - corpse.y) <= 24) {
+      unit.path = [];
+      unit.devour.startedAt = s.time;
+    } else {
+      let remaining = stats(unit.type, unit.team).speed * dt;
+      while (remaining > 0 && unit.path.length) {
+        const point = unit.path[0];
+        const distance = Math.hypot(point.x - unit.x, point.y - unit.y);
+        const step = Math.min(distance, remaining);
+        if (distance > 0) moveSafely(unit, (point.x - unit.x) / distance * step, (point.y - unit.y) / distance * step);
+        remaining -= step;
+        if (Math.hypot(point.x - unit.x, point.y - unit.y) > 0.01) break;
+        unit.path.shift();
+      }
+      if (!unit.path.length && Math.hypot(unit.x - corpse.x, unit.y - corpse.y) > 24) cancelDevour(unit);
+    }
+    return;
+  }
+  if (s.time - unit.devour.startedAt + 1e-9 < 4) return;
+  const amount = corpse.type === 'sanglier' ? 10 : 6;
+  s.ingredients[unit.team] += amount;
+  unit.hp = Math.min(unit.max, unit.hp + unit.max * 0.3);
+  s.devourEvents.push({ x: unit.x, y: unit.y, team: unit.team, amount, time: s.time });
+  s.corpses = s.corpses.filter((item) => item.id !== corpse.id);
+  cancelDevour(unit);
 }
 function patrol(s, ids, x, y) {
   const origins = new Map(
@@ -912,6 +975,8 @@ function tick(s, dt) {
   productionTick(s, dt);
   s.time += dt;
   ragoutTick(s);
+  s.corpses = s.corpses.filter((corpse) => corpse.expiresAt > s.time + 1e-9);
+  s.devourEvents = s.devourEvents.filter((event) => s.time - event.time < 1.5);
   s.damageEvents = (s.damageEvents || []).filter((event) => s.time - event.time < 5).slice(-24);
   s.fogClock += dt;
   s.aiClock += dt;
@@ -932,6 +997,11 @@ function tick(s, dt) {
       applyDamage(s, u, RULES.forestDamage * dt);
     }
     if (u.hp <= 0) continue;
+    if (u.devour) {
+      devourTick(s, u, dt);
+      if (u.devour?.startedAt != null) fighting.add(u.id);
+      continue;
+    }
     if (u.manual) {
       manualTick(u, dt);
       continue;
@@ -1359,6 +1429,8 @@ function predictMotion(state, unit, command, dt) {
 }
 
 export const CendreSim = {
+  devour,
+  cancelDevour,
   cookDish,
   cookDishBlockReason,
   ragoutActive,
@@ -1419,6 +1491,7 @@ function steer(s, ids, dx, dy) {
     divisor = Math.max(1, length);
   for (const u of s.units)
     if (ids.includes(u.id)) {
+      cancelDevour(u);
       u.orderQueue = [];
       u.queueActive = false;
       u.followId = null;
