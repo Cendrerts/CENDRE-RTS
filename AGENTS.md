@@ -6,7 +6,7 @@ Le jeu est dans `public/game/` (canvas 2D, JS natif, pas de Phaser). La simulati
 ## Règles de travail
 - **Une issue = une PR, petite et ciblée.** Ne touche pas à ce que l'issue ne demande pas. Pas de refonte opportuniste.
 - **Critère de réussite :** chaque issue en donne un. La PR doit le remplir, sinon elle n'est pas terminée.
-- **Tests :** tous les `node tests/*.mjs` doivent passer, et `node --check` doit passer sur chaque fichier de `public/game/`. Ajoute ou complète un test dans `tests/` qui prouve le critère de réussite, quand c'est testable sans navigateur.
+- **Tests :** les tests courts se lancent avec `node scripts/tests-courts.mjs` (jamais de glob `tests/*.mjs` dans un run Codex) ; les 4 tests longs sont lancés par le relecteur ; `node --check` doit passer sur chaque fichier de `public/game/`. Ajoute ou complète un test dans `tests/` qui prouve le critère de réussite, quand c'est testable sans navigateur.
 - **Format du code :** une instruction par ligne, des noms explicites, pas de code compacté sur une seule ligne.
 - **Référence mobile :** viewport 844×390 en paysage, tactile, avec le pouce. Aucune action fréquente ne doit demander de viser une cible de moins de 44 px à l'écran.
 - **Simulation :** toute logique de jeu va dans `sim.js` (partagée entre le solo et le serveur). Le rendu et l'interface ne modifient jamais l'état directement en multijoueur : ils passent par les commandes.
