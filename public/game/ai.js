@@ -441,7 +441,7 @@ export function createAI(team, difficulty = 'normal', state = null) {
       const engaged = army.filter((unit) => !brazierUnits.has(unit.id) && unit.id !== scout && !raiders.has(unit.id) && fighting.some((enemy) => distance(unit, enemy) < 240));
       if (settings.micro && fighting.length && power(engaged) < power(fighting) * 0.6 && (!invaders.length || brutal && !invaders.some((enemy) => distance(enemy, base) < 220)) && state.time >= retreatUntil) {
         const retreating = engaged.filter((unit) => {
-          const decisiveWaveMember = waveRoute?.ids.has(unit.id) && (waveRoute.rebuildingBank || committedAssault);
+          const decisiveWaveMember = waveRoute?.ids.has(unit.id) && waveRoute.rebuildingBank;
           return !decisiveWaveMember || power(engaged) < power(fighting) * 0.25;
         });
         if (retreating.length) {

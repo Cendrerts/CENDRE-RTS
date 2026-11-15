@@ -79,7 +79,7 @@ for (const militaryCount of [20, 18]) {
 
 // Les troupes sont recrutées, se rassemblent et traversent réellement la carte.
 // Aucun déplacement instantané ne fabrique le contact avec les défenseurs.
-function verifyRetreatAtContact(decisive) {
+function verifyRetreatAtContact(decisive, rebuildingBank = decisive) {
   const state = Sim.create();
   state.rubies = [20000, 20000];
   for (const team of [0, 1]) {
@@ -98,11 +98,12 @@ function verifyRetreatAtContact(decisive) {
     }
   };
   produce(0, 'knight', 18);
-  produce(1, 'knight', 12);
+  const waveSize = decisive && !rebuildingBank ? 8 : 12;
+  produce(1, 'knight', waveSize);
   produce(1, 'commis', Sim.unitLimit(1) - Sim.populationUsed(state, 1));
   const wave = state.units.filter((unit) => unit.team === 1 && unit.type === 'knight');
   const defenders = state.units.filter((unit) => unit.team === 0 && unit.type === 'knight');
-  assert.equal(wave.length, 12);
+  assert.equal(wave.length, waveSize);
   assert.equal(defenders.length, 18);
   const base = state.bases[1];
   const rally = { x: base.x - 110, y: base.y + 65 };
@@ -113,6 +114,9 @@ function verifyRetreatAtContact(decisive) {
   }
   assert.equal(Sim.populationUsed(state, 1), Sim.unitLimit(1));
   assert(state.rubies[1] >= 800);
+  if (decisive && !rebuildingBank) {
+    state.rubies[1] = 0;
+  }
   const defensivePosition = { x: state.bases[0].x + 250, y: state.bases[0].y };
   Sim.order(state, defenders.map((unit) => unit.id), defensivePosition.x, defensivePosition.y, null, false);
   for (let step = 0; step < 300; step++) {
@@ -149,17 +153,17 @@ function verifyRetreatAtContact(decisive) {
         army.some((unit) => distance(unit, enemy) < 200));
       const engaged = army.filter((unit) => fighting.some((enemy) => distance(unit, enemy) < 240));
       const ratio = fighting.length ? power(engaged) / power(fighting) : Infinity;
-      protectedContact = decisive && fighting.length > 0 && ratio >= 0.25;
+      protectedContact = rebuildingBank && fighting.length > 0 && ratio >= 0.25;
       contactInRetreatRange = ratio >= 0.25 && ratio < 0.6 && engaged.length > 0 &&
         engaged.some((unit) => distance(unit, state.bases[0]) < 500);
       if (contactInRetreatRange) {
         checkedContacts++;
       }
-      if (decisive && checkedContacts && ratio < 0.25) {
+      if (rebuildingBank && checkedContacts && ratio < 0.25) {
         break;
       }
       controller.update(state);
-      if ((decisive && checkedContacts >= 10) || (!decisive && checkedContacts && retreatOrders)) {
+      if ((rebuildingBank && checkedContacts >= 10) || (!rebuildingBank && checkedContacts && retreatOrders)) {
         break;
       }
       advance();
@@ -167,13 +171,14 @@ function verifyRetreatAtContact(decisive) {
   } finally {
     Sim.order = originalOrder;
   }
-  assert.equal(controller.metrics.waveSizes[0], 12, 'La première vague comporte 12 unités');
+  assert.equal(controller.metrics.waveSizes[0], waveSize, `La première vague comporte ${waveSize} unités`);
   assert(checkedContacts > 0, 'Contact réel près de la tour, à un rapport de puissance entre 0,25 et 0,6');
-  if (!decisive) {
+  if (!rebuildingBank) {
     assert(retreatOrders > 0, 'Le témoin conserve le repli au seuil de 0,6');
   }
-  console.log(`PASS : contact réel 12 contre 18, ${decisive ? 'vague décisive maintenue' : 'repli du témoin'}.`);
+  console.log(`PASS : contact réel ${waveSize} contre 18, ${rebuildingBank ? 'vague décisive maintenue' : 'repli du témoin'}.`);
 }
 
 verifyRetreatAtContact(true);
 verifyRetreatAtContact(false);
+verifyRetreatAtContact(true, false);
