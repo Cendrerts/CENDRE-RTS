@@ -1,3 +1,4 @@
+import { parseReplayOptions, reportReplay } from '../scripts/tests-longs-options.mjs';
 import assert from 'node:assert/strict';
 import { readFile, mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -6,24 +7,29 @@ import { pathToFileURL } from 'node:url';
 import { CendreSim as S } from '../public/game/sim.js';
 import { createAI } from '../public/game/ai.js';
 
-assert.equal(S.unitLimit(0), 30);
-assert.equal(S.unitLimit(1), 45);
-for (const [type, cost] of Object.entries({ commis: 40, knight: 36, archer: 45, mage: 60 })) {
-  assert.equal(S.stats(type, 1).cost, cost);
-}
+const replay = parseReplayOptions(18, 37);
 
-// Recruitment counts both living units and reserved queue places.
-for (const team of [0, 1]) {
-  const state = S.create();
-  state.rubies[team] = 10000;
-  while (state.units.filter((unit) => unit.team === team).length < S.unitLimit(team) - 1) {
-    S.spawn(state, 'commis', team);
+if (replay.seed === null) {
+  assert.equal(S.unitLimit(0), 30);
+  assert.equal(S.unitLimit(1), 45);
+  for (const [type, cost] of Object.entries({ commis: 40, knight: 36, archer: 45, mage: 60 })) {
+    assert.equal(S.stats(type, 1).cost, cost);
   }
-  assert(S.recruit(state, 'commis', team));
-  assert(!S.recruit(state, 'commis', team));
-  S.tick(state, 5);
-  assert.equal(state.units.filter((unit) => unit.team === team).length, S.unitLimit(team));
-  assert(!S.recruit(state, 'commis', team));
+
+  // Recruitment counts both living units and reserved queue places.
+  for (const team of [0, 1]) {
+    const state = S.create();
+    state.rubies[team] = 10000;
+    while (state.units.filter((unit) => unit.team === team).length < S.unitLimit(team) - 1) {
+      S.spawn(state, 'commis', team);
+    }
+    assert(S.recruit(state, 'commis', team));
+    assert(!S.recruit(state, 'commis', team));
+    S.tick(state, 5);
+    assert.equal(state.units.filter((unit) => unit.team === team).length, S.unitLimit(team));
+    assert(!S.recruit(state, 'commis', team));
+  }
+
 }
 
 // Factions are bound to team IDs in production. Load an isolated copy with the
@@ -46,6 +52,9 @@ try {
   const outcomes = new Set();
   const timeoutSeeds = [];
   for (let game = 0; game < 20; game++) {
+    if (replay.seed !== null && game + 18 !== replay.seed) {
+      continue;
+    }
     const reversed = game % 2 === 1;
     const sim = reversed ? reversedSim : S;
     const ai = reversed ? reversedAI : createAI;
@@ -74,6 +83,7 @@ try {
         }
       }
       sim.tick(state, 0.1);
+      reportReplay(replay.seed, step, state, controllers);
     }
     const winner = state.winner === null ? 'timeout' : state.winner === ratsTeam ? 'rats' : 'cooks';
     console.log(`Seed ${18 + game}: ${winner}, ${state.time.toFixed(1)}s, rats team ${ratsTeam}, rubies ${state.rubies.map(Math.round).join('/')}`);
@@ -84,11 +94,13 @@ try {
     assert(state.time <= 1800 + 1e-6);
     wins[winner]++;
   }
-  console.log(`Tournament: rats ${wins.rats}/20, cooks ${wins.cooks}/20, timeouts ${wins.timeout}, distinct outcomes ${outcomes.size}/20, timeout seeds: ${timeoutSeeds.join(', ') || 'none'}`);
-  assert(outcomes.size >= 16, `Only ${outcomes.size}/20 distinct (winner, rounded duration) pairs; expected at least 16`);
-  assert.equal(wins.timeout, 0, `No winner within 30 minutes for seeds: ${timeoutSeeds.join(', ')}`);
-  assert(wins.rats >= 8 && wins.rats <= 12, `Rats win ${wins.rats}/20; expected 8–12 (${JSON.stringify(wins)})`);
-  console.log('PASS: Brutal tournament balanced 8–12, faction population caps and military costs.');
+  if (replay.seed === null) {
+    console.log(`Tournament: rats ${wins.rats}/20, cooks ${wins.cooks}/20, timeouts ${wins.timeout}, distinct outcomes ${outcomes.size}/20, timeout seeds: ${timeoutSeeds.join(', ') || 'none'}`);
+    assert(outcomes.size >= 16, `Only ${outcomes.size}/20 distinct (winner, rounded duration) pairs; expected at least 16`);
+    assert.equal(wins.timeout, 0, `No winner within 30 minutes for seeds: ${timeoutSeeds.join(', ')}`);
+    assert(wins.rats >= 8 && wins.rats <= 12, `Rats win ${wins.rats}/20; expected 8–12 (${JSON.stringify(wins)})`);
+    console.log('PASS: Brutal tournament balanced 8–12, faction population caps and military costs.');
+  }
 } finally {
   await rm(directory, { recursive: true, force: true });
 }
