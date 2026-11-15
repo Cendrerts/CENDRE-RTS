@@ -4,6 +4,19 @@ export const BrigadeCuisine = {
   nomFaction: 'Brigade de Cuisine',
   styleDeJeu: 'Unités d’élite, résistance élevée, dégâts lourds',
   unites: {
+    hero: {
+      id: 'hero',
+      name: 'Grand Chef',
+      hp: 420,
+      damage: 20,
+      rate: 1,
+      range: 32,
+      speed: 90,
+      vision: 200,
+      cost: 150,
+      production: 35,
+      population: 3,
+    },
     commis: {
       id: 'commis',
       tier: 1,

@@ -4,8 +4,8 @@ import { RatsGout } from '../public/game/rats-config.js';
 import { CendreSim as S } from '../public/game/sim.js';
 import { command } from '../lib/match.mjs';
 
-assert.deepEqual(Object.values(BrigadeCuisine.unites).map((unit) => unit.speed), [126, 84, 90, 70]);
-assert.deepEqual(Object.values(RatsGout.unites).map((unit) => unit.speed), [126, 90, 101, 78]);
+assert.deepEqual(['commis', 'knight', 'archer', 'mage'].map((type) => BrigadeCuisine.unites[type].speed), [126, 84, 90, 70]);
+assert.deepEqual(['commis', 'knight', 'archer', 'mage'].map((type) => RatsGout.unites[type].speed), [126, 90, 101, 78]);
 
 // Exercise both normal ticks and the maximum simulation timestep.
 for (const dt of [1 / 60, 0.05]) {

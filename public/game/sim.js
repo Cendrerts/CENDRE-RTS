@@ -229,6 +229,7 @@ function watchtowersTick(s, dt) {
 function create() {
   let s = {
     matchCounters: [emptyMatchCounters(), emptyMatchCounters()],
+    heroProgress: [{ level: 1, xp: 0 }, { level: 1, xp: 0 }],
     queues: [[], []],
     controlGroups: [[], [], [], []],
     time: 0,
@@ -426,6 +427,13 @@ function spawn(s, type, team, origin = null) {
     cargo: 0,
     harvest: null,
   });
+  if (type === 'hero') {
+    s.heroProgress ??= [{ level: 1, xp: 0 }, { level: 1, xp: 0 }];
+    const hero = s.units.at(-1);
+    Object.assign(hero, s.heroProgress[team]);
+    hero.max = stats(type, team).hp * (1 + 0.15 * (hero.level - 1));
+    hero.hp = hero.max;
+  }
   if (type === 'commis') {
     const mine =
       s.mines
@@ -453,6 +461,21 @@ function matchStats(s) {
     duration: s.time,
   };
 }
+function awardHeroExperience(s, target) {
+  if (!target.type) return;
+  for (const hero of s.units) {
+    if (hero.type !== 'hero' || hero.hp <= 0 || hero.team === target.team) continue;
+    if (Math.hypot(hero.x - target.x, hero.y - target.y) >= 400) continue;
+    const experience = target.type === 'sanglier' ? 30 : target.type === 'commis' ? 10 : 20;
+    hero.xp += experience;
+    hero.level = hero.xp >= 250 ? 3 : hero.xp >= 100 ? 2 : 1;
+    const maximum = stats('hero', hero.team).hp * (1 + 0.15 * (hero.level - 1));
+    hero.hp += maximum - hero.max;
+    hero.max = maximum;
+    s.heroProgress ??= [{ level: 1, xp: 0 }, { level: 1, xp: 0 }];
+    s.heroProgress[hero.team] = { level: hero.level, xp: hero.xp };
+  }
+}
 function applyDamage(s, target, damage, attackerTeam = null, attackerId = null) {
   if (target.team === NEUTRAL && target.returning) return;
   const wasAlive = target.hp > 0;
@@ -461,6 +484,7 @@ function applyDamage(s, target, damage, attackerTeam = null, attackerId = null) 
   if (wasAlive && target.hp <= 0 && !target.base && target.type !== 'commis') {
     s.corpses.push({ id: target.id, x: target.x, y: target.y, type: target.type, team: target.team, expiresAt: s.time + 30 });
   }
+  if (wasAlive && target.hp <= 0) awardHeroExperience(s, target);
   recordDamageEvent(s, target);
   if (target.team === NEUTRAL) {
     if (wasAlive && !target.returning && attackerTeam !== null) {
@@ -591,13 +615,24 @@ function construct(s, team, type, baseId, slotId = null) {
 export function populationCap(state, team) {
   return unitLimit(team);
 }
+export function populationUsed(state, team) {
+  const units = state.units.filter((unit) => unit.team === team);
+  const jobs = state.queues?.[team] || [];
+  return [...units, ...jobs].reduce((total, unit) => total + (unit.type === 'hero' ? 3 : 1), 0);
+}
+function heroBlockReason(state, team) {
+  if (state.units.some((unit) => unit.team === team && unit.type === 'hero' && unit.hp > 0)) return 'heroAlive';
+  if (state.queues[team].some((job) => job.type === 'hero')) return 'heroQueued';
+  return null;
+}
 export function canRecruit(s, team, type, producerId = null) {
   s.queues ??= [[], []];
   if (s.winner !== null || !Object.hasOwn(TYPES, type)) return false;
   ensureSlots(s);
   const queue = s.queues[team];
+  if (type === 'hero' && heroBlockReason(s, team)) return false;
   return s.rubies[team] >= stats(type, team).cost &&
-    s.units.filter((unit) => unit.team === team).length + queue.length < populationCap(s, team) &&
+    populationUsed(s, team) + (type === 'hero' ? 3 : 1) <= populationCap(s, team) &&
     producers(s, team, type).some((producer) =>
       (!producerId || producer.id === producerId) &&
       queue.filter((job) => job.producerId === producer.id).length < 8);
@@ -607,8 +642,9 @@ export function recruitBlockReason(state, team, type, producerId = null) {
   const snapshot = structuredClone(state);
   if (canRecruit(snapshot, team, type, producerId)) return null;
   const queue = snapshot.queues[team];
-  const population = snapshot.units.filter((unit) => unit.team === team).length + queue.length;
-  if (population >= populationCap(snapshot, team)) return 'population';
+  const population = populationUsed(snapshot, team);
+  if (population + (type === 'hero' ? 3 : 1) > populationCap(snapshot, team)) return 'population';
+  if (type === 'hero' && heroBlockReason(snapshot, team)) return heroBlockReason(snapshot, team);
   const buildings = producers(snapshot, team, type).filter((producer) =>
     !producerId || producer.id === producerId);
   if (!buildings.length) return 'producer';
@@ -677,7 +713,9 @@ function productionTick(s, dt) {
         q.splice(i, 1);
       }
     }
-    for (const p of available) {
+    const uniqueProducers = available.filter((producer, index) =>
+      available.findIndex((item) => item.id === producer.id) === index);
+    for (const p of uniqueProducers) {
       let left = dt;
       while (left > 0) {
         const index = q.findIndex((j) => j.producerId === p.id);
@@ -1118,7 +1156,8 @@ function tick(s, dt) {
         u.cool = cfg.rate;
         u.lastAttackTargetId = target.id ?? null;
         u.lastAttackAt = s.time;
-        const damage = cfg.damage * (ragoutActive(s, u) ? 1.15 : 1);
+        const levelMultiplier = u.type === 'hero' ? 1 + 0.15 * (u.level - 1) : 1;
+        const damage = cfg.damage * levelMultiplier * (ragoutActive(s, u) ? 1.15 : 1);
         applyDamage(s, target, damage, u.team, u.id);
         if (cfg.splash) {
           for (const v of [...s.units, ...s.monsters])
@@ -1500,6 +1539,7 @@ export const CendreSim = {
   recruit,
   canRecruit,
   populationCap,
+  populationUsed,
   unitLimit,
   recruitBlockReason,
   order,

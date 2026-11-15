@@ -5,6 +5,19 @@ export const RatsGout = {
   styleDeJeu: 'Horde, nombre, vitesse de production accrue',
   themeVisuel: 'Déchets, rouille, ferraille et vert toxique',
   unites: {
+    hero: {
+      id: 'hero',
+      name: 'Roi-Rat',
+      hp: 360,
+      damage: 16,
+      rate: 0.9,
+      range: 28,
+      speed: 101,
+      vision: 200,
+      cost: 150,
+      production: 35,
+      population: 3,
+    },
     commis: {
       id: 'rat_essuyeur',
       tier: 1,

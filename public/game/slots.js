@@ -75,6 +75,11 @@ export function construct(s, team, type, baseId, slotId = null) {
   return true;
 }
 export function producers(s, team, type) {
+  if (type === 'hero') {
+    return baseSites(s, team)
+      .filter((base) => base.id === 'main_' + team)
+      .map((base) => ({ ...base, unit: type }));
+  }
   if (type === 'commis') return baseSites(s, team).map((b) => ({ ...b, name: b.name, unit: type }));
   const cfg = BUILDINGS[team]?.find((b) => b.unit === type);
   if (!cfg) return [];
