@@ -26,6 +26,9 @@ export function createAI(team, difficulty = 'normal', state = null) {
   let towerCapture = null;
   let nextTowerCapture = 0;
   let returningFromTower = null;
+  let brazierMission = null;
+  let attemptedBrazierCycle = null;
+  const brazierUnits = new Set();
   const raiders = new Set();
   const returningHeroes = new Set();
   const intelligence = { bases: [], composition: {}, clustered: false, seenAt: null };
@@ -97,6 +100,26 @@ export function createAI(team, difficulty = 'normal', state = null) {
         }
       }
       const army = own.filter((unit) => unit.type !== 'commis' && !returningHeroes.has(unit.id));
+      if (brazierMission) {
+        const members = army.filter((unit) => brazierUnits.has(unit.id));
+        const nearbyEnemies = state.units.filter((unit) => unit.team === 1 - team &&
+          unit.hp > 0 && unit.type !== 'commis' && Sim.canSee(state, team, unit) &&
+          distance(unit, brazierMission.foyer) < 300);
+        if (!brazierMission.foyer.lit || nearbyEnemies.length >= members.length + 2) {
+          brazierMission = null;
+          Sim.order(state, members.map((unit) => unit.id), rally.x, rally.y, null, true);
+          actions++;
+        }
+      }
+      for (const id of brazierUnits) {
+        const unit = army.find((candidate) => candidate.id === id);
+        if (!unit || !brazierMission && distance(unit, rally) < 60) {
+          brazierUnits.delete(id);
+        } else if (!brazierMission && !unit.path.length) {
+          Sim.order(state, [id], rally.x, rally.y, null, true);
+          actions++;
+        }
+      }
       const enemies = state.units.filter((unit) => unit.team !== team && Sim.canSee(state, team, unit) && unit.hp > 0);
       const observedArmy = enemies.filter((enemy) => enemy.type !== 'commis');
       if (observedArmy.length) {
@@ -281,7 +304,7 @@ export function createAI(team, difficulty = 'normal', state = null) {
         }
       }
       if (state.time >= 60 && !scouted && (settings.micro ? workers.length : army.length)) {
-        const explorer = settings.micro ? workers.find((worker) => worker.id !== expedition?.worker) : army.find((unit) => unit.type !== 'hero' && unit.id !== towerCapture?.unit && unit.id !== returningFromTower);
+        const explorer = settings.micro ? workers.find((worker) => worker.id !== expedition?.worker) : army.find((unit) => unit.type !== 'hero' && !brazierUnits.has(unit.id) && unit.id !== towerCapture?.unit && unit.id !== returningFromTower);
         if (explorer) {
           scout = explorer.id;
           scouted = true;
@@ -312,7 +335,7 @@ export function createAI(team, difficulty = 'normal', state = null) {
           for (const unit of army) deployed.delete(unit.id);
         }
       }
-      const defenders = army.filter((unit) => !brutal || !deployed.has(unit.id));
+      const defenders = army.filter((unit) => !brazierUnits.has(unit.id) && (!brutal || !deployed.has(unit.id)));
       if (invaders.length && !defending && defenders.length && (!brutal || state.time >= retreatUntil)) {
         Sim.order(state, defenders.map((unit) => unit.id), invaders[0].x, invaders[0].y, null, false);
         actions++;
@@ -320,7 +343,7 @@ export function createAI(team, difficulty = 'normal', state = null) {
       defending = invaders.length > 0;
       if (defending) returningFromTower = null;
       const tryDevour = (unit) => {
-        if (difficulty !== 'facile' && team === 1 && !defending) {
+        if (difficulty !== 'facile' && team === 1 && !defending && !brazierUnits.has(unit.id)) {
           const enemyInRange = [...enemies, ...state.monsters.filter((monster) => monster.hp > 0 && monster.targetId != null)]
             .some((enemy) => distance(unit, enemy) <= Sim.stats(unit.type, team).range + 75);
           if (!enemyInRange && unit.devour) return true;
@@ -352,7 +375,7 @@ export function createAI(team, difficulty = 'normal', state = null) {
         }
       }
       const fighting = enemies.filter((enemy) => enemy.type !== 'commis' && army.some((unit) => distance(unit, enemy) < 200));
-      const engaged = army.filter((unit) => unit.id !== scout && !raiders.has(unit.id) && fighting.some((enemy) => distance(unit, enemy) < 240));
+      const engaged = army.filter((unit) => !brazierUnits.has(unit.id) && unit.id !== scout && !raiders.has(unit.id) && fighting.some((enemy) => distance(unit, enemy) < 240));
       if (settings.micro && fighting.length && power(engaged) < power(fighting) * 0.6 && (!invaders.length || brutal && !invaders.some((enemy) => distance(enemy, base) < 220)) && state.time >= retreatUntil) {
         retreatUntil = state.time + 12;
         for (const unit of engaged) deployed.delete(unit.id);
@@ -367,13 +390,13 @@ export function createAI(team, difficulty = 'normal', state = null) {
       const destination = (!decisiveAttack && [...remembered.values()].sort((a, b) => distance(a, state.bases[team]) - distance(b, state.bases[team]))[0]) || intelligence.bases[0] || { x: enemyBase.x, y: enemyBase.y };
       if (brutal && !(lateSiege && decisiveAttack && waveRoute) && !defending && lastWave > 0 && state.time - lastWave > waveTravelTime && lastRegroup < lastWave) {
         deployed.clear();
-        Sim.order(state, army.filter((unit) => unit.id !== towerCapture?.unit).map((unit) => unit.id), rally.x, rally.y, null, false);
+        Sim.order(state, army.filter((unit) => !brazierUnits.has(unit.id) && unit.id !== towerCapture?.unit).map((unit) => unit.id), rally.x, rally.y, null, false);
         lastRegroup = state.time;
       }
       const reinforcing = lateSiege && decisiveAttack && waveRoute && !defending && state.time >= retreatUntil &&
         army.some((unit) => waveRoute.ids.has(unit.id) && deployed.has(unit.id) && !unit.retreat);
       if (reinforcing) {
-        const reinforcements = army.filter((unit) => !deployed.has(unit.id) && !unit.retreat && unit.id !== scout && !raiders.has(unit.id));
+        const reinforcements = army.filter((unit) => !brazierUnits.has(unit.id) && !deployed.has(unit.id) && !unit.retreat && unit.id !== scout && !raiders.has(unit.id));
         if (reinforcements.length) {
           const ids = reinforcements.map((unit) => unit.id);
           const point = waveRoute.points[waveRoute.index];
@@ -387,7 +410,7 @@ export function createAI(team, difficulty = 'normal', state = null) {
         }
       }
       // Keep the capturer eligible here: a ready wave takes priority over its mission.
-      const reserve = army.filter((unit) => !unit.devour && !deployed.has(unit.id) && unit.id !== scout && !raiders.has(unit.id));
+      const reserve = army.filter((unit) => !brazierUnits.has(unit.id) && !unit.devour && !deployed.has(unit.id) && unit.id !== scout && !raiders.has(unit.id));
       // Assemble reinforcements before launching; wave sizes never grow beyond
       // the population cap. Surviving troops can regroup after a lost fight.
       const attackWindow = !settings.micro || state.time >= (brutal ? owned.length > 1 ? 180 : 220 : 210);
@@ -455,7 +478,7 @@ export function createAI(team, difficulty = 'normal', state = null) {
           const tower = state.watchtowers.filter((candidate) => candidate.owner !== team)
             .sort((a, b) => distance(a, base) - distance(b, base))[0];
           if (tower && !observedArmy.some((enemy) => distance(enemy, tower) < 300)) {
-            const unit = army.filter((candidate) => candidate.type !== 'hero' && candidate.id !== scout && candidate.id !== returningFromTower &&
+            const unit = army.filter((candidate) => candidate.type !== 'hero' && !brazierUnits.has(candidate.id) && candidate.id !== scout && candidate.id !== returningFromTower &&
               !raiders.has(candidate.id) && !deployed.has(candidate.id) && !candidate.devour)
               .sort((a, b) => distance(a, tower) - distance(b, tower))[0];
             if (unit) {
@@ -473,10 +496,45 @@ export function createAI(team, difficulty = 'normal', state = null) {
           }
         }
       }
+      // One attempt per lighting; a ready wave and tower capture take priority.
+      if (difficulty !== 'facile' && !brazierMission && !brazierUnits.size &&
+        !defending && !threats.length && !forceWave && lastWave !== state.time &&
+        state.time >= retreatUntil) {
+        const foyer = state.braises.filter((candidate) => candidate.lit)
+          .sort((a, b) => distance(a, base) - distance(b, base))[0];
+        if (foyer && attemptedBrazierCycle !== state.braisesNextAt) {
+          attemptedBrazierCycle = state.braisesNextAt;
+          // One soldier holds the foyer; preserve reserves for hunts and waves.
+          const members = army.filter((unit) => unit.id !== scout &&
+            unit.id !== towerCapture?.unit && unit.id !== returningFromTower &&
+            !raiders.has(unit.id) && !deployed.has(unit.id) && !unit.devour)
+            .sort((a, b) => distance(a, foyer) - distance(b, foyer))
+            .slice(0, 1);
+          const nearbyEnemies = observedArmy.filter((enemy) => distance(enemy, foyer) < 300);
+          if (members.length && nearbyEnemies.length < members.length + 2) {
+            brazierMission = { foyer };
+            for (const unit of members) {
+              brazierUnits.add(unit.id);
+            }
+            Sim.order(state, members.map((unit) => unit.id), foyer.x, foyer.y, null, true);
+            actions++;
+          }
+        }
+      }
+      if (brazierMission) {
+        const stranded = army.filter((unit) => brazierUnits.has(unit.id) &&
+          distance(unit, brazierMission.foyer) > 100 && !unit.path.length);
+        if (stranded.length) {
+          Sim.order(state, stranded.map((unit) => unit.id),
+            brazierMission.foyer.x, brazierMission.foyer.y, null, true);
+          actions++;
+        }
+      }
       if (difficulty !== 'facile') {
         const baseThreatened = defending || threats.some((enemy) => distance(enemy, base) < 650);
         const hunters = army.filter((unit) =>
-          unit.id !== scout && !raiders.has(unit.id) && unit.id !== towerCapture?.unit && unit.id !== returningFromTower);
+          unit.id !== scout && !raiders.has(unit.id) && !brazierUnits.has(unit.id) &&
+          unit.id !== towerCapture?.unit && unit.id !== returningFromTower);
         const enemyNearHunters = observedArmy.some((enemy) =>
           hunters.some((unit) => distance(unit, enemy) < 300));
         const waveHasPriority = forceWave || metrics.waves > 0 && lastWave === state.time;
@@ -542,6 +600,7 @@ export function createAI(team, difficulty = 'normal', state = null) {
       if (!brutal && settings.micro && state.time > 180 && raiders.size < 3 && army.length >= 10) {
         for (const unit of [...army].sort((a, b) => Sim.stats(b.type, team).speed - Sim.stats(a.type, team).speed)) {
           if (raiders.size >= 3) break;
+          if (brazierUnits.has(unit.id)) continue;
           if (unit.type !== 'archer' || raiders.has(unit.id) || unit.id === towerCapture?.unit || unit.id === returningFromTower) continue;
           raiders.add(unit.id);
           Sim.order(state, [unit.id], mines[1 - team].x, mines[1 - team].y, null, false);
@@ -553,6 +612,7 @@ export function createAI(team, difficulty = 'normal', state = null) {
       }
       const siege = decisiveAttack && visibleBase && army.filter((unit) => distance(unit, visibleBase) < 500).length >= 4;
       for (const unit of army) {
+        if (brazierUnits.has(unit.id)) continue;
         if (unit.id === towerCapture?.unit || unit.id === returningFromTower && !defending) continue;
         if (tryDevour(unit)) {
           actions++;
@@ -624,6 +684,8 @@ export function createAI(team, difficulty = 'normal', state = null) {
       // This includes deployed troops and raiders, leaving only the garrison.
       if (forceWave && state.time - lastWave >= 120) {
         const reliefArmy = army.slice(garrison);
+        brazierMission = null;
+        brazierUnits.clear();
         if (reliefArmy.length) {
           const goal = enemyBase;
           const ids = reliefArmy.map((unit) => unit.id);
