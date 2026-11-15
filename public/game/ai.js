@@ -364,6 +364,9 @@ export function createAI(team, difficulty = 'normal', state = null) {
         returningFromTower = null;
       }
       const invaders = (brutal ? observedArmy : enemies).filter((enemy) => owned.some((mine) => distance(enemy, mine) < (brutal ? 400 : 240)));
+      const committedAssault = brutal && waveRoute && intelligence.bases.length > 0 &&
+        (metrics.waves >= 2 || state.time >= 480) &&
+        army.length >= Math.max(10, observedArmy.length * 1.5);
       let threatenedEconomy = false;
       if (brutal) {
         for (const worker of workers) {
@@ -377,8 +380,9 @@ export function createAI(team, difficulty = 'normal', state = null) {
             evacuated.delete(worker.id);
           }
         }
-        // An expansion skirmish must not cancel an army already attacking.
-        if (threatenedEconomy || invaders.some((enemy) => distance(enemy, base) < 220)) {
+        // Evacuate exposed workers without recalling a superior decisive wave.
+        // A threat at the main still takes priority over that assault.
+        if ((threatenedEconomy && !committedAssault) || invaders.some((enemy) => distance(enemy, base) < 220)) {
           for (const unit of army) deployed.delete(unit.id);
         }
       }
