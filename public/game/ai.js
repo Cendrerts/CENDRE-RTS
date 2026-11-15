@@ -27,6 +27,7 @@ export function createAI(team, difficulty = 'normal', state = null) {
   let nextTowerCapture = 0;
   let returningFromTower = null;
   const raiders = new Set();
+  const returningHeroes = new Set();
   const intelligence = { bases: [], composition: {}, clustered: false, seenAt: null };
   const metrics = { waves: 0, expansions: [], waveSizes: [], lanes: [] };
   let expedition = null;
@@ -77,7 +78,25 @@ export function createAI(team, difficulty = 'normal', state = null) {
       let actions = 0;
       const own = state.units.filter((unit) => unit.team === team && unit.hp > 0);
       const workers = own.filter((unit) => unit.type === 'commis');
-      const army = own.filter((unit) => unit.type !== 'commis');
+      const base = state.bases[team];
+      const rally = { x: base.x + (team ? -110 : 110), y: base.y + (team ? 65 : -65) };
+      for (const id of returningHeroes) {
+        const hero = own.find((unit) => unit.id === id);
+        if (!hero || distance(hero, rally) < 60) {
+          returningHeroes.delete(id);
+        }
+      }
+      for (const hero of own.filter((unit) => unit.type === 'hero')) {
+        if (difficulty !== 'facile' && hero.hp < hero.max * 0.3 && distance(hero, base) > 900) {
+          returningHeroes.add(hero.id);
+          deployed.delete(hero.id);
+        }
+        if (returningHeroes.has(hero.id) && (!hero.retreat || !hero.path.length)) {
+          Sim.order(state, [hero.id], rally.x, rally.y, null, true);
+          actions++;
+        }
+      }
+      const army = own.filter((unit) => unit.type !== 'commis' && !returningHeroes.has(unit.id));
       const enemies = state.units.filter((unit) => unit.team !== team && Sim.canSee(state, team, unit) && unit.hp > 0);
       const observedArmy = enemies.filter((enemy) => enemy.type !== 'commis');
       if (observedArmy.length) {
@@ -155,6 +174,15 @@ export function createAI(team, difficulty = 'normal', state = null) {
           if (explorer) Sim.order(state, [explorer.id], state.bases[team].x, state.bases[team].y, null, true);
           scout = null;
         }
+      }
+      // Reserve the emergency unit budget before investing in the hero.
+      const militaryProduction = BUILD_ORDERS[team].filter((building) =>
+        Sim.producers(state, team, building.unit).length > 0);
+      const defenseBudget = threats.length && militaryProduction.length ?
+        Math.min(...militaryProduction.map((building) => Sim.stats(building.unit, team).cost)) : 0;
+      if (difficulty !== 'facile' && militaryProduction.length &&
+        state.rubies[team] >= 150 + defenseBudget && Sim.recruit(state, 'hero', team, 'main_' + team)) {
+        actions++;
       }
       if (state.time >= nextMacro) {
         nextMacro = state.time + settings.macro;
@@ -253,7 +281,7 @@ export function createAI(team, difficulty = 'normal', state = null) {
         }
       }
       if (state.time >= 60 && !scouted && (settings.micro ? workers.length : army.length)) {
-        const explorer = settings.micro ? workers.find((worker) => worker.id !== expedition?.worker) : army.find((unit) => unit.id !== towerCapture?.unit && unit.id !== returningFromTower);
+        const explorer = settings.micro ? workers.find((worker) => worker.id !== expedition?.worker) : army.find((unit) => unit.type !== 'hero' && unit.id !== towerCapture?.unit && unit.id !== returningFromTower);
         if (explorer) {
           scout = explorer.id;
           scouted = true;
@@ -261,8 +289,6 @@ export function createAI(team, difficulty = 'normal', state = null) {
           actions++;
         }
       }
-      const base = state.bases[team];
-      const rally = { x: base.x + (team ? -110 : 110), y: base.y + (team ? 65 : -65) };
       const returningUnit = army.find((unit) => unit.id === returningFromTower);
       if (!returningUnit || distance(returningUnit, rally) < 60 || deployed.has(returningFromTower)) {
         returningFromTower = null;
@@ -298,11 +324,11 @@ export function createAI(team, difficulty = 'normal', state = null) {
           const enemyInRange = [...enemies, ...state.monsters.filter((monster) => monster.hp > 0 && monster.targetId != null)]
             .some((enemy) => distance(unit, enemy) <= Sim.stats(unit.type, team).range + 75);
           if (!enemyInRange && unit.devour) return true;
-          if (!enemyInRange && !unit.retreat && !unit.path.length &&
-            !(unit.target?.hp > 0) && !deployed.has(unit.id) &&
+          if (!enemyInRange && !unit.retreat && (unit.type === 'hero' || !unit.path.length) &&
+            !(unit.target?.hp > 0) && (unit.type === 'hero' || !deployed.has(unit.id)) &&
             !raiders.has(unit.id) && unit.id !== scout) {
             const corpse = state.corpses.filter((item) =>
-              item.expiresAt > state.time && distance(unit, item) < 200 &&
+              item.expiresAt > state.time && distance(unit, item) < (unit.type === 'hero' ? 250 : 200) &&
               Sim.visibleAt(state, team, item.x, item.y) &&
               !army.some((ally) => ally.devour?.corpseId === item.id))
               .sort((a, b) => distance(unit, a) - distance(unit, b))[0];
@@ -313,6 +339,11 @@ export function createAI(team, difficulty = 'normal', state = null) {
         }
         return false;
       };
+      for (const hero of army.filter((unit) => unit.type === 'hero')) {
+        if (tryDevour(hero)) {
+          actions++;
+        }
+      }
       if (difficulty !== 'facile') {
         if (team === 1 && Sim.cookDish(state, team, 'festin').ok) actions++;
         if (team === 0 && state.ingredients[team] >= 40 &&
@@ -424,7 +455,7 @@ export function createAI(team, difficulty = 'normal', state = null) {
           const tower = state.watchtowers.filter((candidate) => candidate.owner !== team)
             .sort((a, b) => distance(a, base) - distance(b, base))[0];
           if (tower && !observedArmy.some((enemy) => distance(enemy, tower) < 300)) {
-            const unit = army.filter((candidate) => candidate.id !== scout && candidate.id !== returningFromTower &&
+            const unit = army.filter((candidate) => candidate.type !== 'hero' && candidate.id !== scout && candidate.id !== returningFromTower &&
               !raiders.has(candidate.id) && !deployed.has(candidate.id) && !candidate.devour)
               .sort((a, b) => distance(a, tower) - distance(b, tower))[0];
             if (unit) {
@@ -476,8 +507,10 @@ export function createAI(team, difficulty = 'normal', state = null) {
           actions++;
         }
         const attacking = army.some((unit) => deployed.has(unit.id) || raiders.has(unit.id));
+        // The hero replaces several recruits; its strength keeps the opening hunt viable.
         if (!huntingCamp && !baseThreatened && !enemyNearHunters &&
-          !waveHasPriority && !attacking && hunters.length >= 6 &&
+          !waveHasPriority && !attacking &&
+          hunters.length + Number(hunters.some((unit) => unit.type === 'hero')) >= 6 &&
           state.time >= nextHunt && state.time >= retreatUntil) {
           huntingCamp = state.camps.filter((camp) =>
             state.monsters.some((monster) =>
