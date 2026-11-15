@@ -106,7 +106,7 @@ jobs:
             echo
             echo "## Règles"
             echo "- Lis et respecte AGENTS.md."
-            echo "- Lance tous les tests (chaque fichier de tests/ avec node) et node --check sur public/game/*.js. Ils doivent tous passer."
+            echo "- Lance les tests courts avec node scripts/tests-courts.mjs (jamais de glob tests/*.mjs) et node --check sur public/game/*.js. Ils doivent tous passer. Ne lance pas les 4 tests longs (impitoyable, ai, ia-sans-blocage, equilibrage-factions) : le relecteur s'en charge."
             echo "- Ne fais pas de commit ni de push, ne touche pas à .github/. Le workflow s'en charge."
             echo "- Termine par un résumé en français : ce qui a changé, ce qui a été vérifié, ce qui reste à tester sur un vrai téléphone."
           } > "$RUNNER_TEMP/prompt.md"
