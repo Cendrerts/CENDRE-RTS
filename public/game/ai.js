@@ -46,7 +46,7 @@ export function createAI(team, difficulty = 'normal', state = null) {
   const established = new Set();
   const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
   const power = (units) => units.reduce((sum, unit) => sum + unit.hp * Sim.stats(unit.type, unit.team).damage / Sim.stats(unit.type, unit.team).rate * (unit.type === 'mage' ? 3 : 1), 0);
-  const launchAttack = (state, units, destination, observedArmy) => {
+  const launchAttack = (state, units, destination, observedArmy, rebuildingBank) => {
     const ids = units.map((unit) => unit.id);
     const approaches = Sim.lanes.map((lane) => {
       const points = lane.points.map(([x, y]) => ({ x, y }));
@@ -67,7 +67,7 @@ export function createAI(team, difficulty = 'normal', state = null) {
     const points = distance(destination, state.bases[1 - team]) < 320
       ? [...approach.points.slice(1, -1), destination]
       : [destination];
-    waveRoute = { ids: new Set(ids), points, index: 0 };
+    waveRoute = { ids: new Set(ids), points, index: 0, rebuildingBank: rebuildingBank && units.length >= 10 };
     Sim.order(state, ids, points[0].x, points[0].y, null, false);
     // Queue only the current stage: the next one is released by the AI
     // once seventy percent of the surviving wave has reached this one.
@@ -169,6 +169,8 @@ export function createAI(team, difficulty = 'normal', state = null) {
       const owned = mines.filter((mine) => mine.owner === team);
       const populationLimit = Sim.unitLimit?.(team) ?? 30;
       const saturated = Sim.populationUsed(state, team) >= populationLimit;
+      // Snapshot before macro spending; the wave keeps this commitment after worker losses.
+      const rebuildingBank = brutal && saturated && state.rubies[team] >= 800;
       if (brutal && saturated && state.rubies[team] >= 1000) reducedWorkerTarget = true;
       if (state.rubies[team] < 400) {
         reducedWorkerTarget = false;
@@ -366,7 +368,8 @@ export function createAI(team, difficulty = 'normal', state = null) {
       const invaders = (brutal ? observedArmy : enemies).filter((enemy) => owned.some((mine) => distance(enemy, mine) < (brutal ? 400 : 240)));
       const committedAssault = brutal && waveRoute && intelligence.bases.length > 0 &&
         (metrics.waves >= 2 || state.time >= 480) &&
-        army.length >= Math.max(10, observedArmy.length * 1.5);
+        army.length >= 10 &&
+        (army.length >= observedArmy.length * 1.5 || waveRoute.rebuildingBank);
       let threatenedEconomy = false;
       if (brutal) {
         for (const worker of workers) {
@@ -380,7 +383,8 @@ export function createAI(team, difficulty = 'normal', state = null) {
             evacuated.delete(worker.id);
           }
         }
-        // Evacuate exposed workers without recalling a superior decisive wave.
+        // A full population and rebuilding bank also justify committing an equal army.
+        // Evacuate exposed workers without recalling that decisive wave.
         // A threat at the main still takes priority over that assault.
         if ((threatenedEconomy && !committedAssault) || invaders.some((enemy) => distance(enemy, base) < 220)) {
           for (const unit of army) deployed.delete(unit.id);
@@ -507,7 +511,7 @@ export function createAI(team, difficulty = 'normal', state = null) {
       }
       if ((!brutal || attackers.length >= 5) && !defending && state.time >= retreatUntil && (enoughTroops || reserve.length > 0 && (saturated || overdue)) && assembled) {
         for (const unit of attackers) deployed.add(unit.id);
-        launchAttack(state, attackers, destination, observedArmy);
+        launchAttack(state, attackers, destination, observedArmy, rebuildingBank);
         actions++;
         counterUntil = 0;
         metrics.waves++;
@@ -763,7 +767,7 @@ export function createAI(team, difficulty = 'normal', state = null) {
         if (reliefArmy.length) {
           const goal = enemyBase;
           const ids = reliefArmy.map((unit) => unit.id);
-          launchAttack(state, reliefArmy, goal, observedArmy);
+          launchAttack(state, reliefArmy, goal, observedArmy, rebuildingBank);
           for (const id of ids) {
             deployed.add(id);
             raiders.delete(id);
