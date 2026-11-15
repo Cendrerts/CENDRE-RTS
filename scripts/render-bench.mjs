@@ -4,6 +4,7 @@ import { createServer } from 'node:http';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import { resolve, extname } from 'node:path';
+import { instrumentDraw, validateDrawMetrics } from './render-bench-instrumentation.mjs';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const root = resolve('.');
 const mapBaseline = process.argv.includes('--map-baseline');
@@ -46,7 +47,7 @@ try {
     const source = baseline
       ? execFileSync('git', ['show', `${baselineRef}:public/game/game.js`], { encoding: 'utf8' })
       : await readFile('public/game/game.js', 'utf8');
-    await route.fulfill({ contentType: 'text/javascript', body: source
+    await route.fulfill({ contentType: 'text/javascript', body: instrumentDraw(source)
       .replace('Math.min((t - last) / 1000, 0.05)', '0')
       .replaceAll('requestAnimationFrame(frame);', "if (!location.search.includes('render-bench')) requestAnimationFrame(frame);") + `
 window.loadedRenderBench = {
@@ -59,7 +60,10 @@ window.loadedRenderBench = {
   },
   draw() {
     preparedUnits = prepareDrawList(state, player, Sim.canSee);
-    draw();
+    const started = performance.now();
+    const layers = draw();
+    const drawMs = performance.now() - started;
+    return { drawMs, layers };
   },
 };
 ` });
@@ -88,8 +92,8 @@ window.loadedRenderBench = {
     await page.goto(origin + '/render-bench');
     const cdp = await page.context().newCDPSession(page);
     await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
-    for (const scenarioName of ['combatScenario', 'hordeScenario', 'loadedScenario']) {
-      if (scenarioName === 'loadedScenario') {
+    for (const scenarioName of ['combatScenario', 'hordeScenario', 'hordeFullDraw', 'loadedScenario']) {
+      if (scenarioName === 'loadedScenario' || scenarioName === 'hordeFullDraw') {
         await page.goto(origin + '/public/game/?render-bench');
         await page.waitForFunction(() => window.loadedRenderBench);
         await page.evaluate(() => document.fonts.ready);
@@ -98,10 +102,10 @@ window.loadedRenderBench = {
         const { CendreSim: sim } = await import('/public/game/sim.js');
         const scenarios = await import('/scripts/render-scenario.mjs');
         const { createRenderCache, prepareDrawList } = await import('/public/game/render-cache.js');
-        const state = scenarios[scenarioName](sim);
+        const state = scenarios[scenarioName === 'hordeFullDraw' ? 'hordeScenario' : scenarioName](sim);
         const startingUnits = state.units.length;
-        const loaded = scenarioName === 'loadedScenario';
-        if (loaded) window.loadedRenderBench.setup(state);
+        const fullDraw = scenarioName === 'loadedScenario' || scenarioName === 'hordeFullDraw';
+        if (fullDraw) window.loadedRenderBench.setup(state);
         const cache = createRenderCache(() => document.createElement('canvas'));
         const fog = document.createElement('canvas');
         fog.width = sim.COLS;
@@ -121,6 +125,7 @@ window.loadedRenderBench = {
         URL.revokeObjectURL(terrain.src);
         const startingHealth = state.units.reduce((sum, unit) => sum + unit.hp, 0);
         const samples = [];
+        const drawSamples = [];
         let minUnits = startingUnits;
         for (let frame = 0; frame < 1200; frame++) {
           await new Promise(requestAnimationFrame);
@@ -133,13 +138,25 @@ window.loadedRenderBench = {
             const size = unit.type === 'archer' ? 52 : 46;
             cache.sprite((unit.team ? ratSprites : cookSprites)[unit.type], unit.type, unit.team, 1, size, size * 1.125);
           }
-          if (loaded) window.loadedRenderBench.draw();
+          const drawMeasurement = fullDraw ? window.loadedRenderBench.draw() : null;
           const duration = performance.now() - started;
-          if (frame >= 600) samples.push(duration);
+          if (frame >= 600) {
+            samples.push(duration);
+            if (drawMeasurement) drawSamples.push(drawMeasurement);
+          }
           minUnits = Math.min(minUnits, units.length);
         }
         samples.sort((a, b) => a - b);
+        const drawMetrics = {};
+        if (fullDraw) {
+          drawMetrics.drawMs = drawSamples.reduce((sum, sample) => sum + sample.drawMs, 0) / drawSamples.length;
+          drawMetrics.layers = {};
+          for (const layer of Object.keys(drawSamples[0].layers)) {
+            drawMetrics.layers[layer] = drawSamples.reduce((sum, sample) => sum + sample.layers[layer], 0) / drawSamples.length;
+          }
+        }
         return {
+          ...drawMetrics,
           startingUnits,
           damageDealt: startingHealth - state.units.reduce((sum, unit) => sum + unit.hp, 0),
           frames: samples.length,
@@ -157,8 +174,12 @@ window.loadedRenderBench = {
       }, scenarioName);
       console.log(scenarioName, JSON.stringify(result, null, 2));
       const loaded = scenarioName === 'loadedScenario';
-      const horde = scenarioName === 'hordeScenario';
-      const filename = loaded ? 'benchmark-loaded.json' : horde ? 'benchmark-horde.json' : 'benchmark.json';
+      const horde = scenarioName === 'hordeScenario' || scenarioName === 'hordeFullDraw';
+      if (result.layers) {
+        validateDrawMetrics(result);
+        console.table(result.layers);
+      }
+      const filename = scenarioName === 'hordeFullDraw' ? 'benchmark-horde-full.json' : loaded ? 'benchmark-loaded.json' : horde ? 'benchmark-horde.json' : 'benchmark.json';
       await writeFile(`${outputDirectory}/${filename}`, JSON.stringify(result, null, 2) + '\n');
       const expectedUnits = loaded ? 93 : horde ? 91 : 60;
       const maxBudget = horde || loaded ? 8 : 4;
