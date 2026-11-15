@@ -168,7 +168,7 @@ export function createAI(team, difficulty = 'normal', state = null) {
       }));
       const owned = mines.filter((mine) => mine.owner === team);
       const populationLimit = Sim.unitLimit?.(team) ?? 30;
-      const saturated = own.length + state.queues[team].length >= populationLimit;
+      const saturated = Sim.populationUsed(state, team) >= populationLimit;
       if (brutal && saturated && state.rubies[team] >= 1000) reducedWorkerTarget = true;
       if (state.rubies[team] < 400) {
         reducedWorkerTarget = false;

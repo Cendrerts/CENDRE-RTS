@@ -597,8 +597,7 @@ const RAGOUT_REASONS = {
   ended: 'La partie est terminée.',
 };
 function festinFreePlaces(s) {
-  return populationCap(s, 1) - s.units.filter((unit) => unit.team === 1 && unit.hp > 0).length -
-    (s.queues?.[1]?.length || 0);
+  return populationCap(s, 1) - populationUsed(s, 1);
 }
 function cookDishBlockReason(s, team, dish = 'ragout') {
   if (dish === 'festin') {
