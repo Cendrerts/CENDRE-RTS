@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { performance } from 'node:perf_hooks';
 import { CendreSim as Sim } from '../public/game/sim.js';
 import { createRenderCache, prepareDrawList } from '../public/game/render-cache.js';
-import { combatScenario } from '../scripts/render-scenario.mjs';
+import { combatScenario, loadedScenario } from '../scripts/render-scenario.mjs';
 
 let draws = 0;
 const context = {
@@ -133,3 +133,23 @@ assert(draws > beforeLoad);
   Sim.tick(scenario, 0.01);
   assert(second.hp < 10000, 'An explicit target still takes priority');
 }
+
+const loaded = loadedScenario(Sim);
+assert.equal(loaded.units.length, 93);
+assert.equal(loaded.units.filter((unit) => unit.type === 'hero' && unit.level === 3).length, 2);
+assert.equal(loaded.corpses.length, 12);
+assert.equal(loaded.monsters.filter((monster) => monster.type === 'sanglier' && monster.hp > 0).length, 4);
+assert.equal(loaded.braises.length, 2);
+for (const foyer of loaded.braises) {
+  assert.equal(foyer.lit, true);
+  assert(loaded.units.some((unit) => Math.hypot(unit.x - foyer.x, unit.y - foyer.y) < 75));
+}
+assert.equal(loaded.watchtowers.length, 2);
+assert(loaded.watchtowers.every((tower) => tower.owner >= 0));
+assert(loaded.units.filter((unit) => unit.team === 0 && unit.type !== 'commis')
+  .every((unit) => unit.ragoutUntil > loaded.time));
+const loadedHealth = loaded.units.reduce((sum, unit) => sum + unit.hp, 0);
+for (let frame = 0; frame < 60; frame++) {
+  Sim.tick(loaded, 1 / 60);
+}
+assert(loaded.units.reduce((sum, unit) => sum + unit.hp, 0) < loadedHealth, 'Loaded armies actually fight');
