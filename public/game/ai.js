@@ -39,6 +39,8 @@ export function createAI(team, difficulty = 'normal', state = null) {
   const deployed = new Set();
   let waveRoute = null;
   let reducedWorkerTarget = false;
+  let nextSurplusWorkers = null;
+  const surplusWorkers = new Set();
   const remembered = new Map();
   const knownBuildings = new Map();
   const established = new Set();
@@ -82,7 +84,7 @@ export function createAI(team, difficulty = 'normal', state = null) {
       nextReaction = state.time + settings.reaction;
       let actions = 0;
       const own = state.units.filter((unit) => unit.team === team && unit.hp > 0);
-      const workers = own.filter((unit) => unit.type === 'commis');
+      let workers = own.filter((unit) => unit.type === 'commis' && !surplusWorkers.has(unit.id));
       const base = state.bases[team];
       const rally = { x: base.x + (team ? -110 : 110), y: base.y + (team ? 65 : -65) };
       for (const id of returningHeroes) {
@@ -168,7 +170,34 @@ export function createAI(team, difficulty = 'normal', state = null) {
       const populationLimit = Sim.unitLimit?.(team) ?? 30;
       const saturated = own.length + state.queues[team].length >= populationLimit;
       if (brutal && saturated && state.rubies[team] >= 1000) reducedWorkerTarget = true;
-      if (state.rubies[team] < 400) reducedWorkerTarget = false;
+      if (state.rubies[team] < 400) {
+        reducedWorkerTarget = false;
+        nextSurplusWorkers = null;
+        surplusWorkers.clear();
+        workers = own.filter((unit) => unit.type === 'commis');
+      }
+      if (reducedWorkerTarget && nextSurplusWorkers === null) {
+        nextSurplusWorkers = state.time + 10;
+      }
+      if (reducedWorkerTarget && saturated && state.time >= nextSurplusWorkers && workers.length > 10 && intelligence.bases.length) {
+        const exposedWorkers = [...workers].sort((first, second) => {
+          const firstMine = mines[first.harvest?.mine] ?? first;
+          const secondMine = mines[second.harvest?.mine] ?? second;
+          return distance(secondMine, base) - distance(firstMine, base);
+        });
+        const departingWorkers = exposedWorkers.slice(0, Math.min(2, workers.length - 10));
+        for (const worker of departingWorkers) {
+          const destination = [...intelligence.bases].sort((first, second) => distance(worker, first) - distance(worker, second))[0];
+          Sim.order(state, [worker.id], destination.x, destination.y, null, false);
+          surplusWorkers.add(worker.id);
+          evacuated.delete(worker.id);
+          if (expedition?.worker === worker.id) expedition = null;
+          if (scout === worker.id) scout = null;
+          actions++;
+        }
+        workers = workers.filter((worker) => !surplusWorkers.has(worker.id));
+        nextSurplusWorkers = state.time + 10;
+      }
       const saturation = (mine) => settings.workers + Number(brutal && mine.index === team);
       const workerTarget = reducedWorkerTarget ? 10 : Math.min(owned.reduce((sum, mine) => sum + saturation(mine), 0), settings.workers * 3 + Number(brutal));
       const economyCapacity = Number(brutal) + settings.workers * (brutal ? Math.min(3, owned.length + 1) : 3) + Number(workers.some((worker) => worker.id === scout));
