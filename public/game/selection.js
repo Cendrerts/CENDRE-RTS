@@ -4,6 +4,7 @@ import { RatsGout } from './rats-config.js';
 
 const unitPlurals = [
   {
+    hero: 'Grands Chefs',
     commis: 'Commis',
     knight: 'Gardes-Manger',
     archer: 'Bouchers-Tireurs',
@@ -13,6 +14,7 @@ const unitPlurals = [
     ecole_brigade: 'Écoles de brigade',
   },
   {
+    hero: 'Rois-Rats',
     commis: 'Rats-Essuyeurs',
     knight: 'Rats-Éboueurs',
     archer: 'Rats-Balance-Déchets',
@@ -119,7 +121,9 @@ export function buildingsOfType(state, player, type, bounds) {
 }
 
 export function selectedProducers(state, player, ids) {
-  return Object.keys(Sim.TYPES).flatMap((type) => Sim.producers(state, player, type))
+  return Object.keys(Sim.TYPES)
+    .filter((type) => type !== 'hero')
+    .flatMap((type) => Sim.producers(state, player, type))
     .filter((producer) => ids.includes(producer.id));
 }
 

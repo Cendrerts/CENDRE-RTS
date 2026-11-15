@@ -125,9 +125,10 @@ assert.deepEqual(mini.calls.at(-1), ['strokeRect', '#fff2bd', 2, 20, 10, 80, 40]
 
 for (const file of ['game.js', 'unit-overlays.js', 'minimap.js']) {
   let source = readFileSync(new URL('../public/game/' + file, import.meta.url), 'utf8');
-  // Issue #107 : seul le gain numérique de dévoration flotte sur le champ de bataille.
+  // Issues #107 et #129 : seuls le gain de dévoration et le niveau du héros flottent sur le terrain.
   if (file === 'game.js') {
     source = source.replace(/ctx\.fillText\('\+' \+ event\.amount, [^;\n]+\);/g, '');
+    source = source.replace('ctx.fillText(String(u.level), x, headY - 18 / scale);', '');
   }
   assert.doesNotMatch(source, /\.(?:fillText|strokeText)\s*\(/, 'No floating canvas text in ' + file);
 }

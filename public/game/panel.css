@@ -499,3 +499,15 @@ button svg[data-icon='selection'] {
   justify-content: center;
   gap: 2px;
 }
+
+#contextActions:has(#heroAction) {
+  display: flex;
+  width: 230px;
+  max-width: 230px;
+  flex-shrink: 0;
+  max-height: 98px;
+  overflow-y: auto;
+}
+#contextActions:has(#heroAction) .queue-label {
+  position: static;
+}

@@ -165,7 +165,8 @@ function ghostPortrait(type) {
   );
 }
 function portraitFor(type) {
-  return player ? ratSVG(type) : cookSVG(type);
+  const portraitType = type === 'hero' ? 'knight' : type;
+  return player ? ratSVG(portraitType) : cookSVG(portraitType);
 }
 function setupPortraits() {
   voices.reset();
@@ -271,7 +272,7 @@ function updateUI() {
     (player === 0 && ragoutSeconds > 0 ? ' · Ragoût ' + ragoutSeconds + ' s' : '') +
     (player === 1 && state.festin?.readyAt != null ? ' · Festin ' + Math.max(0, Math.ceil(state.festin.readyAt - state.time)) + ' s' : '');
   $('#rubies').textContent = Math.floor(state.rubies[player]);
-  $('#population').textContent = army.length + ' / ' + Sim.unitLimit(player);
+  $('#population').textContent = Sim.populationUsed(state, player) + ' / ' + Sim.unitLimit(player);
   $('#clock').textContent =
     String(Math.floor(state.time / 60)).padStart(2, '0') +
     ':' +
@@ -1525,7 +1526,7 @@ try {
 
 function drawCook(u) {
   let { x, y } = net ? motion.position(u, performance.now()) : u;
-  const size = u.type === 'commis' ? 34 : u.type === 'archer' ? 52 : u.type === 'mage' ? 49 : 46;
+  const size = u.type === 'hero' ? 46 * 1.3 : u.type === 'commis' ? 34 : u.type === 'archer' ? 52 : u.type === 'mage' ? 49 : 46;
   const bob =
     u.type === 'mage'
       ? Math.sin(state.time * 3 + u.id) * 3
@@ -1533,10 +1534,23 @@ function drawCook(u) {
   ellipse(x, y + 4, size * 0.28, 6, '#06100d77');
   const feet = unitFeet(x, y, size, u.team);
   if (selected.has(u.id)) selectionRing(ctx, feet, size, scale, u.team);
-  const img = (u.team === 1 ? ratSprites : cookSprites)[u.type];
+  const img = (u.team === 1 ? ratSprites : cookSprites)[u.type === 'hero' ? 'knight' : u.type];
   const sprite = renderCache.sprite(img, u.type, u.team, scale * canvas.width / viewWidth, size, size * 1.125);
   if (sprite) ctx.drawImage(sprite, x - size / 2, y - size + 5 + bob, size, size * 1.125);
   const headY = y - size + bob;
+  if (u.type === 'hero') {
+    ctx.save();
+    ctx.strokeStyle = '#ffd365';
+    ctx.lineWidth = 2 / scale;
+    ctx.beginPath();
+    ctx.ellipse(x, y - size / 2, size * 0.52, size * 0.64, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.font = 'bold ' + Math.max(9 / scale, 14) + 'px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ffd365';
+    ctx.fillText(String(u.level), x, headY - 18 / scale);
+    ctx.restore();
+  }
   if (u.devour?.startedAt != null) bar(x, headY - 16, state.time - u.devour.startedAt, 4, 44);
   drawCargoRuby(ctx, x, headY, scale, u);
   drawHealthBar(ctx, u, x, headY, scale, player, selected.has(u.id));
@@ -2157,10 +2171,12 @@ function requestRecruit(command, count = 1, producerIds = null) {
     launched++;
   }
   if (reason) {
-    const population = preview.units.filter((unit) => unit.team === player).length + preview.queues[player].length;
+    const population = Sim.populationUsed(preview, player);
     const missing = Math.max(0, Sim.stats(command.type, player).cost - preview.rubies[player]);
     const messages = {
       population: `Population pleine (${population} / ${Sim.populationCap(preview, player)})`,
+      heroAlive: 'Héros déjà en vie',
+      heroQueued: 'Héros déjà en production',
       queues: 'Files pleines',
       rubies: `Rubis insuffisants : il manque ${missing}`,
       producer: 'Aucun bâtiment pour cette unité',
@@ -2444,6 +2460,17 @@ function renderContextPanel() {
       dishButton.title = reason || (player === 1 ? '15 s de préparation · 4 Rats-Éboueurs' : '20 s de cuisson · +15 % de dégâts pendant 45 s');
       dishButton.onclick = () => panelCommand({ kind: 'cookDish', dish });
       actions.append(dishButton);
+      const heroButton = document.createElement('button');
+      heroButton.id = 'heroAction';
+      heroButton.textContent = Sim.stats('hero', player).name + ' · 150';
+      heroButton.style.minHeight = '44px';
+      heroButton.style.minWidth = '44px';
+      const heroReason = Sim.recruitBlockReason(state, player, 'hero', opened.id);
+      heroButton.setAttribute('aria-disabled', String(Boolean(heroReason)));
+      heroButton.style.opacity = heroReason ? '0.5' : '1';
+      heroButton.title = '35 s · Population 3';
+      heroButton.onclick = () => panelCommand({ kind: 'recruit', type: 'hero', producerId: opened.id });
+      actions.append(heroButton);
     }
     if (opened) {
       const rally = document.createElement('button');

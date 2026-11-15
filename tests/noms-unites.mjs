@@ -11,7 +11,7 @@ const plurals = [
   ['Rats-Essuyeurs', 'Rats-Éboueurs', 'Rats-Balance-Déchets', 'Chamans de la Poubelle'],
 ];
 for (const [faction, config] of [BrigadeCuisine, RatsGout].entries()) {
-  for (const [index, type] of Object.keys(config.unites).entries()) {
+  for (const [index, type] of Object.keys(config.unites).filter((type) => type !== 'hero').entries()) {
     const singular = config.unites[type].name;
     assert.equal(unitLabel(type, 1, faction), singular);
     for (const count of [2, 7]) {

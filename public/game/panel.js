@@ -45,10 +45,6 @@ export function panelModel(state, player, selection, context = {}) {
   const producerName = producerType
     ? unitLabel(producerType, producers.length, player)
     : producer?.name;
-  const queuesFull = producers.length
-    ? producers.every((producer) => state.queues[player]
-      .filter((job) => job.producerId === producer.id).length >= 8)
-    : queue.length >= 8;
   const left = {
     name:
       mode === 'units'
@@ -88,11 +84,7 @@ export function panelModel(state, player, selection, context = {}) {
         kind: 'recruit',
         type: recruitmentProducer.unit,
         ...Sim.stats(recruitmentProducer.unit, player),
-        locked:
-          queuesFull ||
-          state.units.filter((unit) => unit.team === player).length +
-            (state.queues?.[player]?.length || 0) >=
-            30,
+        locked: !Sim.canRecruit(state, player, recruitmentProducer.unit, recruitmentProducer.id),
       },
     ];
   if (context.slotId) left.status = 'Emplacement choisi';
@@ -142,8 +134,8 @@ export function panelModel(state, player, selection, context = {}) {
         }));
   }
   const unitLabels = player
-    ? { commis: 'Essuyeur', knight: 'Éboueur', archer: 'Tireur', mage: 'Chaman' }
-    : { commis: 'Commis', knight: 'Garde', archer: 'Boucher', mage: 'Chef' };
+    ? { hero: 'Roi-Rat', commis: 'Essuyeur', knight: 'Éboueur', archer: 'Tireur', mage: 'Chaman' }
+    : { hero: 'Grand Chef', commis: 'Commis', knight: 'Garde', archer: 'Boucher', mage: 'Chef' };
   const buildingLabels = player
     ? ['Niche', 'Atelier', 'Autel']
     : ['Garde-manger', 'Boucherie', 'École'];
