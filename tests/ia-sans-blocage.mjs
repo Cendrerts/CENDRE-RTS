@@ -1,12 +1,16 @@
+import { parseReplayOptions, reportReplay } from '../scripts/tests-longs-options.mjs';
 import assert from 'node:assert/strict';
 import { readFile, mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+const replay = parseReplayOptions(18, 37);
+
 // Same seeded starts and side/decision-order alternation as issue #66.
 // Isolated modules keep test-only faction settings out of the game configs.
-for (const horde of [false, true]) {
+// Replay targets the pre-horde tournament used by the reference seeds.
+for (const horde of replay.seed === null ? [false, true] : [false]) {
   const directory = await mkdtemp(join(tmpdir(), 'cendre-no-stall-'));
   try {
     const variants = [];
@@ -36,144 +40,146 @@ for (const horde of [false, true]) {
     }
     const [{ sim: normalSim, ai: normalAI }, { sim: reversedSim, ai: reversedAI }] = variants;
     console.log(horde ? 'Horde: cap 45, costs 36/45/60' : 'Pre-horde: cap 30, costs 60/75/100');
-    // The emergency order bypasses assembly and includes already deployed
-    // troops. Both the bank and the military-capacity triggers are exercised.
-    for (const { sim, ai } of variants) {
-      for (const difficulty of ['facile', 'normal', 'difficile', 'brutal']) {
-        for (const rich of [false, true]) {
+    if (replay.seed === null) {
+      // The emergency order bypasses assembly and includes already deployed
+      // troops. Both the bank and the military-capacity triggers are exercised.
+      for (const { sim, ai } of variants) {
+        for (const difficulty of ['facile', 'normal', 'difficile', 'brutal']) {
+          for (const rich of [false, true]) {
+            const state = sim.create();
+            const count = rich ? 4 : (sim.unitLimit?.(0) ?? 30) - 1;
+            for (let index = 0; index < count; index++) sim.spawn(state, 'knight', 0);
+            for (const unit of state.units.filter((unit) => unit.team === 0 && unit.type !== 'commis')) {
+              unit.x = 850;
+              unit.y = 450;
+              unit.path = [];
+            }
+            state.rubies[0] = rich ? 800 : 0;
+            state.time = 120;
+            // No observed targets: the public enemy start is the fallback.
+            state.visible[0].fill(0);
+            const controller = ai(0, difficulty);
+            controller.update(state);
+            assert.equal(controller.metrics.waves, 1, `${difficulty}: emergency wave`);
+            assert.equal(controller.metrics.waveSizes[0], count);
+            const troops = state.units.filter((unit) => unit.team === 0 && unit.type !== 'commis');
+            for (const unit of troops) {
+              assert.equal(unit.retreat, false);
+              assert(unit.path.length > 0);
+              const lane = sim.lanes.find((candidate) => candidate.name === controller.metrics.lanes.at(-1));
+              const [x, y] = lane.points[1];
+              assert(unit.orderQueue.some((point) => Math.hypot(point.x - x, point.y - y) < 200));
+            }
+          }
+        }
+        // Defense and a pending retreat must not veto the emergency order.
+        // Leave the two guards home and target the nearest observed structure.
+        {
           const state = sim.create();
-          const count = rich ? 4 : (sim.unitLimit?.(0) ?? 30) - 1;
-          for (let index = 0; index < count; index++) sim.spawn(state, 'knight', 0);
-          for (const unit of state.units.filter((unit) => unit.team === 0 && unit.type !== 'commis')) {
-            unit.x = 850;
-            unit.y = 450;
-            unit.path = [];
-          }
-          state.rubies[0] = rich ? 800 : 0;
-          state.time = 120;
-          // No observed targets: the public enemy start is the fallback.
-          state.visible[0].fill(0);
-          const controller = ai(0, difficulty);
-          controller.update(state);
-          assert.equal(controller.metrics.waves, 1, `${difficulty}: emergency wave`);
-          assert.equal(controller.metrics.waveSizes[0], count);
-          const troops = state.units.filter((unit) => unit.team === 0 && unit.type !== 'commis');
-          for (const unit of troops) {
-            assert.equal(unit.retreat, false);
-            assert(unit.path.length > 0);
-            const lane = sim.lanes.find((candidate) => candidate.name === controller.metrics.lanes.at(-1));
-            const [x, y] = lane.points[1];
-            assert(unit.orderQueue.some((point) => Math.hypot(point.x - x, point.y - y) < 200));
-          }
-        }
-      }
-      // Defense and a pending retreat must not veto the emergency order.
-      // Leave the two guards home and target the nearest observed structure.
-      {
-        const state = sim.create();
-        for (let index = 0; index < 8; index++) sim.spawn(state, 'knight', 0);
-        sim.spawn(state, 'knight', 1);
-        const invader = state.units.find((unit) => unit.team === 1 && unit.type === 'knight');
-        invader.x = state.bases[0].x + 100;
-        invader.y = state.bases[0].y;
-        assert(sim.construct(state, 1, 'niche_ordures'));
-        state.rubies[0] = 1000;
-        state.time = 120;
-        state.visible[0].fill(1);
-        const expected = [...state.slots[1].filter((slot) => slot.occupe), state.bases[1]]
-          .sort((a, b) => Math.hypot(a.x - state.bases[0].x, a.y - state.bases[0].y) - Math.hypot(b.x - state.bases[0].x, b.y - state.bases[0].y))[0];
-        const orders = [];
-        const originalOrder = sim.order;
-        sim.order = (...args) => {
-          orders.push(args);
-          return originalOrder(...args);
-        };
-        try {
-          const controller = ai(0, 'brutal');
-          controller.update(state);
-          assert.equal(controller.metrics.waves, 1);
-          assert.equal(controller.metrics.waveSizes[0], 6);
-          const [, ids, x, y, target, retreat] = orders.at(-1);
-          const army = state.units.filter((unit) => unit.team === 0 && unit.type !== 'commis');
-          assert.deepEqual(ids, army.slice(2).map((unit) => unit.id));
-          const firstStage = Math.hypot(expected.x - state.bases[1].x, expected.y - state.bases[1].y) < 320
-            ? sim.lanes.find((lane) => lane.name === controller.metrics.lanes.at(-1)).points[1]
-            : [expected.x, expected.y];
-          assert.equal(x, firstStage[0]);
-          assert.equal(y, firstStage[1]);
-          assert.equal(target, null);
-          assert.equal(retreat, false);
-          state.time = 121;
-          controller.update(state);
-          assert.equal(controller.metrics.waves, 1, 'Emergency timer resets after the wave');
-          // Capturing a site can remove its slots entirely. Once the site is
-          // visible again, a removed building must no longer attract a wave.
-          state.slots[1] = state.slots[1].filter((slot) => !slot.occupe);
-          state.visible[0].fill(1);
+          for (let index = 0; index < 8; index++) sim.spawn(state, 'knight', 0);
+          sim.spawn(state, 'knight', 1);
+          const invader = state.units.find((unit) => unit.team === 1 && unit.type === 'knight');
+          invader.x = state.bases[0].x + 100;
+          invader.y = state.bases[0].y;
+          assert(sim.construct(state, 1, 'niche_ordures'));
           state.rubies[0] = 1000;
-          state.time = 240;
-          controller.update(state);
-          assert.equal(controller.metrics.waves, 2);
-          const lane = sim.lanes.find((candidate) => candidate.name === controller.metrics.lanes.at(-1));
-          assert.equal(orders.at(-1)[2], lane.points[1][0]);
-          assert.equal(orders.at(-1)[3], lane.points[1][1]);
-        } finally {
-          sim.order = originalOrder;
+          state.time = 120;
+          state.visible[0].fill(1);
+          const expected = [...state.slots[1].filter((slot) => slot.occupe), state.bases[1]]
+            .sort((a, b) => Math.hypot(a.x - state.bases[0].x, a.y - state.bases[0].y) - Math.hypot(b.x - state.bases[0].x, b.y - state.bases[0].y))[0];
+          const orders = [];
+          const originalOrder = sim.order;
+          sim.order = (...args) => {
+            orders.push(args);
+            return originalOrder(...args);
+          };
+          try {
+            const controller = ai(0, 'brutal');
+            controller.update(state);
+            assert.equal(controller.metrics.waves, 1);
+            assert.equal(controller.metrics.waveSizes[0], 6);
+            const [, ids, x, y, target, retreat] = orders.at(-1);
+            const army = state.units.filter((unit) => unit.team === 0 && unit.type !== 'commis');
+            assert.deepEqual(ids, army.slice(2).map((unit) => unit.id));
+            const firstStage = Math.hypot(expected.x - state.bases[1].x, expected.y - state.bases[1].y) < 320
+              ? sim.lanes.find((lane) => lane.name === controller.metrics.lanes.at(-1)).points[1]
+              : [expected.x, expected.y];
+            assert.equal(x, firstStage[0]);
+            assert.equal(y, firstStage[1]);
+            assert.equal(target, null);
+            assert.equal(retreat, false);
+            state.time = 121;
+            controller.update(state);
+            assert.equal(controller.metrics.waves, 1, 'Emergency timer resets after the wave');
+            // Capturing a site can remove its slots entirely. Once the site is
+            // visible again, a removed building must no longer attract a wave.
+            state.slots[1] = state.slots[1].filter((slot) => !slot.occupe);
+            state.visible[0].fill(1);
+            state.rubies[0] = 1000;
+            state.time = 240;
+            controller.update(state);
+            assert.equal(controller.metrics.waves, 2);
+            const lane = sim.lanes.find((candidate) => candidate.name === controller.metrics.lanes.at(-1));
+            assert.equal(orders.at(-1)[2], lane.points[1][0]);
+            assert.equal(orders.at(-1)[3], lane.points[1][1]);
+          } finally {
+            sim.order = originalOrder;
+          }
         }
-      }
-      // Income may exceed throughput before the population cap is reached.
-      {
+        // Income may exceed throughput before the population cap is reached.
+        {
+          const state = sim.create();
+          state.rubies[0] = 10000;
+          for (const type of ['garde_manger', 'boucherie', 'ecole_brigade', 'boucherie', 'boucherie']) {
+            assert(sim.construct(state, 0, type));
+          }
+          state.rubies[0] = 1600;
+          ai(0, 'brutal').update(state);
+          assert(state.slots[0].filter((slot) => slot.occupe).length > 5, 'Rich AI scales throughput even below the population cap');
+        }
+        // Extra production sites keep the existing economy population budget.
+        {
+          const state = sim.create();
+          state.rubies[0] = 10000;
+          const worker = state.units.find((unit) => unit.team === 0);
+          for (const index of [2, 3, 4]) {
+            worker.x = state.mines[index].x;
+            worker.y = state.mines[index].y;
+            assert(sim.build(state, 0, index));
+          }
+          for (let index = 1; index < 16; index++) sim.spawn(state, 'commis', 0);
+          ai(0, 'brutal').update(state);
+          assert(!state.queues[0].some((job) => job.type === 'commis'), 'A fourth site must not consume the military population budget');
+        }
         const state = sim.create();
-        state.rubies[0] = 10000;
-        for (const type of ['garde_manger', 'boucherie', 'ecole_brigade', 'boucherie', 'boucherie']) {
-          assert(sim.construct(state, 0, type));
-        }
-        state.rubies[0] = 1600;
-        ai(0, 'brutal').update(state);
-        assert(state.slots[0].filter((slot) => slot.occupe).length > 5, 'Rich AI scales throughput even below the population cap');
-      }
-      // Extra production sites keep the existing economy population budget.
-      {
-        const state = sim.create();
-        state.rubies[0] = 10000;
-        const worker = state.units.find((unit) => unit.team === 0);
-        for (const index of [2, 3, 4]) {
-          worker.x = state.mines[index].x;
-          worker.y = state.mines[index].y;
-          assert(sim.build(state, 0, index));
-        }
-        for (let index = 1; index < 16; index++) sim.spawn(state, 'commis', 0);
-        ai(0, 'brutal').update(state);
-        assert(!state.queues[0].some((job) => job.type === 'commis'), 'A fourth site must not consume the military population budget');
-      }
-      const state = sim.create();
-      const limit = sim.unitLimit?.(0) ?? 30;
-      for (let index = 1; index < limit; index++) sim.spawn(state, 'knight', 0);
-      state.rubies[0] = 1000;
-      ai(0, 'brutal').update(state);
-      assert(state.slots[0].filter((slot) => slot.occupe).length >= 2, 'Full population invests surplus in production');
-      // If every slot is filled, an expansion opens new production capacity.
-      {
-        const state = sim.create();
-        state.rubies[0] = 10000;
-        while (sim.construct(state, 0, 'garde_manger')) {
-          // Fill only the existing site's legal slots, paying each cost.
-        }
         const limit = sim.unitLimit?.(0) ?? 30;
         for (let index = 1; index < limit; index++) sim.spawn(state, 'knight', 0);
-        const worker = state.units.find((unit) => unit.team === 0 && unit.type === 'commis');
-        worker.x = state.mines[2].x;
-        worker.y = state.mines[2].y;
-        sim.visibility(state);
-        state.rubies[0] = 900;
-        state.time = 300;
-        const controller = ai(0, 'brutal');
-        controller.update(state);
-        assert.equal(state.mines[2].owner, 0);
-        assert(state.mines[2].depot);
-        assert.equal(controller.metrics.expansions.length, 1);
-        assert(state.slots[0].some((slot) => !slot.occupe));
-        assert(state.rubies[0] < 900);
+        state.rubies[0] = 1000;
+        ai(0, 'brutal').update(state);
+        assert(state.slots[0].filter((slot) => slot.occupe).length >= 2, 'Full population invests surplus in production');
+        // If every slot is filled, an expansion opens new production capacity.
+        {
+          const state = sim.create();
+          state.rubies[0] = 10000;
+          while (sim.construct(state, 0, 'garde_manger')) {
+            // Fill only the existing site's legal slots, paying each cost.
+          }
+          const limit = sim.unitLimit?.(0) ?? 30;
+          for (let index = 1; index < limit; index++) sim.spawn(state, 'knight', 0);
+          const worker = state.units.find((unit) => unit.team === 0 && unit.type === 'commis');
+          worker.x = state.mines[2].x;
+          worker.y = state.mines[2].y;
+          sim.visibility(state);
+          state.rubies[0] = 900;
+          state.time = 300;
+          const controller = ai(0, 'brutal');
+          controller.update(state);
+          assert.equal(state.mines[2].owner, 0);
+          assert(state.mines[2].depot);
+          assert.equal(controller.metrics.expansions.length, 1);
+          assert(state.slots[0].some((slot) => !slot.occupe));
+          assert(state.rubies[0] < 900);
+        }
       }
     }
     const wins = { cooks: 0, rats: 0, timeout: 0 };
@@ -183,6 +189,9 @@ for (const horde of [false, true]) {
     let totalWaves = 0;
     let gamesWithExpansion = 0;
     for (let game = 0; game < 20; game++) {
+      if (replay.seed !== null && 18 + game !== replay.seed) {
+        continue;
+      }
       const reversed = game % 2 === 1;
       const sim = reversed ? reversedSim : normalSim;
       const ai = reversed ? reversedAI : normalAI;
@@ -216,6 +225,7 @@ for (const horde of [false, true]) {
           }
         }
         sim.tick(state, 0.1);
+        reportReplay(replay.seed, step, state, controllers);
         for (const team of [0, 1]) {
           if (state.rubies[team] > 1500) {
             bankSince[team] ??= state.time;
@@ -236,6 +246,9 @@ for (const horde of [false, true]) {
       }
       assert(state.time <= 1800 + 1e-6);
       wins[winner]++;
+    }
+    if (replay.seed !== null) {
+      continue;
     }
     console.log(`Tournament: rats ${wins.rats}/20, cooks ${wins.cooks}/20, timeouts ${wins.timeout}, distinct outcomes ${outcomes.size}/20, timeout seeds: ${timeoutSeeds.join(', ') || 'none'}`);
     console.log(`Mean waves per game: ${totalWaves / 20}; hoarding: ${JSON.stringify(hoarding)}`);
