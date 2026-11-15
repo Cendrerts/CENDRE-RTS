@@ -742,16 +742,17 @@ function handleFieldTap(e, duration) {
     );
     return;
   }
-  if (action.kind === 'move' || action.kind === 'attack') {
+  if (action.kind === 'move' || action.kind === 'attack' || action.kind === 'attackMove') {
+    const attackMove = attackMoveArmed || action.kind === 'attackMove';
     const target = action.target || null;
     const feedbackAction = {
       ...action,
-      kind: patrolArmed ? 'patrol' : attackMoveArmed ? 'attackMove' : action.kind,
+      kind: patrolArmed ? 'patrol' : attackMove ? 'attackMove' : action.kind,
     };
     showOrderFeedback(feedbackAction, target || p, [...selected]);
     if (net) {
       sendCommand({
-        kind: patrolArmed ? 'patrol' : attackMoveArmed ? 'attackMove' : 'move',
+        kind: patrolArmed ? 'patrol' : attackMove ? 'attackMove' : 'move',
         ids: [...selected],
         x: p.x,
         y: p.y,
@@ -759,7 +760,7 @@ function handleFieldTap(e, duration) {
         target: target ? (target.base ? { base: true } : { id: target.id }) : null,
       });
     } else if (patrolArmed) Sim.patrol(state, [...selected], p.x, p.y);
-    else Sim.order(state, [...selected], p.x, p.y, target, !target && !attackMoveArmed, queueArmed);
+    else Sim.order(state, [...selected], p.x, p.y, target, !target && !attackMove, queueArmed);
     patrolArmed = false;
     attackMoveArmed = false;
     $('#attackAction').setAttribute('aria-pressed', 'false');

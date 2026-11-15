@@ -81,7 +81,9 @@ export function resolveTap(state, player, selection, point, scale = 1, onTarget 
     add(mine, 'mine', 34, action, mineHitbox(mine), true);
     if (index < 2 || !mine.site) return;
     const siteAction = mine.owner !== player && mine.depot
-      ? { kind: 'enemyBase', index }
+      ? selected.length
+        ? { kind: 'attackMove', x: point.x, y: point.y }
+        : { kind: 'enemyBase', index }
       : { kind: 'radial', context: { baseId: mine.depot ? 'mine_' + index : null, mine: index } };
     add(mine.site, mine.depot ? 'building' : 'slot', 28, siteAction,
       mine.depot ? buildingBounds(mine.site, 0.95, false, mine.owner) : null);
