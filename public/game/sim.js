@@ -461,12 +461,13 @@ function matchStats(s) {
     duration: s.time,
   };
 }
-function awardHeroExperience(s, target) {
-  if (!target.type) return;
+function awardHeroExperience(s, target, recipient = null, bonus = 0) {
+  if (!recipient && !target.type) return;
   for (const hero of s.units) {
-    if (hero.type !== 'hero' || hero.hp <= 0 || hero.team === target.team) continue;
-    if (Math.hypot(hero.x - target.x, hero.y - target.y) >= 400) continue;
-    const experience = target.type === 'sanglier' ? 30 : target.type === 'commis' ? 10 : 20;
+    if (hero.type !== 'hero' || hero.hp <= 0) continue;
+    if (recipient ? hero !== recipient : hero.team === target.team) continue;
+    if (!recipient && Math.hypot(hero.x - target.x, hero.y - target.y) >= 400) continue;
+    const experience = recipient ? bonus : target.type === 'sanglier' ? 30 : target.type === 'commis' ? 10 : 20;
     hero.xp += experience;
     hero.level = hero.xp >= 250 ? 3 : hero.xp >= 100 ? 2 : 1;
     const maximum = stats('hero', hero.team).hp * (1 + 0.15 * (hero.level - 1));
@@ -574,6 +575,12 @@ function ragoutActive(s, unit) {
   return unit.team === 0 && unit.type !== 'commis' && unit.hp > 0 &&
     (unit.ragoutUntil || 0) > s.time + 1e-9;
 }
+function ragoutDamageMultiplier(s, unit) {
+  if (!ragoutActive(s, unit)) return 1;
+  const chefNearby = s.units.some((hero) => hero.type === 'hero' &&
+    hero.team === unit.team && hero.hp > 0 && Math.hypot(hero.x - unit.x, hero.y - unit.y) < 250);
+  return chefNearby ? 1.25 : 1.15;
+}
 function ragoutTick(s) {
   if (s.ragout.readyAt === null || s.time + 1e-9 < s.ragout.readyAt) return;
   s.ragout.expiresAt = s.ragout.readyAt + 45;
@@ -581,6 +588,7 @@ function ragoutTick(s) {
   for (const unit of s.units) {
     if (unit.team === 0 && unit.type !== 'commis' && unit.hp > 0) {
       unit.ragoutUntil = s.ragout.expiresAt;
+      if (unit.type === 'hero') awardHeroExperience(s, null, unit, 40);
     }
   }
 }
@@ -886,9 +894,11 @@ function devourTick(s, unit, dt) {
     }
     return;
   }
-  if (s.time - unit.devour.startedAt + 1e-9 < 4) return;
+  const duration = unit.type === 'hero' ? 3 : 4;
+  if (s.time - unit.devour.startedAt + 1e-9 < duration) return;
   const amount = corpse.type === 'sanglier' ? 10 : 6;
   s.ingredients[unit.team] += amount;
+  if (unit.type === 'hero') awardHeroExperience(s, null, unit, 40);
   unit.hp = Math.min(unit.max, unit.hp + unit.max * 0.3);
   s.devourEvents.push({ x: unit.x, y: unit.y, team: unit.team, amount, time: s.time });
   s.corpses = s.corpses.filter((item) => item.id !== corpse.id);
@@ -1157,7 +1167,7 @@ function tick(s, dt) {
         u.lastAttackTargetId = target.id ?? null;
         u.lastAttackAt = s.time;
         const levelMultiplier = u.type === 'hero' ? 1 + 0.15 * (u.level - 1) : 1;
-        const damage = cfg.damage * levelMultiplier * (ragoutActive(s, u) ? 1.15 : 1);
+        const damage = cfg.damage * levelMultiplier * ragoutDamageMultiplier(s, u);
         applyDamage(s, target, damage, u.team, u.id);
         if (cfg.splash) {
           for (const v of [...s.units, ...s.monsters])

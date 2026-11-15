@@ -1002,6 +1002,17 @@ function building(b) {
   bar(x, y - 150, b.hp, b.max, 100);
 }
 function unit(u) {
+  if (u.type === 'hero' && u.team === 0 && u.team === player && u.hp > 0 &&
+      (state.ragout?.expiresAt || 0) > state.time + 1e-9) {
+    ctx.save();
+    ctx.globalAlpha = 0.3;
+    ctx.strokeStyle = TEAM_COLORS[u.team];
+    ctx.lineWidth = 1.5 / scale;
+    ctx.beginPath();
+    ctx.arc(u.x, u.y, 250, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
   drawCook(u);
   if (Sim.ragoutActive(state, u)) {
     for (const offset of [-7, 7]) {
@@ -1551,7 +1562,7 @@ function drawCook(u) {
     ctx.fillText(String(u.level), x, headY - 18 / scale);
     ctx.restore();
   }
-  if (u.devour?.startedAt != null) bar(x, headY - 16, state.time - u.devour.startedAt, 4, 44);
+  if (u.devour?.startedAt != null) bar(x, headY - 16, state.time - u.devour.startedAt, u.type === 'hero' ? 3 : 4, 44);
   drawCargoRuby(ctx, x, headY, scale, u);
   drawHealthBar(ctx, u, x, headY, scale, player, selected.has(u.id));
 }
