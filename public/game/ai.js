@@ -440,10 +440,16 @@ export function createAI(team, difficulty = 'normal', state = null) {
       const fighting = enemies.filter((enemy) => enemy.type !== 'commis' && army.some((unit) => distance(unit, enemy) < 200));
       const engaged = army.filter((unit) => !brazierUnits.has(unit.id) && unit.id !== scout && !raiders.has(unit.id) && fighting.some((enemy) => distance(unit, enemy) < 240));
       if (settings.micro && fighting.length && power(engaged) < power(fighting) * 0.6 && (!invaders.length || brutal && !invaders.some((enemy) => distance(enemy, base) < 220)) && state.time >= retreatUntil) {
-        retreatUntil = state.time + 12;
-        for (const unit of engaged) deployed.delete(unit.id);
-        Sim.order(state, engaged.map((unit) => unit.id), rally.x, rally.y, null, true);
-        actions++;
+        const retreating = engaged.filter((unit) => {
+          const decisiveWaveMember = waveRoute?.ids.has(unit.id) && (waveRoute.rebuildingBank || committedAssault);
+          return !decisiveWaveMember || power(engaged) < power(fighting) * 0.25;
+        });
+        if (retreating.length) {
+          retreatUntil = state.time + 12;
+          for (const unit of retreating) deployed.delete(unit.id);
+          Sim.order(state, retreating.map((unit) => unit.id), rally.x, rally.y, null, true);
+          actions++;
+        }
       }
       // After the opening raids, finish the game instead of cycling forever
       // between recapturable depots scattered across the enlarged map.
