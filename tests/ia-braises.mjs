@@ -9,14 +9,14 @@ Sim.order = (...args) => {
   orders.push(args);
   return originalOrder(...args);
 };
-function setup(team = 0, difficulty = 'normal') {
+function setup(team = 0, difficulty = 'normal', type = 'knight', count = 6) {
   const state = Sim.create();
   state.time = 239.9;
   state.rubies = [0, 0];
   const base = state.bases[team];
   const rally = { x: base.x + (team ? -110 : 110), y: base.y + (team ? 65 : -65) };
-  for (let index = 0; index < 6; index++) {
-    Sim.spawn(state, 'knight', team);
+  for (let index = 0; index < count; index++) {
+    Sim.spawn(state, type, team);
     Object.assign(state.units.at(-1), rally);
   }
   Sim.tick(state, 0.1);
@@ -56,8 +56,8 @@ try {
     assert(ids.every((id) => distance(state.units.find((unit) => unit.id === id), foyer) < 150));
     advance(state, controller, 22);
     assert.equal(foyer.lit, false);
-    assert(orders.some(([, units, x, y, , retreat]) => retreat &&
-      ids.every((id) => units.includes(id)) && x === rally.x && y === rally.y));
+    assert(ids.every((id) => orders.some(([, units, x, y, , retreat]) => retreat &&
+      units.includes(id) && x === rally.x && y === rally.y)));
     const returned = new Set();
     for (let step = 0; step < 390; step++) {
       advance(state, controller, 0.1);
@@ -68,6 +68,68 @@ try {
       }
     }
     assert.equal(returned.size, ids.length);
+  }
+  {
+    // The scout and tower guard reserve two of the eight soldiers.
+    const { state, foyer, controller } = setup(0, 'normal', 'knight', 8);
+    controller.update(state);
+    const departure = orders.find(([, , x, y]) => x === foyer.x && y === foyer.y);
+    assert.equal(departure[1].length, 3, 'Six disponibles envoient exactement trois militaires');
+    assert.equal(departure[5], false);
+  }
+  for (const stranded of [false, true]) {
+    const { state, foyer, controller } = setup();
+    controller.update(state);
+    const ids = orders.find(([, , x, y]) => x === foyer.x && y === foyer.y)[1];
+    const position = stranded ? { x: foyer.x - 200, y: foyer.y } : foyer;
+    for (const unit of state.units.filter((unit) => ids.includes(unit.id))) {
+      Object.assign(unit, position);
+      if (stranded) {
+        unit.path = [];
+      }
+    }
+    Sim.spawn(state, 'knight', 1);
+    const enemy = state.units.at(-1);
+    Object.assign(enemy, { x: position.x + 30, y: position.y, hold: true, cool: 999 });
+    const initialHp = enemy.hp;
+    state.time += 1;
+    orders = [];
+    advance(state, controller, 3);
+    assert(enemy.hp < initialHp, 'Le groupe attaque les ennemis sur le trajet et sur le foyer');
+    if (stranded) {
+      assert(orders.some(([, units, x, y, , retreat]) => units.some((id) => ids.includes(id)) &&
+        x === foyer.x && y === foyer.y && retreat === false));
+    }
+  }
+  {
+    const { state, foyer, controller } = setup(1, 'normal', 'archer');
+    controller.update(state);
+    const ids = orders.find(([, , x, y]) => x === foyer.x && y === foyer.y)[1];
+    const members = state.units.filter((unit) => ids.includes(unit.id));
+    assert(members.every((unit) => unit.max === 60));
+    for (const unit of members) {
+      Object.assign(unit, { x: foyer.x, y: foyer.y, path: [] });
+    }
+    advance(state, controller, 61);
+    assert.equal(foyer.lit, false);
+    assert(members.every((unit) => unit.hp > 0 && state.units.includes(unit)),
+      'Aucun Rat-Balance-Déchets ne meurt de la brûlure');
+    assert(ids.every((id) => orders.some(([, units, , , , retreat]) => retreat && units.includes(id))));
+  }
+  {
+    const { state, foyer, controller } = setup();
+    controller.update(state);
+    const ids = orders.find(([, , x, y]) => x === foyer.x && y === foyer.y)[1];
+    Sim.spawn(state, 'knight', 1);
+    const invader = state.units.at(-1);
+    Object.assign(invader, { x: state.bases[0].x, y: state.bases[0].y });
+    state.visible[0].fill(1);
+    state.time += 1;
+    orders = [];
+    controller.update(state);
+    assert(orders.some(([, units, x, y, , retreat]) => ids.every((id) => units.includes(id)) &&
+      x === invader.x && y === invader.y && retreat === false),
+    'Une invasion rappelle le groupe vers l’envahisseur');
   }
   for (const scenario of ['defense', 'wave', 'emergency']) {
     const { state, foyer, controller } = setup();
@@ -120,8 +182,8 @@ try {
     orders = [];
     state.time += 1;
     controller.update(state);
-    assert(orders.some(([, units, x, y, , retreat]) => retreat &&
-      ids.every((id) => units.includes(id)) && x === rally.x && y === rally.y));
+    assert(ids.every((id) => orders.some(([, units, x, y, , retreat]) => retreat &&
+      units.includes(id) && x === rally.x && y === rally.y)));
     state.units = state.units.filter((unit) => unit.team !== 1 || unit.type === 'commis');
     const returned = new Set();
     for (let step = 0; step < 300; step++) {
