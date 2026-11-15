@@ -1080,19 +1080,26 @@ function draw() {
     ctx.beginPath();
     ctx.arc(foyer.x, foyer.y, 150, 0, Math.PI * 2);
     if (foyer.lit) {
-      const pulse = 0.65 + Math.sin(performance.now() / 450) * 0.12;
+      const pulse = 0.30 + Math.sin(performance.now() / 450) * 0.06;
       const glow = ctx.createRadialGradient(foyer.x, foyer.y, 0, foyer.x, foyer.y, 150);
-      glow.addColorStop(0, `rgba(255, 170, 35, ${pulse})`);
-      glow.addColorStop(1, 'rgba(235, 77, 15, 0.35)');
+      glow.addColorStop(0, `rgba(255, 150, 40, ${pulse})`);
+      glow.addColorStop(1, 'rgba(200, 60, 10, 0.12)');
       ctx.fillStyle = glow;
-      ctx.strokeStyle = foyer.holder === -1 ? '#ff9b38' : TEAM_COLORS[foyer.holder];
+      ctx.strokeStyle = foyer.holder === -1 ? '#ff8a1f' : TEAM_COLORS[foyer.holder];
     } else {
       ctx.fillStyle = '#292326';
       ctx.strokeStyle = '#54484a';
     }
     ctx.fill();
-    ctx.lineWidth = 3 / scale;
+    ctx.lineWidth = (foyer.lit ? 4 : 3) / scale;
     ctx.stroke();
+    if (foyer.lit) {
+      ctx.beginPath();
+      ctx.arc(foyer.x, foyer.y, 150 - 6 / scale, 0, Math.PI * 2);
+      ctx.strokeStyle = '#ffb347';
+      ctx.lineWidth = 2 / scale;
+      ctx.stroke();
+    }
     ctx.restore();
   }
   for (const mine of state.mines) {
