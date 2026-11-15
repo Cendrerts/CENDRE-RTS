@@ -14,12 +14,12 @@ export function drawHealthBar(ctx, unit, x, headY, scale, player, selected) {
   if (unit.hp >= unit.max && !selected) return;
   const bounds = healthBarBounds(x, headY, scale);
   const fraction = Math.max(0, Math.min(1, unit.hp / unit.max));
-  ctx.save();
+  const previousFillStyle = ctx.fillStyle;
   ctx.fillStyle = '#091215';
   ctx.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
   ctx.fillStyle = unit.team === player ? '#51e078' : '#ff5353';
   ctx.fillRect(bounds.x, bounds.y, bounds.width * fraction, bounds.height);
-  ctx.restore();
+  ctx.fillStyle = previousFillStyle;
 }
 
 export function unitFeet(x, y, size, team) {

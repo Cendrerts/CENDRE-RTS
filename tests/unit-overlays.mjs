@@ -61,6 +61,18 @@ for (const scale of [0.25, 0.5, 1, 2, 4]) {
     assert.deepEqual(ring.calls[1], ['stroke', TEAM_COLORS[team], 2 / scale]);
   }
 }
+// Health bars change only the fill color and leave the caller's style intact.
+{
+  const context = recordingContext();
+  context.fillStyle = '#abcdef';
+  context.strokeStyle = '#123456';
+  context.lineWidth = 7;
+  drawHealthBar(context, { hp: 50, max: 100, team: 0 }, 150, 90, 1, 0, false);
+  assert.equal(context.fillStyle, '#abcdef');
+  assert.equal(context.strokeStyle, '#123456');
+  assert.equal(context.lineWidth, 7);
+}
+
 for (const selected of [false, true]) {
   const ctx = recordingContext();
   drawHealthBar(ctx, { hp: 100, max: 100, team: 1 }, 0, 0, 1, 0, selected);

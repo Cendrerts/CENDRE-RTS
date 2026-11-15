@@ -1581,6 +1581,11 @@ try {
   sessionStorage.removeItem(savedKey);
 }
 
+// Geometry only: sprites remain shared by type/team in renderCache.
+const unitShadowPaths = new WeakMap();
+const unitSpriteLookups = [new Map(), new Map()];
+let unitSpriteScale = null;
+
 function drawCook(u) {
   let { x, y } = net ? motion.position(u, performance.now()) : u;
   const size = u.type === 'hero' ? 46 * 1.3 : u.type === 'commis' ? 34 : u.type === 'archer' ? 52 : u.type === 'mage' ? 49 : 46;
@@ -1588,11 +1593,32 @@ function drawCook(u) {
     u.type === 'mage'
       ? Math.sin(state.time * 3 + u.id) * 3
       : Math.sin(state.time * 8 + u.id) * (u.path?.length || net ? 1 : 0);
-  ellipse(x, y + 4, size * 0.28, 6, '#06100d77');
-  const feet = unitFeet(x, y, size, u.team);
-  if (selected.has(u.id)) selectionRing(ctx, feet, size, scale, u.team);
-  const img = (u.team === 1 ? ratSprites : cookSprites)[u.type === 'hero' ? 'knight' : u.type];
-  const sprite = renderCache.sprite(img, u.type, u.team, scale * canvas.width / viewWidth, size, size * 1.125);
+  let shadow = unitShadowPaths.get(u);
+  if (!shadow || shadow.x !== x || shadow.y !== y || shadow.size !== size) {
+    const path = new Path2D();
+    path.ellipse(x, y + 4, size * 0.28, 6, 0, 0, Math.PI * 2);
+    shadow = { x, y, size, path };
+    unitShadowPaths.set(u, shadow);
+  }
+  ctx.fillStyle = '#06100d77';
+  ctx.fill(shadow.path);
+  const isSelected = selected.has(u.id);
+  if (isSelected) {
+    selectionRing(ctx, unitFeet(x, y, size, u.team), size, scale, u.team);
+  }
+  const spriteScale = scale * canvas.width / viewWidth;
+  if (unitSpriteScale !== spriteScale) {
+    unitSpriteLookups[0].clear();
+    unitSpriteLookups[1].clear();
+    unitSpriteScale = spriteScale;
+  }
+  const teamSprites = unitSpriteLookups[u.team];
+  let sprite = teamSprites.get(u.type);
+  if (!sprite) {
+    const image = (u.team === 1 ? ratSprites : cookSprites)[u.type === 'hero' ? 'knight' : u.type];
+    sprite = renderCache.sprite(image, u.type, u.team, spriteScale, size, size * 1.125);
+    if (sprite) teamSprites.set(u.type, sprite);
+  }
   if (sprite) ctx.drawImage(sprite, x - size / 2, y - size + 5 + bob, size, size * 1.125);
   const headY = y - size + bob;
   if (u.type === 'hero') {
@@ -1610,7 +1636,7 @@ function drawCook(u) {
   }
   if (u.devour?.startedAt != null) bar(x, headY - 16, state.time - u.devour.startedAt, u.type === 'hero' ? 3 : 4, 44);
   drawCargoRuby(ctx, x, headY, scale, u);
-  drawHealthBar(ctx, u, x, headY, scale, player, selected.has(u.id));
+  drawHealthBar(ctx, u, x, headY, scale, player, isSelected);
 }
 
 function openedRallyBuilding() {

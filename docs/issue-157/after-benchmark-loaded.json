@@ -1,0 +1,23 @@
+{
+  "drawMs": 4.928666666665328,
+  "layers": {
+    "terrain": 0.15833333333391542,
+    "fog": 0.5383333333335274,
+    "units": 1.8334999999988941,
+    "effects": 1.2934999999999612,
+    "hud": 1.083499999999282
+  },
+  "startingUnits": 93,
+  "damageDealt": 410937.49588012695,
+  "frames": 600,
+  "cpuThrottling": 4,
+  "viewport": "844x390",
+  "units": 93,
+  "minVisibleUnits": 93,
+  "meanMs": 7.371999999999243,
+  "p95Ms": 12.199999999953434,
+  "p99Ms": 15.799999999988358,
+  "maxMs": 17,
+  "overBudgetFrames": 466,
+  "chrome": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36"
+}
