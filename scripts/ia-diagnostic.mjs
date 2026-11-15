@@ -35,8 +35,7 @@ export function snapshot(state, team, controller) {
   };
 }
 
-function play(difficulty, initialSeed, minutes, reversed) {
-  let seed = initialSeed;
+export function createMatch(seed, reversed) {
   const random = () => {
     seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
     return seed / 4294967296;
@@ -50,7 +49,7 @@ function play(difficulty, initialSeed, minutes, reversed) {
   }
   // Factions are fixed to team IDs in Sim. Rotate starting assets to swap sides.
   if (reversed) {
-    const positions = [...state.bases, ...state.units, ...state.mines];
+    const positions = [...state.bases, ...state.units, ...state.mines, ...state.slots.flat()];
     positions.push(...state.mines.filter((mine) => mine.site).map((mine) => mine.site));
     for (const position of positions) {
       position.x = Sim.COLS * Sim.CELL - position.x;
@@ -58,6 +57,11 @@ function play(difficulty, initialSeed, minutes, reversed) {
     }
   }
   Sim.visibility(state);
+  return { state, delays };
+}
+
+function play(difficulty, initialSeed, minutes, reversed) {
+  const { state, delays } = createMatch(initialSeed, reversed);
   const controllers = [0, 1].map((team) => createAI(team, difficulty, state));
   const bankSeconds = [0, 0];
   const maxBankSeconds = [0, 0];
