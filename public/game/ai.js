@@ -484,7 +484,9 @@ export function createAI(team, difficulty = 'normal', state = null) {
       // the population cap. Surviving troops can regroup after a lost fight.
       const attackWindow = !settings.micro || state.time >= (brutal ? owned.length > 1 ? 180 : 220 : 210);
       const garrison = brutal && intelligence.seenAt !== null && state.time - intelligence.seenAt < 90 ? 2 : 0;
-      const attackers = brutal ? reserve.slice(garrison) : reserve;
+      // Keep the hero with the assault instead of pinning the oldest recruits home.
+      const garrisonIds = new Set(army.filter((unit) => unit.type !== 'hero').slice(0, garrison).map((unit) => unit.id));
+      const attackers = brutal ? reserve.filter((unit) => !garrisonIds.has(unit.id)) : reserve;
       const waveStrength = attackers.reduce((strength, unit) => strength + unit.hp / Sim.stats(unit.type, 0).hp, 0);
       const counterattack = brutal && (state.time < counterUntil || threats.length >= Math.max(3, knownArmy.size) && army.length > threats.length * 1.5) && attackers.length >= 5;
       const enoughTroops = counterattack || waveStrength >= (brutal ? Math.min(12, settings.wave + metrics.waves * 2) : settings.wave) && attackWindow;
@@ -711,7 +713,7 @@ export function createAI(team, difficulty = 'normal', state = null) {
           continue;
         }
         const range = Sim.stats(unit.type, team).range;
-        const guardingMain = brutal && army.indexOf(unit) < garrison;
+        const guardingMain = garrisonIds.has(unit.id);
         const localInvaders = guardingMain ? invaders.filter((enemy) => distance(enemy, base) < 400) : invaders;
         if (localInvaders.length && (!brutal || !deployed.has(unit.id)) && !unit.retreat && (!brutal || state.time >= retreatUntil) && !enemies.some((enemy) => distance(unit, enemy) <= range)) {
           const invader = [...localInvaders].sort((a, b) => distance(unit, a) - distance(unit, b))[0];
@@ -766,7 +768,7 @@ export function createAI(team, difficulty = 'normal', state = null) {
       // Last, so defensive micro cannot replace the safety order this update.
       // This includes deployed troops and raiders, leaving only the garrison.
       if (forceWave && state.time - lastWave >= 120) {
-        const reliefArmy = army.slice(garrison);
+        const reliefArmy = army.filter((unit) => !garrisonIds.has(unit.id));
         brazierMission = null;
         brazierUnits.clear();
         returningBrazierUnits.clear();

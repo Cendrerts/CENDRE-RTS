@@ -20,7 +20,8 @@ const result = spawnSync(process.execPath, ['tests/ia-sans-blocage.mjs', '--grai
 assert.ifError(result.error);
 assert.equal(result.status, 0, result.stderr);
 const lines = result.stdout.trim().split('\n');
-const expected = 'Seed 23: cooks, 314.7s, rats team 0, rubies 35/780, waves 1/1, bank seconds 0/0';
+// Le héros participe désormais à l'assaut : référence déterministe après #113.
+const expected = 'Seed 23: cooks, 305.4s, rats team 0, rubies 0/730, waves 1/1, bank seconds 0/0';
 assert.deepEqual(lines.filter((line) => line.startsWith('Seed ')), [expected]);
 const reports = lines.filter((line) => line.startsWith('releve ')).map((line) => JSON.parse(line.slice(7)));
 assert.deepEqual(reports.map(({ seconds, team }) => [seconds, team]), [[120, 0], [120, 1], [240, 0], [240, 1]]);
