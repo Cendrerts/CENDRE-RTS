@@ -5,6 +5,8 @@ import { createAI } from '../public/game/ai.js';
 // Les décisions restent désactivées en Facile et la défense interrompt la chasse.
 for (const difficulty of ['facile', 'normal', 'difficile', 'brutal', 'impitoyable']) {
   const state = Sim.create();
+  // Isoler les décisions de chasse et de cuisine des missions de capture.
+  state.watchtowers = [];
   state.rubies = [0, 0];
   state.ingredients[0] = 80;
   for (let index = 0; index < 6; index++) {
@@ -41,6 +43,8 @@ for (const difficulty of ['normal', 'difficile', 'brutal']) {
   for (const rich of [false, true]) {
     for (const alreadyHunting of [false, true]) {
       const state = Sim.create();
+      // Isoler les décisions de chasse et de cuisine des missions de capture.
+      state.watchtowers = [];
       state.rubies[0] = 0;
       const controller = createAI(0, difficulty);
       const count = rich ? 4 : 29;
@@ -79,6 +83,8 @@ for (const difficulty of ['normal', 'difficile', 'brutal']) {
 // Une vague normale prête part aussi pendant une chasse.
 for (const difficulty of ['normal', 'difficile', 'brutal']) {
   const state = Sim.create();
+  // Isoler les décisions de chasse et de cuisine des missions de capture.
+  state.watchtowers = [];
   state.rubies = [0, 0];
   for (let index = 0; index < 6; index++) {
     Sim.spawn(state, 'knight', 0);
@@ -105,6 +111,8 @@ for (const difficulty of ['normal', 'difficile', 'brutal']) {
 // En Normal, l'éclaireur militaire conserve sa mission pendant la chasse.
 {
   const state = Sim.create();
+  // Isoler les décisions de chasse et de cuisine des missions de capture.
+  state.watchtowers = [];
   state.rubies = [0, 0];
   for (let index = 0; index < 7; index++) {
     Sim.spawn(state, 'knight', 0);
@@ -121,6 +129,8 @@ for (const difficulty of ['normal', 'difficile', 'brutal']) {
 // Les raiders déjà affectés ne reçoivent aucun ordre de chasse.
 {
   const state = Sim.create();
+  // Isoler les décisions de chasse et de cuisine des missions de capture.
+  state.watchtowers = [];
   state.rubies = [0, 0];
   for (let index = 0; index < 10; index++) {
     Sim.spawn(state, 'archer', 0);
@@ -158,6 +168,8 @@ for (const difficulty of ['normal', 'difficile', 'brutal']) {
 // Une rencontre loin de la base interrompt la chasse au même tick.
 for (const difficulty of ['normal', 'difficile', 'brutal']) {
   const state = Sim.create();
+  // Isoler les décisions de chasse et de cuisine des missions de capture.
+  state.watchtowers = [];
   state.rubies = [0, 0];
   const camp = state.camps.find((candidate) => candidate.name === 'camp-nord-est');
   for (let index = 0; index < 6; index++) {
