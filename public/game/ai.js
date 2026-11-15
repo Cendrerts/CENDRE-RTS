@@ -26,6 +26,7 @@ export function createAI(team, difficulty = 'normal', state = null) {
   let towerCapture = null;
   let nextTowerCapture = 0;
   let returningFromTower = null;
+  let towerAttacker = null;
   let brazierMission = null;
   let attemptedBrazierCycle = null;
   const brazierUnits = new Set();
@@ -323,7 +324,14 @@ export function createAI(team, difficulty = 'normal', state = null) {
         }
       }
       const returningUnit = army.find((unit) => unit.id === returningFromTower);
-      if (!returningUnit || distance(returningUnit, rally) < 60 || deployed.has(returningFromTower)) {
+      if (towerAttacker && returningUnit &&
+        (towerAttacker.hp <= 0 || !Sim.canSee(state, team, towerAttacker))) {
+        Sim.order(state, [returningUnit.id], rally.x, rally.y, null, false);
+        towerAttacker = null;
+        actions++;
+      }
+      if (!returningUnit || (!towerAttacker && distance(returningUnit, rally) < 60) || deployed.has(returningFromTower)) {
+        towerAttacker = null;
         returningFromTower = null;
       }
       const invaders = (brutal ? observedArmy : enemies).filter((enemy) => owned.some((mine) => distance(enemy, mine) < (brutal ? 400 : 240)));
@@ -356,7 +364,10 @@ export function createAI(team, difficulty = 'normal', state = null) {
         actions++;
       }
       defending = invaders.length > 0;
-      if (defending) returningFromTower = null;
+      if (defending) {
+        returningFromTower = null;
+        towerAttacker = null;
+      }
       const tryDevour = (unit) => {
         if (difficulty !== 'facile' && team === 1 && !defending && !brazierUnits.has(unit.id)) {
           const enemyInRange = [...enemies, ...state.monsters.filter((monster) => monster.hp > 0 && monster.targetId != null)]
@@ -476,14 +487,28 @@ export function createAI(team, difficulty = 'normal', state = null) {
         const waveHasPriority = forceWave || lastWave === state.time && metrics.waves > 0;
         if (towerCapture) {
           const unit = army.find((candidate) => candidate.id === towerCapture.unit);
+          // A recent enemy hit distinguishes combat damage from brazier burns.
+          const attacker = unit && unit.hp < towerCapture.previousHp
+            ? enemies.filter((enemy) => enemy.lastAttackTargetId === unit.id &&
+              enemy.lastAttackAt > towerCapture.checkedAt && distance(enemy, unit) < 200)
+              .sort((a, b) => distance(a, unit) - distance(b, unit))[0]
+            : null;
+          if (unit) towerCapture.previousHp = unit.hp;
+          towerCapture.checkedAt = state.time;
           const captured = towerCapture.tower.owner === team;
           const unsafe = observedArmy.some((enemy) => distance(enemy, towerCapture.tower) < 300);
-          if (!unit || captured || baseThreatened || unsafe || waveHasPriority || deployed.has(unit.id)) {
+          if (!unit || attacker || captured || baseThreatened || unsafe || waveHasPriority || deployed.has(unit.id)) {
             towerCapture = null;
-            nextTowerCapture = captured ? nextReaction : state.time + 30;
+            nextTowerCapture = captured && !attacker ? nextReaction : state.time + 30;
             if (unit && !deployed.has(unit.id) && !baseThreatened) {
-              Sim.order(state, [unit.id], rally.x, rally.y, null, false);
-              if (captured) returningFromTower = unit.id;
+              if (attacker) {
+                towerAttacker = attacker;
+                returningFromTower = unit.id;
+                Sim.order(state, [unit.id], attacker.x, attacker.y, attacker, false);
+              } else {
+                Sim.order(state, [unit.id], rally.x, rally.y, null, false);
+                if (captured) returningFromTower = unit.id;
+              }
               actions++;
             }
           }
@@ -497,7 +522,7 @@ export function createAI(team, difficulty = 'normal', state = null) {
               !raiders.has(candidate.id) && !deployed.has(candidate.id) && !candidate.devour)
               .sort((a, b) => distance(a, tower) - distance(b, tower))[0];
             if (unit) {
-              towerCapture = { tower, unit: unit.id };
+              towerCapture = { tower, unit: unit.id, previousHp: unit.hp, checkedAt: state.time };
               Sim.order(state, [unit.id], tower.x, tower.y, null, true);
               actions++;
             }
