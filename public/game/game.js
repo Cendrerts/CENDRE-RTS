@@ -264,7 +264,18 @@ let queueSelection = '';
 let productionUI = null;
 
 const observedTowerLosses = new Map();
+const knownBraises = new Map();
+let observedBraisesCycle = -1;
+function visibleBraises() {
+  for (const foyer of state.braises || []) {
+    if (Sim.visibleAt(state, player, foyer.x, foyer.y)) knownBraises.set(foyer.name, { ...foyer });
+  }
+  return [...knownBraises.values()];
+}
 function updateUI() {
+  const braisesCycle = state.time >= 240 ? Math.floor((state.time - 240 + 1e-9) / 150) : -1;
+  if (braisesCycle > observedBraisesCycle && state.braises?.some((foyer) => foyer.lit)) notify('Braises allumées');
+  observedBraisesCycle = braisesCycle;
   let army = state.units.filter((u) => u.team === player);
   selected = new Set([...selected].filter((id) => army.some((u) => u.id === id)));
   const ragoutSeconds = Math.max(0, Math.ceil((state.ragout?.expiresAt || 0) - state.time));
@@ -320,6 +331,8 @@ $('#start').onclick = async () => {
   $('#veil').classList.remove('match-ended');
   state = Sim.create();
   observedTowerLosses.clear();
+  knownBraises.clear();
+  observedBraisesCycle = -1;
   controlGroupsUI?.reset();
   selected.clear();
   player = chosen;
@@ -1035,6 +1048,7 @@ function drawMini() {
     terrain,
     fog,
     watchtowers: state.watchtowers,
+    braises: visibleBraises(),
     units: preparedUnits,
     mines: state.mines.filter((mine) => state.explored[player][Math.floor(mine.y / CELL) * COLS + Math.floor(mine.x / CELL)]),
     bases: state.bases.filter((base) => Sim.canSee(state, player, base)),
@@ -1061,6 +1075,26 @@ function draw() {
   ctx.translate(ox, oy);
   ctx.scale(scale, scale);
   drawExpansionSites();
+  for (const foyer of visibleBraises()) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(foyer.x, foyer.y, 150, 0, Math.PI * 2);
+    if (foyer.lit) {
+      const pulse = 0.65 + Math.sin(performance.now() / 450) * 0.12;
+      const glow = ctx.createRadialGradient(foyer.x, foyer.y, 0, foyer.x, foyer.y, 150);
+      glow.addColorStop(0, `rgba(255, 170, 35, ${pulse})`);
+      glow.addColorStop(1, 'rgba(235, 77, 15, 0.35)');
+      ctx.fillStyle = glow;
+      ctx.strokeStyle = foyer.holder === -1 ? '#ff9b38' : TEAM_COLORS[foyer.holder];
+    } else {
+      ctx.fillStyle = '#292326';
+      ctx.strokeStyle = '#54484a';
+    }
+    ctx.fill();
+    ctx.lineWidth = 3 / scale;
+    ctx.stroke();
+    ctx.restore();
+  }
   for (const mine of state.mines) {
     const cellIndex = Math.floor(mine.y / CELL) * COLS + Math.floor(mine.x / CELL);
     if (state.explored[player][cellIndex]) drawMine(ctx, mine, scale, performance.now() / 1000);
@@ -1280,6 +1314,8 @@ function lobbyControls(connected) {
 }
 function resetNetwork() {
   observedTowerLosses.clear();
+  knownBraises.clear();
+  observedBraisesCycle = -1;
   closePauseMenu();
   clearTimeout(netTimer);
   realtime?.close();
@@ -1461,6 +1497,8 @@ async function enterRoom(action) {
     } catch {
       data = await requestMatch(parameters);
     }
+    knownBraises.clear();
+    observedBraisesCycle = -1;
     net = { code: data.code, token: data.token, team: data.team, begun: false, finished: false };
     seq = 0;
     persistRoom();

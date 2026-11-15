@@ -4,7 +4,7 @@ export function minimapPoint(x, y, width, height, worldWidth, worldHeight) {
   return { x: x * width / worldWidth, y: y * height / worldHeight };
 }
 
-export function drawMinimap(ctx, { terrain, fog, units, mines, bases = [], watchtowers = [], camera, player, worldWidth, worldHeight }) {
+export function drawMinimap(ctx, { terrain, fog, units, mines, bases = [], watchtowers = [], braises = [], camera, player, worldWidth, worldHeight }) {
   const { width, height } = ctx.canvas;
   const point = (x, y) => minimapPoint(x, y, width, height, worldWidth, worldHeight);
   ctx.save();
@@ -26,6 +26,14 @@ export function drawMinimap(ctx, { terrain, fog, units, mines, bases = [], watch
   for (const tower of watchtowers) {
     const position = point(tower.x, tower.y);
     ctx.fillStyle = tower.owner === -1 ? '#a0a0a0' : TEAM_COLORS[tower.owner];
+    ctx.beginPath();
+    ctx.arc(position.x, position.y, 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  for (const foyer of braises) {
+    if (!foyer.lit) continue;
+    const position = point(foyer.x, foyer.y);
+    ctx.fillStyle = '#ff952b';
     ctx.beginPath();
     ctx.arc(position.x, position.y, 3, 0, Math.PI * 2);
     ctx.fill();

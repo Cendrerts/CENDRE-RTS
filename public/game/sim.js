@@ -193,6 +193,65 @@ function configureIncome(s, team, bonus) {
   if (!s.incomeMultiplier) s.incomeMultiplier = [1, 1];
   s.incomeMultiplier[team] = 1 + bonus;
 }
+function createBraises() {
+  return reservedSites.filter((site) => site.name.startsWith('braises-')).map((site) => ({
+    ...site,
+    lit: false,
+    holder: NEUTRAL,
+    nextTickAt: null,
+  }));
+}
+function braisesTick(s, dt) {
+  let cursor = s.time - dt;
+  while (cursor < s.time - 1e-9) {
+    while (cursor + 1e-9 >= s.braisesNextAt) {
+      for (const foyer of s.braises) {
+        foyer.lit = !foyer.lit;
+        foyer.holder = NEUTRAL;
+        foyer.nextTickAt = null;
+      }
+      s.braisesNextAt += s.braises[0].lit ? 60 : 90;
+    }
+    const end = Math.min(s.time, s.braisesNextAt);
+    for (const foyer of s.braises) {
+      if (!foyer.lit) continue;
+      const nearby = [...s.units, ...s.monsters].filter((unit) => unit.hp > 0 &&
+        Math.hypot(unit.x - foyer.x, unit.y - foyer.y) <= 150);
+      const military = nearby.filter((unit) => unit.type !== 'commis');
+      const first = military.some((unit) => unit.team === 0);
+      const second = military.some((unit) => unit.team === 1);
+      const holder = first !== second ? (first ? 0 : 1) : NEUTRAL;
+      if (holder !== foyer.holder || holder === NEUTRAL) {
+        foyer.nextTickAt = holder === NEUTRAL ? null : cursor + 5;
+      }
+      foyer.holder = holder;
+      // A dead defender cannot keep cooking until the end of a long step.
+      const survival = military.filter((unit) => unit.team === holder)
+        .reduce((longest, unit) => Math.max(longest, unit.team === 0 ? Infinity : unit.hp / 2), 0);
+      while (foyer.nextTickAt !== null && foyer.nextTickAt <= Math.min(end, cursor + survival) + 1e-9) {
+        s.ingredients[holder] += holder === 0 ? 3 : 6;
+        foyer.nextTickAt += 5;
+      }
+      for (const unit of nearby) {
+        if (unit.team !== 0) applyDamage(s, unit, 2 * (end - cursor));
+      }
+      if (holder !== NEUTRAL && !nearby.some((unit) => unit.team === holder && unit.type !== 'commis' && unit.hp > 0)) {
+        foyer.holder = NEUTRAL;
+        foyer.nextTickAt = null;
+      }
+    }
+    cursor = end;
+  }
+  // Apply the visible transition at its exact timestamp, without burning retroactively.
+  if (s.time + 1e-9 >= s.braisesNextAt) {
+    for (const foyer of s.braises) {
+      foyer.lit = !foyer.lit;
+      foyer.holder = NEUTRAL;
+      foyer.nextTickAt = null;
+    }
+    s.braisesNextAt += s.braises[0].lit ? 60 : 90;
+  }
+}
 function createWatchtowers() {
   return reservedSites.filter((site) => site.name.startsWith('tour-')).map((site) => ({
     ...site,
@@ -255,6 +314,8 @@ function create() {
       { x: 3550, y: 450, team: 1, hp: 1500, max: 1500, base: true },
     ],
     watchtowers: createWatchtowers(),
+    braises: createBraises(),
+    braisesNextAt: 240,
     mines: [
       { x: 535, y: 1770, owner: 0, name: 'Mine de la Braise', boost: false },
       { x: 3465, y: 430, owner: 1, name: 'Mine du Voile', boost: false },
@@ -314,7 +375,9 @@ function monstersTick(s, dt) {
       returnMonster(monster, camp);
     }
     if (monster.returning) {
-      monster.hp = monster.max;
+      const burning = s.braises.some((foyer) => foyer.lit &&
+        Math.hypot(monster.x - foyer.x, monster.y - foyer.y) <= 150);
+      if (!burning) monster.hp = monster.max;
       const point = monster.path[0] || camp;
       const distance = Math.hypot(point.x - monster.x, point.y - monster.y);
       const step = Math.min(distance, BOAR.speed * dt);
@@ -478,7 +541,7 @@ function awardHeroExperience(s, target, recipient = null, bonus = 0) {
   }
 }
 function applyDamage(s, target, damage, attackerTeam = null, attackerId = null) {
-  if (target.team === NEUTRAL && target.returning) return;
+  if (target.team === NEUTRAL && target.returning && attackerTeam !== null) return;
   const wasAlive = target.hp > 0;
   target.hp -= damage;
   if (damage > 0 && target.devour?.startedAt != null) cancelDevour(target);
@@ -503,6 +566,8 @@ function applyDamage(s, target, damage, attackerTeam = null, attackerId = null) 
 // Shared migration for saved solo states and persisted server matches.
 function migrateState(s) {
   s.watchtowers ??= createWatchtowers();
+  s.braises ??= createBraises();
+  s.braisesNextAt ??= 240;
   delete s.tower;
   s.ingredients ??= [0, 0];
   s.ragout ??= { readyAt: null, expiresAt: 0 };
@@ -1061,6 +1126,7 @@ function tick(s, dt) {
     s.fogClock = 0;
   }
   monstersTick(s, dt);
+  braisesTick(s, dt);
   const fighting = new Set();
   const entities = new Map([...s.units, ...s.monsters].map((unit) => [unit.id, unit]));
   for (const base of s.bases) entities.set(targetKey(base), base);
