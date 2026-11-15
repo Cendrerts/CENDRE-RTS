@@ -77,6 +77,56 @@ try {
     }
   }
   {
+    const { state, controller, tower, capturer, base } = setup(1);
+    Sim.spawn(state, 'knight', 0);
+    const attacker = state.units.at(-1);
+    Object.assign(attacker, { x: capturer.x + 10, y: capturer.y, hold: true, cool: 0 });
+    Sim.order(state, [attacker.id], capturer.x, capturer.y, capturer, false);
+    Sim.tick(state, 0.1);
+    advance(state, controller, 1.5);
+    assert.equal(capturer.target, attacker, 'La riposte précède la défense');
+
+    // Garder l’ancien attaquant visible, vivant et à distance de la nouvelle capture.
+    const observationPoint = { x: base.x, y: base.y + 1100 };
+    Object.assign(attacker, { ...observationPoint, hp: 1000000, cool: Infinity, target: null });
+    Sim.order(state, [attacker.id], observationPoint.x, observationPoint.y, null, true);
+    Sim.spawn(state, 'commis', 1);
+    const observer = state.units.at(-1);
+    const advanceObserved = (seconds) => {
+      for (let step = 0; step < Math.round(seconds * 10); step++) {
+        Object.assign(observer, { ...observationPoint, hp: 1000000 });
+        advance(state, controller, 0.1);
+      }
+    };
+    Sim.spawn(state, 'knight', 0);
+    const invader = state.units.at(-1);
+    Object.assign(invader, { x: base.x - 100, y: base.y, cool: Infinity, hold: true });
+    orders = [];
+    advanceObserved(1.5);
+    assert(orders.some(([, ids, x, y]) => ids.includes(capturer.id) &&
+      x === invader.x && y === invader.y), 'La défense interrompt la riposte');
+    invader.hp = 0;
+    orders = [];
+    let departure;
+    const defenseEndedAt = state.time;
+    while (!departure && state.time - defenseEndedAt < 45) {
+      advanceObserved(0.1);
+      departure = orders.find(([, , x, y, , retreat]) => x === tower.x && y === tower.y && retreat);
+    }
+    assert(departure, 'Une nouvelle capture commence après la défense');
+    const nextCapturer = state.units.find((unit) => unit.id === departure[1][0]);
+    while (tower.owner !== 1 && state.time - defenseEndedAt < 90) {
+      advanceObserved(0.1);
+    }
+    assert.equal(tower.owner, 1, 'La nouvelle capture réussit');
+    orders = [];
+    advanceObserved(3);
+    assert(attacker.hp > 0, 'L’ancien attaquant est toujours vivant');
+    assert(Sim.canSee(state, 1, attacker), 'L’ancien attaquant est toujours visible');
+    assert(orders.some(([, ids, x, y]) => ids.includes(nextCapturer.id) &&
+      x === base.x - 110 && y === base.y + 65), 'Retour au ralliement dans les trois secondes après la nouvelle capture');
+  }
+  {
     const { state, controller, capturer } = setup(1);
     Sim.spawn(state, 'commis', 0);
     const attacker = state.units.at(-1);

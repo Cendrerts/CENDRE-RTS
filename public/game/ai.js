@@ -364,7 +364,10 @@ export function createAI(team, difficulty = 'normal', state = null) {
         actions++;
       }
       defending = invaders.length > 0;
-      if (defending) returningFromTower = null;
+      if (defending) {
+        returningFromTower = null;
+        towerAttacker = null;
+      }
       const tryDevour = (unit) => {
         if (difficulty !== 'facile' && team === 1 && !defending && !brazierUnits.has(unit.id)) {
           const enemyInRange = [...enemies, ...state.monsters.filter((monster) => monster.hp > 0 && monster.targetId != null)]
