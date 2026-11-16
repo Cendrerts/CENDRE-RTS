@@ -45,11 +45,34 @@ for (const difficulty of ['brutal', 'impitoyable']) {
       const controller = createAI(team, difficulty);
       controller.update(state);
       assert.equal(controller.metrics.waves, 1);
-      assert(hero.orderQueue.length > 0, 'Le héros accompagne la vague');
+      assert.equal(hero.orderQueue.length > 0, difficulty === 'impitoyable' && emergency,
+        'Impitoyable engage son héros dans la vague de secours uniquement');
       assert.equal(controller.metrics.waveSizes[0], 14,
-        'Deux soldats ordinaires restent en garnison');
+        'Deux unités restent en garnison');
     }
   }
 }
 
-console.log('PASS: le héros accompagne les vagues, deux soldats gardent la base.');
+
+// Une partie prolongée doit pouvoir engager aussi les derniers gardes.
+for (const team of [0, 1]) {
+  const state = scenario(team);
+  state.time = 1200;
+  state.rubies[team] = 800;
+  const hero = recruitAtRally(state, team, 'hero');
+  for (let index = 0; index < 14; index++) {
+    recruitAtRally(state, team, 'knight');
+  }
+  for (const unit of state.units) {
+    unit.x += team ? -500 : 500;
+  }
+  Sim.spawn(state, 'knight', 1 - team);
+  state.visible[team].fill(1);
+  const controller = createAI(team, 'impitoyable');
+  controller.update(state);
+  assert.equal(controller.metrics.waves, 1);
+  assert.equal(controller.metrics.waveSizes[0], 15, 'Tous les gardes rejoignent les secours tardifs');
+  assert(hero.orderQueue.length > 0);
+}
+
+console.log('PASS: garnison initiale conservée, héros engagé en secours par Impitoyable.');
