@@ -105,7 +105,7 @@ for (const difficulty of ['brutal', 'impitoyable']) {
   }
 }
 
-// La saturation ne remplace pas le seuil de force : les blessés attendent.
+// Au plafond, les blessés partent même sous le seuil de force normal.
 for (const difficulty of ['brutal', 'impitoyable']) {
   for (const team of [0, 1]) {
     const state = scenario(team);
@@ -120,17 +120,10 @@ for (const difficulty of ['brutal', 'impitoyable']) {
     state.visible[team].fill(1);
     const controller = createAI(team, difficulty);
     controller.update(state);
-    assert.equal(controller.metrics.waves, 0,
-      'Une population pleine ne doit pas lancer sept attaquants de force 3,5');
-    for (const unit of state.units.filter((unit) => unit.team === team && unit.type === 'knight')) {
-      unit.hp = Sim.stats('knight', 0).hp;
-    }
-    state.time += 1;
-    controller.update(state);
     assert.equal(controller.metrics.waves, 1,
-      'La vague part une fois le seuil normal de force atteint');
+      'Une population pleine doit lancer sept attaquants de force 3,5');
     assert.equal(controller.metrics.waveSizes[0], 7);
   }
 }
 
-console.log('PASS: garnison commune conservée et seuil de force respecté à population pleine.');
+console.log('PASS: garnison conservée, départ au plafond et seuil de force respecté sous le plafond.');

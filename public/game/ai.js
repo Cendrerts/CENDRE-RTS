@@ -518,8 +518,9 @@ export function createAI(team, difficulty = 'normal', state = null) {
           }
         }
       }
-      // Saturation and elapsed travel time must not send weak reserves piecemeal.
-      if ((!brutal || attackers.length >= 5) && !defending && state.time >= retreatUntil && (enoughTroops || !brutal && reserve.length > 0 && (saturated || overdue)) && assembled) {
+      // At the population cap, launch even below the normal strength threshold.
+      // Below the cap, elapsed travel time alone cannot launch weak Brutal reserves.
+      if ((!brutal || attackers.length >= 5) && !defending && state.time >= retreatUntil && (enoughTroops || reserve.length > 0 && (saturated || !brutal && overdue)) && assembled) {
         for (const unit of attackers) deployed.add(unit.id);
         launchAttack(state, attackers, destination, observedArmy, rebuildingBank);
         actions++;

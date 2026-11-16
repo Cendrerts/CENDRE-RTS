@@ -1,94 +1,116 @@
-# PR #167 — graines 8 et 10 d’Impitoyable
+# PR #167 — rétablissement du départ au plafond
 
-Référence relue : `26c495c`. Contre-essai local sur main `60fc462`.
-Les modifications sont préparées dans la branche ; le workflow effectue le commit
-et le push.
+Référence relue : `930d532`. Correction limitée à `public/game/ai.js` et au
+test de cohésion associé. Le workflow effectue le commit et le push.
 
-## Diagnostic et correction
+## Correction et limite constatée
 
-**Graine 8 : le héros sorti de garnison casse la partie.** Les traces temporaires
-`console.log('DBG ...')` montrent les mêmes départs normaux à 208,4 s (équipe 1)
-et 233,4 s (équipe 0). Au secours de 329,8 s, sept unités partent dans les deux
-versions, mais main garde `knight, hero`, et la PR garde `knight, mage`.
-À 360 s, l’armée adverse compte déjà 11 unités sur main contre 10 sur la PR.
-Main gagne à 673,4 s, donc la règle des gardes après 1 200 s n’intervient pas
-dans cette divergence. La sélection des secours retrouve `army.slice(garrison)`,
-commune à Brutal et Impitoyable. Les deux exceptions propres à Impitoyable sont
-retirées pour respecter D5.
+Brutal et Impitoyable retrouvent le départ lorsque `saturated` est vrai, même
+sous le seuil normal de force. Sous le plafond, `overdue` seul ne suffit
+toujours pas à lancer leurs petites vagues. Le seuil de force des
+contre-attaques reste en place. `garrisonIds`, les secours et les renforts
+restent inchangés.
 
-**Graine 10 : le lancement normal contourne son seuil via la saturation.**
-Sur la PR avant correction, les traces donnent :
+Le test court `tests/ia-cohesion.mjs` exige désormais le départ au plafond de
+sept attaquants blessés de force 3,5, pour les deux équipes et les deux
+difficultés. Les cas de garnison, de délai sous le plafond et de contre-attaque
+sous le seuil restent couverts.
 
-- 308,6 s : sept attaquants, force 4,7, saturation vraie, contre-attaque fausse ;
-- 385,6 à 387,6 s : huit attaquants de force 5,8 relancés toutes les 0,2 s ;
-- 840 s : équipe 1, population 30, 17 militaires, 672,5 rubis, 36 vagues ;
-- victoire adverse à 893,4 s, comme main.
+**Le critère de victoire d’Impitoyable n’est pas rempli.** La trace du passage
+précédent montrait déjà que la graine 10 partait via `saturated` à 308,6 s
+(sept attaquants, force 4,7), puis relançait huit attaquants de force 5,8 entre
+385,6 et 387,6 s, toutes les 0,2 s. Restaurer le plafond reproduit une défaite
+à 893,4 s. La graine 3 est également perdue, à 855,4 s.
 
-La première cause est le lancement normal autorisé par `saturated || overdue`,
-pas les secours ni le flux de renforts D30. Supprimer cette seule exception
-retarde la défaite à 1 107,3 s. Un second contre-essai avec traces isole alors une
-contre-attaque à 719,0 s : 14 attaquants, force 9,2, sous le seuil normal de 12.
-En imposant aussi le seuil à la contre-attaque, Impitoyable gagne à 799,4 s.
-
-La saturation et le délai de trajet ne dispensent plus Brutal ni Impitoyable de
-`enoughTroops`. La contre-attaque peut ouvrir la fenêtre de départ, mais exige
-elle aussi le seuil de force normal. La règle est commune aux deux difficultés ;
-les renforts D30, les secours et les autres difficultés conservent leurs
-conditions de lancement.
-Aucun changement de statistiques, vitesse, revenus, configuration ou `sim.js`.
-
-Les traces temporaires sont retirées. Le test court `tests/ia-cohesion.mjs`
-couvre les deux équipes et les deux difficultés : garnison des vagues normales
-et de secours (y compris à 1 200 s), attente à population pleine sous le seuil
-de force, départ au seuil atteint, absence de relance des survivants blessés
-après le délai de trajet et contre-attaque refusée sous le seuil.
+Piste proposée pour une correction ultérieure : distinguer une vraie nouvelle
+vague d’une relance des mêmes réserves au plafond et empêcher ces relances
+répétées, tout en conservant un départ obligatoire au plafond. Cette piste
+n’est pas implémentée ni validée ici ; ne pas rétablir le blocage global de
+`saturated` pour gagner ces graines.
 
 ## Rejeux ciblés
 
-Uniquement avec `--graine`, deux parties au maximum à la fois.
-Aucun tournoi complet lancé. Impitoyable gagne les quatre graines demandées ;
-la graine 18 se termine par une victoire des Cuistots à 1 529,9 s.
+Tous lancés avec `--graine`, deux parties au maximum à la fois.
+Aucun tournoi complet lancé. Les lignes JSON sont à comparer explicitement
+sur `winner` et `strongTeam` : en mode graine, une défaite d’Impitoyable ne
+fait pas échouer le processus du test.
+
+`node tests/impitoyable.mjs --graine 1`
+
+```json
+{"seed":1,"strongTeam":0,"winner":0,"duration":776,"snapshots":[{"time":120,"rubies":42.5,"armies":[4,4]},{"time":200,"rubies":305,"armies":[14,13]},{"time":300,"rubies":532.5,"armies":[1,10]}]}
+```
 
 `node tests/impitoyable.mjs --graine 2`
 
-```text
-{"seed":2,"strongTeam":1,"winner":1,"duration":1069.4,"snapshots":[{"time":120,"rubies":55,"armies":[4,4]},{"time":200,"rubies":30,"armies":[10,16]},{"time":300,"rubies":540,"armies":[3,10]}]}
+```json
+{"seed":2,"strongTeam":1,"winner":1,"duration":674.8,"snapshots":[{"time":120,"rubies":55,"armies":[4,4]},{"time":200,"rubies":30,"armies":[10,16]},{"time":300,"rubies":540,"armies":[3,10]}]}
 ```
 
 `node tests/impitoyable.mjs --graine 3`
 
-```text
-{"seed":3,"strongTeam":0,"winner":0,"duration":789.2,"snapshots":[{"time":120,"rubies":42.5,"armies":[4,4]},{"time":200,"rubies":305,"armies":[14,13]},{"time":300,"rubies":805,"armies":[13,5]}]}
+```json
+{"seed":3,"strongTeam":0,"winner":1,"duration":855.4,"snapshots":[{"time":120,"rubies":42.5,"armies":[4,4]},{"time":200,"rubies":305,"armies":[14,13]},{"time":300,"rubies":805,"armies":[13,5]}]}
 ```
 
 `node tests/impitoyable.mjs --graine 8`
 
-```text
-{"seed":8,"strongTeam":1,"winner":1,"duration":543.6,"snapshots":[{"time":120,"rubies":55,"armies":[4,4]},{"time":200,"rubies":42.5,"armies":[10,16]},{"time":300,"rubies":532.5,"armies":[12,6]}]}
+```json
+{"seed":8,"strongTeam":1,"winner":1,"duration":673.4,"snapshots":[{"time":120,"rubies":55,"armies":[4,4]},{"time":200,"rubies":42.5,"armies":[10,16]},{"time":300,"rubies":532.5,"armies":[12,6]}]}
 ```
 
 `node tests/impitoyable.mjs --graine 10`
 
-```text
-{"seed":10,"strongTeam":1,"winner":1,"duration":799.4,"snapshots":[{"time":120,"rubies":55,"armies":[4,4]},{"time":200,"rubies":30,"armies":[10,16]},{"time":300,"rubies":782.5,"armies":[11,9]}]}
+```json
+{"seed":10,"strongTeam":1,"winner":0,"duration":893.4,"snapshots":[{"time":120,"rubies":55,"armies":[4,4]},{"time":200,"rubies":30,"armies":[10,16]},{"time":300,"rubies":782.5,"armies":[11,9]}]}
 ```
 
 `node tests/ia-sans-blocage.mjs --graine 18`
 
 ```text
-Seed 18: cooks, 1529.9s, rats team 1, rubies 545/10, waves 11/10, bank seconds 29/0
+Seed 18: cooks, 1747.5s, rats team 1, rubies 650/30, waves 14/31, bank seconds 95/41
 ```
 
-## Vérifications
+`node tests/ia-sans-blocage.mjs --graine 30`
 
-- `node scripts/tests-courts.mjs` : **79 OK, 0 KO**, suite entière exécutée une
-  fois à la fin, après la dernière modification du code et des tests.
-- `node --check` : les **34 fichiers JavaScript** de `public/game/` passent.
+```text
+Seed 30: cooks, 590.6s, rats team 1, rubies 690/50, waves 4/3, bank seconds 0/0
+```
+
+`node tests/ia-sans-blocage.mjs --graine 32`
+
+```text
+Seed 32: cooks, 1105.6s, rats team 1, rubies 610/770, waves 15/13, bank seconds 190/0
+```
+
+`node tests/equilibrage-factions.mjs --graine 28`
+
+```text
+Seed 28: rats, 588.8s, rats team 1, rubies 30/556
+```
+
+Les quatre parties précédemment sans vainqueur (Impitoyable 1, sans blocage
+30 et 32, équilibrage 28) ont désormais un vainqueur. Il reste des épisodes
+de banque supérieure à 1 500 rubis pendant 95 s (sans blocage 18) et 190 s
+(sans blocage 32), au-delà des 60 s tolérées par le tournoi complet.
+Les rejeux ciblés n’appliquent pas cette assertion du tournoi ; leurs codes
+de sortie ne prouvent donc pas l’absence de thésaurisation.
+
+## Vérifications finales
+
+- `node scripts/tests-courts.mjs` : **79 OK, 0 KO**, suite entière lancée
+  une seule fois après la dernière modification du code et des tests.
+- `node --check` : **34 fichiers JavaScript** de `public/game/` passent.
 - `git diff --check` : OK.
-- `tests/tests-longs-graine.mjs` passe dans la suite courte ; sa référence
-  déterministe de la graine 23 reste inchangée.
-- Modifications prêtes pour le commit et le push du workflow en moins de
-  25 minutes. Aucun fichier de `.github/` modifié.
+- Neuf rejeux ciblés terminés, deux au maximum à la fois ; aucun tournoi complet.
+- Modifications préparées en moins de 25 minutes, sans commit ni push,
+  conformément à la règle finale du workflow. Aucun changement dans `.github/`.
 
-Sur un vrai téléphone : observer le regroupement des renforts et le maintien de
-la garnison pendant les secours. Aucune interface tactile modifiée.
+Description proposée pour la PR : rétablissement du départ au plafond et
+conservation de la garnison ; les neuf lignes de résultats ci-dessus sont
+à reprendre dans la description. Correction encore partielle : Impitoyable
+perd 3 et 10, et les graines sans blocage 18 et 32 dépassent 60 s de banque.
+
+Sur un vrai téléphone : observer le maintien de la garnison et le départ des
+vagues au plafond, notamment lorsque les unités sont blessées.
+Aucune interface tactile modifiée.
