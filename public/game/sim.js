@@ -1340,13 +1340,27 @@ function moveSafely(u, dx, dy) {
 }
 function separate(units, fighting, dt) {
   const radius = (u) => u.type === 'knight' ? 12 : u.type === 'mage' ? 11 : 9;
+  // Separation changes positions only: combat and path status stay fixed for
+  // this pass. Skip immovable pairs before computing their geometry.
+  const mobile = units.map((unit) => !fighting.has(unit.id));
+  const nextMobile = new Array(units.length + 1);
+  nextMobile[units.length] = units.length;
+  for (let index = units.length - 1; index >= 0; index--) {
+    nextMobile[index] = mobile[index] ? index : nextMobile[index + 1];
+  }
   for (let i = 0; i < units.length; i++) {
     const a = units[i];
     if (a.hp <= 0) continue;
-    for (let j = i + 1; j < units.length; j++) {
+    // Preserve pair order, jumping over pairs where both units are fighting.
+    for (let j = mobile[i] ? i + 1 : nextMobile[i + 1]; j < units.length;
+      j = mobile[i] ? j + 1 : nextMobile[j + 1]) {
       const b = units[j];
       if (b.hp <= 0) continue;
       if (a.team === b.team && (a.harvest || b.harvest)) continue;
+      const movableA = mobile[i] && (a.path.length > 0 || b.path.length === 0);
+      const movableB = mobile[j] && (b.path.length > 0 || a.path.length === 0);
+      const count = Number(movableA) + Number(movableB);
+      if (!count) continue;
       let dx = b.x - a.x;
       let dy = b.y - a.y;
       // No unit pair can overlap beyond the largest combined radius.
@@ -1367,10 +1381,6 @@ function separate(units, fighting, dt) {
         dy /= distance;
       }
       // Incoming units yield to allies that have already settled in formation.
-      const movableA = !fighting.has(a.id) && (a.path.length > 0 || b.path.length === 0);
-      const movableB = !fighting.has(b.id) && (b.path.length > 0 || a.path.length === 0);
-      const count = Number(movableA) + Number(movableB);
-      if (!count) continue;
       const push = Math.min(overlap / count, 30 * dt);
       if (movableA) moveSafely(a, -dx * push, -dy * push);
       if (movableB) moveSafely(b, dx * push, dy * push);
