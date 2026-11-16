@@ -126,4 +126,54 @@ for (const difficulty of ['brutal', 'impitoyable']) {
   }
 }
 
-console.log('PASS: garnison conservée, départ au plafond et seuil de force respecté sous le plafond.');
+// Une menace sur le trajet d'une extension ne doit pas rappeler puis relancer
+// la même vague au plafond, même quand aucun ennemi n'est près d'une mine.
+for (const difficulty of ['brutal', 'impitoyable']) {
+  for (const team of [0, 1]) {
+    for (const persistentThreat of [false, true]) {
+      const state = scenario(team);
+      for (let index = 0; index < 9; index++) {
+        recruitAtRally(state, team, 'knight');
+      }
+      while (Sim.populationUsed(state, team) < Sim.unitLimit(team)) {
+        recruitAtRally(state, team, 'commis');
+      }
+      Sim.spawn(state, 'knight', 1 - team);
+      const enemy = state.units.at(-1);
+      state.visible[team].fill(1);
+      const controller = createAI(team, difficulty);
+      controller.update(state);
+      assert.equal(controller.metrics.waves, 1);
+      const mine = state.mines[4];
+      mine.owner = team;
+      mine.depot = true;
+      const worker = state.units.find((unit) => unit.team === team && unit.type === 'commis');
+      worker.x = mine.x + 200;
+      worker.y = mine.y;
+      enemy.x = mine.x + 410;
+      enemy.y = mine.y;
+      for (let step = 1; step < 50; step++) {
+        state.time = 240 + step * 0.2;
+        if (!persistentThreat && step === 5) {
+          state.units = state.units.filter((unit) => unit !== enemy);
+        }
+        controller.update(state);
+        assert.equal(controller.metrics.waves, 1,
+          'Aucune unité ne doit repartir moins de dix secondes après son départ');
+      }
+      state.time = 250.2;
+      controller.update(state);
+      assert.equal(controller.metrics.waves, persistentThreat ? 1 : 2,
+        'Le plafond relance après dix secondes seulement si le rappel est terminé');
+      if (persistentThreat) {
+        state.time = 370;
+        state.rubies[team] = 800;
+        controller.update(state);
+        assert.equal(controller.metrics.waves, 1,
+          'La vague de secours respecte aussi le rappel économique');
+      }
+    }
+  }
+}
+
+console.log('PASS: garnison, plafond, seuil de force et absence de relance pendant le rappel économique.');
