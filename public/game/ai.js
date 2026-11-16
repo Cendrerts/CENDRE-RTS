@@ -211,7 +211,8 @@ export function createAI(team, difficulty = 'normal', state = null) {
       const economyCapacity = Number(brutal) + settings.workers * (brutal ? Math.min(3, owned.length + 1) : 3) + Number(workers.some((worker) => worker.id === scout));
       const militaryLimit = populationLimit - (reducedWorkerTarget ? workerTarget : economyCapacity);
       const surplus = state.rubies[team] > 800;
-      const forceWave = state.time - lastWave >= 120 && (state.rubies[team] >= 800 || army.length >= populationLimit * 0.9);
+      const reliefWaveDue = state.time - lastWave >= 120 &&
+        (state.rubies[team] >= 800 || army.length >= populationLimit * 0.9);
       for (const [id, building] of knownBuildings) {
         if (Sim.visibleAt(state, team, building.x, building.y) && !state.slots[1 - team].some((slot) => slot.id === id && slot.occupe)) {
           knownBuildings.delete(id);
@@ -408,6 +409,7 @@ export function createAI(team, difficulty = 'normal', state = null) {
           }
         }
       }
+      const forceWave = !recallingArmy && reliefWaveDue;
       if (invaders.length && brazierUnits.size) {
         brazierMission = null;
         brazierUnits.clear();
@@ -418,7 +420,7 @@ export function createAI(team, difficulty = 'normal', state = null) {
         Sim.order(state, defenders.map((unit) => unit.id), invaders[0].x, invaders[0].y, null, false);
         actions++;
       }
-      defending = invaders.length > 0 || recallingArmy;
+      defending = invaders.length > 0;
       if (defending) {
         returningFromTower = null;
         towerAttacker = null;
@@ -539,8 +541,8 @@ export function createAI(team, difficulty = 'normal', state = null) {
       }
       // At the population cap, launch even below the normal strength threshold.
       // Below the cap, elapsed travel time alone cannot launch weak Brutal reserves.
-      if ((!brutal || attackers.length >= 5) && !defending && state.time >= retreatUntil && (enoughTroops || reserve.length > 0 && (saturated || !brutal && overdue)) && assembled) {
-        if (!launchAttack(state, attackers, destination, observedArmy, rebuildingBank)) return actions;
+      if ((!brutal || attackers.length >= 5) && !defending && !recallingArmy && state.time >= retreatUntil && (enoughTroops || reserve.length > 0 && (saturated || !brutal && overdue)) && assembled &&
+        launchAttack(state, attackers, destination, observedArmy, rebuildingBank)) {
         for (const unit of attackers) deployed.add(unit.id);
         actions++;
         counterUntil = 0;
@@ -789,16 +791,14 @@ export function createAI(team, difficulty = 'normal', state = null) {
       }
       // Last, so defensive micro cannot replace the safety order this update.
       // This includes deployed troops and raiders, leaving only the garrison.
-      if (forceWave && !recallingArmy && state.time - lastWave >= 120) {
+      if (forceWave && state.time - lastWave >= 120) {
         const reliefArmy = army.slice(garrison).filter((unit) =>
           state.time - (lastDeparture.get(unit.id) ?? -Infinity) >= 10);
-        brazierMission = null;
-        brazierUnits.clear();
-        returningBrazierUnits.clear();
-        if (reliefArmy.length) {
-          const goal = enemyBase;
+        if (reliefArmy.length && launchAttack(state, reliefArmy, enemyBase, observedArmy, rebuildingBank)) {
+          brazierMission = null;
+          brazierUnits.clear();
+          returningBrazierUnits.clear();
           const ids = reliefArmy.map((unit) => unit.id);
-          if (!launchAttack(state, reliefArmy, goal, observedArmy, rebuildingBank)) return actions;
           for (const id of ids) {
             deployed.add(id);
             raiders.delete(id);

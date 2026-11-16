@@ -20,11 +20,15 @@ const result = spawnSync(process.execPath, ['tests/ia-sans-blocage.mjs', '--grai
 assert.ifError(result.error);
 assert.equal(result.status, 0, result.stderr);
 const lines = result.stdout.trim().split('\n');
-// Brutal conserve sa garnison initiale : référence déterministe avant #113.
-const expected = 'Seed 23: cooks, 314.7s, rats team 0, rubies 35/780, waves 1/1, bank seconds 0/0';
+const expected = 'Seed 23: cooks, 411.8s, rats team 0, rubies 35/700, waves 1/2, bank seconds 0/0';
 assert.deepEqual(lines.filter((line) => line.startsWith('Seed ')), [expected]);
 const reports = lines.filter((line) => line.startsWith('releve ')).map((line) => JSON.parse(line.slice(7)));
-assert.deepEqual(reports.map(({ seconds, team }) => [seconds, team]), [[120, 0], [120, 1], [240, 0], [240, 1]]);
+const duration = Number(expected.split(', ')[1].slice(0, -1));
+const expectedReports = [];
+for (let seconds = 120; seconds <= duration; seconds += 120) {
+  expectedReports.push([seconds, 0], [seconds, 1]);
+}
+assert.deepEqual(reports.map(({ seconds, team }) => [seconds, team]), expectedReports);
 assert(lines.indexOf(expected) > lines.findLastIndex((line) => line.startsWith('releve ')));
 assert(!result.stdout.includes('Tournament:'));
 console.log('PASS: graine 23 identique au tournoi, partie unique et relevés à 120 s.');

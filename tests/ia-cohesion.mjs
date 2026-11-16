@@ -176,4 +176,46 @@ for (const difficulty of ['brutal', 'impitoyable']) {
   }
 }
 
+// Une menace lointaine sur un ouvrier bloque la vague du tick, sans annuler la tour.
+for (const difficulty of ['brutal', 'impitoyable']) {
+  for (const team of [0, 1]) {
+    const state = scenario(team);
+    state.time = 30;
+    const soldier = recruitAtRally(state, team, 'knight');
+    const base = state.bases[team];
+    const tower = { x: base.x + (team ? -200 : 200), y: base.y, owner: null };
+    state.watchtowers = [tower];
+    const controller = createAI(team, difficulty);
+    controller.update(state);
+    assert.equal(soldier.retreat, true);
+    soldier.path = [];
+    const worker = recruitAtRally(state, team, 'commis');
+    const mine = state.mines[4];
+    worker.x = mine.x + 200;
+    worker.y = mine.y;
+    Sim.spawn(state, 'knight', 1 - team);
+    const enemy = state.units.at(-1);
+    enemy.x = mine.x + 410;
+    enemy.y = mine.y;
+    state.visible[team].fill(1);
+    state.time = 150;
+    state.rubies[team] = 800;
+    const originalOrder = Sim.order;
+    const orders = [];
+    try {
+      Sim.order = (...argumentsList) => {
+        orders.push(argumentsList);
+        return originalOrder(...argumentsList);
+      };
+      controller.update(state);
+    } finally {
+      Sim.order = originalOrder;
+    }
+    assert(orders.some(([, ids, x, y, , retreat]) =>
+      ids.includes(soldier.id) && x === tower.x && y === tower.y && retreat),
+    'La capture continue malgré le rappel économique lointain');
+    assert.equal(controller.metrics.waves, 0);
+  }
+}
+
 console.log('PASS: garnison, plafond, seuil de force et absence de relance pendant le rappel économique.');
