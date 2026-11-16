@@ -12,6 +12,7 @@ permissions:
   contents: write
   pull-requests: write
   issues: write
+  actions: write
 
 # Une seule exécution à la fois : l'authentification ChatGPT se renouvelle à chaque passage.
 concurrency:
