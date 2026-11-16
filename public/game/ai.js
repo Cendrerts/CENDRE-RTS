@@ -37,6 +37,7 @@ export function createAI(team, difficulty = 'normal', state = null) {
   const metrics = { waves: 0, expansions: [], waveSizes: [], lanes: [] };
   let expedition = null;
   const deployed = new Set();
+  const lastDeparture = new Map();
   let waveRoute = null;
   let reducedWorkerTarget = false;
   let nextSurplusWorkers = null;
@@ -47,7 +48,11 @@ export function createAI(team, difficulty = 'normal', state = null) {
   const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
   const power = (units) => units.reduce((sum, unit) => sum + unit.hp * Sim.stats(unit.type, unit.team).damage / Sim.stats(unit.type, unit.team).rate * (unit.type === 'mage' ? 3 : 1), 0);
   const launchAttack = (state, units, destination, observedArmy, rebuildingBank) => {
+    if (units.some((unit) => state.time - (lastDeparture.get(unit.id) ?? -Infinity) < 10)) return false;
     const ids = units.map((unit) => unit.id);
+    for (const id of ids) {
+      lastDeparture.set(id, state.time);
+    }
     const approaches = Sim.lanes.map((lane) => {
       const points = lane.points.map(([x, y]) => ({ x, y }));
       if (team === 1) points.reverse();
@@ -75,6 +80,7 @@ export function createAI(team, difficulty = 'normal', state = null) {
     const speed = Math.min(...units.map((unit) => Sim.stats(unit.type, team).speed));
     waveTravelTime = Math.min(150, Math.max(90, approach.length / speed + 60));
     metrics.lanes.push(approach.name);
+    return true;
   };
   return {
     intelligence,
@@ -205,7 +211,8 @@ export function createAI(team, difficulty = 'normal', state = null) {
       const economyCapacity = Number(brutal) + settings.workers * (brutal ? Math.min(3, owned.length + 1) : 3) + Number(workers.some((worker) => worker.id === scout));
       const militaryLimit = populationLimit - (reducedWorkerTarget ? workerTarget : economyCapacity);
       const surplus = state.rubies[team] > 800;
-      const forceWave = state.time - lastWave >= 120 && (state.rubies[team] >= 800 || army.length >= populationLimit * 0.9);
+      const reliefWaveDue = state.time - lastWave >= 120 &&
+        (state.rubies[team] >= 800 || army.length >= populationLimit * 0.9);
       for (const [id, building] of knownBuildings) {
         if (Sim.visibleAt(state, team, building.x, building.y) && !state.slots[1 - team].some((slot) => slot.id === id && slot.occupe)) {
           knownBuildings.delete(id);
@@ -366,17 +373,23 @@ export function createAI(team, difficulty = 'normal', state = null) {
         returningFromTower = null;
       }
       const invaders = (brutal ? observedArmy : enemies).filter((enemy) => owned.some((mine) => distance(enemy, mine) < (brutal ? 400 : 240)));
-      const committedAssault = brutal && waveRoute && intelligence.bases.length > 0 &&
+      // Numerical superiority can commit a wave before the enemy main is scouted.
+      // The equal-army bank exception still requires that discovery.
+      const committedAssault = brutal && waveRoute &&
         (metrics.waves >= 2 || state.time >= 480) &&
         army.length >= 10 &&
-        (army.length >= observedArmy.length * 1.5 || waveRoute.rebuildingBank);
+        (army.length >= observedArmy.length * 1.5 || (intelligence.bases.length > 0 && waveRoute.rebuildingBank));
       let threatenedEconomy = false;
+      let economyThreat = null;
+      let recallingArmy = false;
+      let extensionRecall = false;
       if (brutal) {
         for (const worker of workers) {
           const danger = observedArmy.filter((enemy) => distance(worker, enemy) < 260);
           const guards = army.filter((unit) => distance(worker, unit) < 280);
           if (power(danger) > power(guards)) {
             threatenedEconomy = true;
+            economyThreat = danger[0];
             evacuated.add(worker.id);
             if (!worker.retreat || worker.harvest) Sim.order(state, [worker.id], base.x, base.y, null, true);
           } else if (!danger.length) {
@@ -387,9 +400,20 @@ export function createAI(team, difficulty = 'normal', state = null) {
         // Evacuate exposed workers without recalling that decisive wave.
         // A threat at the main still takes priority over that assault.
         if ((threatenedEconomy && !committedAssault) || invaders.some((enemy) => distance(enemy, base) < 220)) {
-          for (const unit of army) deployed.delete(unit.id);
+          recallingArmy = true;
+          extensionRecall = threatenedEconomy && !committedAssault;
+          const recalled = army.filter((unit) => deployed.has(unit.id));
+          for (const unit of recalled) {
+            deployed.delete(unit.id);
+          }
+          if (recalled.length) {
+            const goal = invaders[0] || economyThreat || rally;
+            Sim.order(state, recalled.map((unit) => unit.id), goal.x, goal.y, null, false);
+            actions++;
+          }
         }
       }
+      const forceWave = !extensionRecall && reliefWaveDue;
       if (invaders.length && brazierUnits.size) {
         brazierMission = null;
         brazierUnits.clear();
@@ -479,15 +503,19 @@ export function createAI(team, difficulty = 'normal', state = null) {
         }
       }
       // Keep the capturer eligible here: a ready wave takes priority over its mission.
-      const reserve = army.filter((unit) => !brazierUnits.has(unit.id) && !unit.devour && !deployed.has(unit.id) && unit.id !== scout && !raiders.has(unit.id));
+      const reserve = army.filter((unit) => !brazierUnits.has(unit.id) && !unit.devour && !deployed.has(unit.id) && unit.id !== scout && !raiders.has(unit.id) &&
+        state.time - (lastDeparture.get(unit.id) ?? -Infinity) >= 10);
       // Assemble reinforcements before launching; wave sizes never grow beyond
       // the population cap. Surviving troops can regroup after a lost fight.
       const attackWindow = !settings.micro || state.time >= (brutal ? owned.length > 1 ? 180 : 220 : 210);
       const garrison = brutal && intelligence.seenAt !== null && state.time - intelligence.seenAt < 90 ? 2 : 0;
+      // Keep the opening garrison for normal and relief assaults.
+      const garrisonIds = new Set(army.slice(0, garrison).map((unit) => unit.id));
       const attackers = brutal ? reserve.slice(garrison) : reserve;
       const waveStrength = attackers.reduce((strength, unit) => strength + unit.hp / Sim.stats(unit.type, 0).hp, 0);
       const counterattack = brutal && (state.time < counterUntil || threats.length >= Math.max(3, knownArmy.size) && army.length > threats.length * 1.5) && attackers.length >= 5;
-      const enoughTroops = counterattack || waveStrength >= (brutal ? Math.min(12, settings.wave + metrics.waves * 2) : settings.wave) && attackWindow;
+      const minimumWaveStrength = brutal ? Math.min(12, settings.wave + metrics.waves * 2) : settings.wave;
+      const enoughTroops = waveStrength >= minimumWaveStrength && (attackWindow || counterattack);
       const overdue = lastWave > 0 && state.time - lastWave > waveTravelTime;
       const assembly = brutal ? attackers : reserve;
       const assembled = assembly.filter((unit) => distance(unit, rally) < 240).length >= assembly.length * 0.7;
@@ -515,9 +543,11 @@ export function createAI(team, difficulty = 'normal', state = null) {
           }
         }
       }
-      if ((!brutal || attackers.length >= 5) && !defending && state.time >= retreatUntil && (enoughTroops || reserve.length > 0 && (saturated || overdue)) && assembled) {
+      // At the population cap, launch even below the normal strength threshold.
+      // Below the cap, elapsed travel time alone cannot launch weak Brutal reserves.
+      if ((!brutal || attackers.length >= 5) && !defending && !recallingArmy && state.time >= retreatUntil && (enoughTroops || reserve.length > 0 && (saturated || !brutal && overdue)) && assembled &&
+        launchAttack(state, attackers, destination, observedArmy, rebuildingBank)) {
         for (const unit of attackers) deployed.add(unit.id);
-        launchAttack(state, attackers, destination, observedArmy, rebuildingBank);
         actions++;
         counterUntil = 0;
         metrics.waves++;
@@ -711,7 +741,7 @@ export function createAI(team, difficulty = 'normal', state = null) {
           continue;
         }
         const range = Sim.stats(unit.type, team).range;
-        const guardingMain = brutal && army.indexOf(unit) < garrison;
+        const guardingMain = garrisonIds.has(unit.id);
         const localInvaders = guardingMain ? invaders.filter((enemy) => distance(enemy, base) < 400) : invaders;
         if (localInvaders.length && (!brutal || !deployed.has(unit.id)) && !unit.retreat && (!brutal || state.time >= retreatUntil) && !enemies.some((enemy) => distance(unit, enemy) <= range)) {
           const invader = [...localInvaders].sort((a, b) => distance(unit, a) - distance(unit, b))[0];
@@ -766,14 +796,13 @@ export function createAI(team, difficulty = 'normal', state = null) {
       // Last, so defensive micro cannot replace the safety order this update.
       // This includes deployed troops and raiders, leaving only the garrison.
       if (forceWave && state.time - lastWave >= 120) {
-        const reliefArmy = army.slice(garrison);
-        brazierMission = null;
-        brazierUnits.clear();
-        returningBrazierUnits.clear();
-        if (reliefArmy.length) {
-          const goal = enemyBase;
+        const reliefArmy = army.slice(garrison).filter((unit) =>
+          state.time - (lastDeparture.get(unit.id) ?? -Infinity) >= 10);
+        if (reliefArmy.length && launchAttack(state, reliefArmy, enemyBase, observedArmy, rebuildingBank)) {
+          brazierMission = null;
+          brazierUnits.clear();
+          returningBrazierUnits.clear();
           const ids = reliefArmy.map((unit) => unit.id);
-          launchAttack(state, reliefArmy, goal, observedArmy, rebuildingBank);
           for (const id of ids) {
             deployed.add(id);
             raiders.delete(id);
