@@ -210,12 +210,14 @@ export function createAI(team, difficulty = 'normal', state = null) {
       const workerTarget = reducedWorkerTarget ? 10 : Math.min(owned.reduce((sum, mine) => sum + saturation(mine), 0), settings.workers * 3 + Number(brutal));
       const economyCapacity = Number(brutal) + settings.workers * (brutal ? Math.min(3, owned.length + 1) : 3) + Number(workers.some((worker) => worker.id === scout));
       const militaryLimit = populationLimit - (reducedWorkerTarget ? workerTarget : economyCapacity);
-      // Hard AI keeps ten worker slots, including the scout. Heroes cost three
-      // population and a cooking Rats feast will add four units outside the queue.
+      // Hard AI reserves nine productive workers excluding the scout, matching
+      // worker production. Heroes cost three population and a cooking Rats feast
+      // will add four units outside the queue.
       const preservesWorkerCapacity = (populationCost) => {
         if (difficulty !== 'difficile') return true;
         const queuedWorkers = state.queues[team].filter((job) => job.type === 'commis').length;
-        const missingWorkers = Math.max(0, Math.max(10, economyCapacity) - workers.length - queuedWorkers);
+        const productiveWorkers = workers.filter((worker) => reducedWorkerTarget || worker.id !== scout).length;
+        const missingWorkers = Math.max(0, Math.max(workerTarget, settings.workers * 3) - productiveWorkers - queuedWorkers);
         const pendingFeast = team === 1 && state.festin.readyAt !== null ? 4 : 0;
         return Sim.populationUsed(state, team) + populationCost + missingWorkers + pendingFeast <= populationLimit;
       };
