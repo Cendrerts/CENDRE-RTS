@@ -290,13 +290,18 @@ function playSeries(strong, weak, minimumWins) {
       for (const team of game % 2 ? [1, 0] : [0, 1]) controllers[team].update(state);
       S.tick(state, 0.1);
       reportReplay(replay.seed, step, state, controllers);
+      if (firstExpansion === null && state.mines.some((mine, index) => index >= 2 && mine.owner === strongTeam && mine.depot)) {
+        firstExpansion = state.time;
+      }
       if (strong === 'difficile') {
-        if (firstExpansion === null && state.mines.some((mine, index) => index >= 2 && mine.owner === strongTeam && mine.depot)) firstExpansion = state.time;
         if (state.time >= 180 && state.time <= 480) {
           rubySum += state.rubies[strongTeam];
           samples++;
         }
       }
+    }
+    if (replay.seed !== null) {
+      console.log(`expansion ${game + 1}: ${firstExpansion === null ? null : firstExpansion.toFixed(1)}`);
     }
     assert.notEqual(state.winner, null, `${strong}/${weak}, game ${game}: no winner after 25 minutes`);
     if (state.winner === strongTeam) victories++;
