@@ -1339,11 +1339,55 @@ function moveSafely(u, dx, dy) {
   }
 }
 function separate(units, fighting, dt) {
-  const radius = (u) => u.type === 'knight' ? 12 : u.type === 'mage' ? 11 : 9;
+  // A unit moves at most once per pair. Allow both endpoints to move
+  // throughout the pass, including pairs processed before this row.
+  const cellSize = 24 + 2 * Math.max(0, units.length - 1) * 30 * dt;
+  const columns = Math.ceil(W / cellSize) + 2;
+  const rows = Math.ceil(H / cellSize) + 2;
+  const cache = separate.cache || (separate.cache = {
+    buckets: [],
+    candidates: [],
+    cellX: [],
+    cellY: [],
+    radii: [],
+    fighting: [],
+  });
+  const buckets = cache.buckets;
+  const candidates = cache.candidates;
+  const byIndex = (a, b) => a - b;
+  for (let cell = 0; cell < columns * rows; cell++) {
+    if (!buckets[cell]) buckets[cell] = [];
+    buckets[cell].length = 0;
+  }
+  for (let index = 0; index < units.length; index++) {
+    const unit = units[index];
+    const x = Math.floor(unit.x / cellSize) + 1;
+    const y = Math.floor(unit.y / cellSize) + 1;
+    cache.cellX[index] = x;
+    cache.cellY[index] = y;
+    cache.radii[index] = unit.type === 'knight' ? 12 : unit.type === 'mage' ? 11 : 9;
+    cache.fighting[index] = fighting.has(unit.id);
+    if (unit.hp > 0) buckets[y * columns + x].push(index);
+  }
   for (let i = 0; i < units.length; i++) {
     const a = units[i];
     if (a.hp <= 0) continue;
-    for (let j = i + 1; j < units.length; j++) {
+    candidates.length = 0;
+    const x = cache.cellX[i];
+    const y = cache.cellY[i];
+    for (let row = y - 1; row <= y + 1; row++) {
+      for (let column = x - 1; column <= x + 1; column++) {
+        const bucket = buckets[row * columns + column];
+        for (let entry = 0; entry < bucket.length; entry++) {
+          const j = bucket[entry];
+          if (j > i && !(cache.fighting[i] && cache.fighting[j])) candidates.push(j);
+        }
+      }
+    }
+    // Bucket order must never change the original i-then-j resolution order.
+    candidates.sort(byIndex);
+    for (let candidate = 0; candidate < candidates.length; candidate++) {
+      const j = candidates[candidate];
       const b = units[j];
       if (b.hp <= 0) continue;
       if (a.team === b.team && (a.harvest || b.harvest)) continue;
@@ -1351,7 +1395,7 @@ function separate(units, fighting, dt) {
       let dy = b.y - a.y;
       // No unit pair can overlap beyond the largest combined radius.
       if (dx <= -24 || dx >= 24 || dy <= -24 || dy >= 24) continue;
-      const combinedRadius = radius(a) + radius(b);
+      const combinedRadius = cache.radii[i] + cache.radii[j];
       const distanceSquared = dx * dx + dy * dy;
       if (distanceSquared >= combinedRadius * combinedRadius) continue;
       const distance = Math.hypot(dx, dy);
