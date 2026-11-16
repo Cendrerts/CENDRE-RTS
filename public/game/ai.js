@@ -373,13 +373,16 @@ export function createAI(team, difficulty = 'normal', state = null) {
         returningFromTower = null;
       }
       const invaders = (brutal ? observedArmy : enemies).filter((enemy) => owned.some((mine) => distance(enemy, mine) < (brutal ? 400 : 240)));
-      const committedAssault = brutal && waveRoute && intelligence.bases.length > 0 &&
+      // Numerical superiority can commit a wave before the enemy main is scouted.
+      // The equal-army bank exception still requires that discovery.
+      const committedAssault = brutal && waveRoute &&
         (metrics.waves >= 2 || state.time >= 480) &&
         army.length >= 10 &&
-        (army.length >= observedArmy.length * 1.5 || waveRoute.rebuildingBank);
+        (army.length >= observedArmy.length * 1.5 || (intelligence.bases.length > 0 && waveRoute.rebuildingBank));
       let threatenedEconomy = false;
       let economyThreat = null;
       let recallingArmy = false;
+      let extensionRecall = false;
       if (brutal) {
         for (const worker of workers) {
           const danger = observedArmy.filter((enemy) => distance(worker, enemy) < 260);
@@ -398,6 +401,7 @@ export function createAI(team, difficulty = 'normal', state = null) {
         // A threat at the main still takes priority over that assault.
         if ((threatenedEconomy && !committedAssault) || invaders.some((enemy) => distance(enemy, base) < 220)) {
           recallingArmy = true;
+          extensionRecall = threatenedEconomy && !committedAssault;
           const recalled = army.filter((unit) => deployed.has(unit.id));
           for (const unit of recalled) {
             deployed.delete(unit.id);
@@ -409,7 +413,7 @@ export function createAI(team, difficulty = 'normal', state = null) {
           }
         }
       }
-      const forceWave = !recallingArmy && reliefWaveDue;
+      const forceWave = !extensionRecall && reliefWaveDue;
       if (invaders.length && brazierUnits.size) {
         brazierMission = null;
         brazierUnits.clear();

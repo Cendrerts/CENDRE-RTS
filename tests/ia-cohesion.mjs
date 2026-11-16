@@ -218,4 +218,79 @@ for (const difficulty of ['brutal', 'impitoyable']) {
   }
 }
 
+// Un envahisseur près de la tour principale laisse partir le secours et ses deux gardes.
+for (const difficulty of ['brutal', 'impitoyable']) {
+  for (const team of [0, 1]) {
+    const state = scenario(team);
+    state.rubies[team] = 1000;
+    const guard = recruitAtRally(state, team, 'knight');
+    const hero = recruitAtRally(state, team, 'hero');
+    for (let index = 0; index < 14; index++) {
+      const unit = recruitAtRally(state, team, 'knight');
+      unit.x += team ? -500 : 500;
+    }
+    Sim.spawn(state, 'knight', 1 - team);
+    const enemy = state.units.at(-1);
+    enemy.x = state.bases[team].x + (team ? -100 : 100);
+    enemy.y = state.bases[team].y;
+    state.visible[team].fill(1);
+    const controller = createAI(team, difficulty);
+    controller.update(state);
+    assert.equal(controller.metrics.waves, 1,
+      'Un envahisseur à 100 px ne bloque pas la vague de secours');
+    assert.equal(controller.metrics.waveSizes[0], 14);
+    assert.equal(guard.orderQueue.length, 0);
+    assert.equal(hero.orderQueue.length, 0);
+  }
+}
+
+// La supériorité numérique engage la vague avant la découverte de la base adverse.
+for (const difficulty of ['brutal', 'impitoyable']) {
+  for (const team of [0, 1]) {
+    const state = scenario(team);
+    state.time = 480;
+    for (let index = 0; index < 16; index++) {
+      recruitAtRally(state, team, 'knight');
+    }
+    const controller = createAI(team, difficulty);
+    controller.update(state);
+    assert.equal(controller.metrics.waves, 1);
+    assert.equal(controller.intelligence.bases.length, 0);
+    const worker = recruitAtRally(state, team, 'commis');
+    const mine = state.mines[4];
+    worker.x = mine.x + 200;
+    worker.y = mine.y;
+    Sim.spawn(state, 'knight', 1 - team);
+    const enemy = state.units.at(-1);
+    enemy.x = mine.x + 410;
+    enemy.y = mine.y;
+    state.visible[team].fill(1);
+    const enemyBase = state.bases[1 - team];
+    const originalCanSee = Sim.canSee;
+    const originalOrder = Sim.order;
+    const orders = [];
+    try {
+      Sim.canSee = (currentState, observer, target) => {
+        if (observer === team && target === enemyBase) return false;
+        return originalCanSee(currentState, observer, target);
+      };
+      Sim.order = (...argumentsList) => {
+        orders.push(argumentsList);
+        return originalOrder(...argumentsList);
+      };
+      state.time += 1;
+      controller.update(state);
+    } finally {
+      Sim.canSee = originalCanSee;
+      Sim.order = originalOrder;
+    }
+    assert.equal(controller.intelligence.bases.length, 0);
+    assert(orders.some(([, ids, , , , retreat]) => ids.includes(worker.id) && retreat),
+      'La menace lointaine provoque bien une évacuation économique');
+    assert(!orders.some(([, ids, x, y]) =>
+      ids.some((id) => id !== worker.id) && x === enemy.x && y === enemy.y),
+    'La vague supérieure engagée ne doit pas être rappelée vers la menace lointaine');
+  }
+}
+
 console.log('PASS: garnison, plafond, seuil de force et absence de relance pendant le rappel économique.');
