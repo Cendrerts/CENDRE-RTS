@@ -210,6 +210,17 @@ export function createAI(team, difficulty = 'normal', state = null) {
       const workerTarget = reducedWorkerTarget ? 10 : Math.min(owned.reduce((sum, mine) => sum + saturation(mine), 0), settings.workers * 3 + Number(brutal));
       const economyCapacity = Number(brutal) + settings.workers * (brutal ? Math.min(3, owned.length + 1) : 3) + Number(workers.some((worker) => worker.id === scout));
       const militaryLimit = populationLimit - (reducedWorkerTarget ? workerTarget : economyCapacity);
+      // Hard AI reserves nine productive workers excluding the scout, matching
+      // worker production. Heroes cost three population and a cooking Rats feast
+      // will add four units outside the queue.
+      const preservesWorkerCapacity = (populationCost) => {
+        if (difficulty !== 'difficile') return true;
+        const queuedWorkers = state.queues[team].filter((job) => job.type === 'commis').length;
+        const productiveWorkers = workers.filter((worker) => reducedWorkerTarget || worker.id !== scout).length;
+        const missingWorkers = Math.max(0, Math.max(workerTarget, settings.workers * 3) - productiveWorkers - queuedWorkers);
+        const pendingFeast = team === 1 && state.festin.readyAt !== null ? 4 : 0;
+        return Sim.populationUsed(state, team) + populationCost + missingWorkers + pendingFeast <= populationLimit;
+      };
       const surplus = state.rubies[team] > 800;
       const reliefWaveDue = state.time - lastWave >= 120 &&
         (state.rubies[team] >= 800 || army.length >= populationLimit * 0.9);
@@ -253,7 +264,7 @@ export function createAI(team, difficulty = 'normal', state = null) {
       const defenseBudget = threats.length && militaryProduction.length ?
         Math.min(...militaryProduction.map((building) => Sim.stats(building.unit, team).cost)) : 0;
       if (difficulty !== 'facile' && militaryProduction.length &&
-        state.rubies[team] >= 150 + defenseBudget && Sim.recruit(state, 'hero', team, 'main_' + team)) {
+        preservesWorkerCapacity(3) && state.rubies[team] >= 150 + defenseBudget && Sim.recruit(state, 'hero', team, 'main_' + team)) {
         actions++;
       }
       if (state.time >= nextMacro) {
@@ -332,6 +343,7 @@ export function createAI(team, difficulty = 'normal', state = null) {
                 // Reserve population for the next mine and the surviving scout.
                 const reservedMilitary = army.length + state.queues[team].filter((job) => job.type !== 'commis').length;
                 if (reservedMilitary >= militaryLimit) break;
+                if (!preservesWorkerCapacity(1)) break;
                 if (state.queues[team].some((job) => job.producerId === producer.id)) continue;
                 if (Sim.recruit(state, building.unit, team, producer.id)) actions++;
                 else affordable = false;
@@ -455,7 +467,7 @@ export function createAI(team, difficulty = 'normal', state = null) {
         }
       }
       if (difficulty !== 'facile') {
-        if (team === 1 && Sim.cookDish(state, team, 'festin').ok) actions++;
+        if (team === 1 && preservesWorkerCapacity(4) && Sim.cookDish(state, team, 'festin').ok) actions++;
         if (team === 0 && state.ingredients[team] >= 40 &&
           state.ragout.readyAt === null && state.ragout.expiresAt <= state.time) {
           if (Sim.cookDish(state, team).ok) actions++;
