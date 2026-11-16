@@ -84,8 +84,18 @@ try {
   for (const key of Object.keys(profilTotals)) {
     profilTotals[key] = 0;
   }
+  const profiledTicks = [];
   for (let index = 0; index < 1200; index++) {
+    const previousTotals = { ...profilTotals };
     ProfiledSim.tick(profiledState, 1 / 60);
+    const stages = Object.fromEntries(Object.entries(profilTotals).map(([stage, elapsed]) => [
+      stage,
+      elapsed - (previousTotals[stage] || 0),
+    ]));
+    profiledTicks.push({
+      stages,
+      elapsed: Object.values(stages).reduce((sum, value) => sum + value, 0),
+    });
   }
   const total = Object.values(profilTotals).reduce((sum, value) => sum + value, 0);
   console.table(Object.entries(profilTotals).sort((a, b) => b[1] - a[1]).map(([stage, elapsed]) => ({
@@ -93,6 +103,14 @@ try {
     'cumul ms': Number(elapsed.toFixed(3)),
     '% tick instrumenté': Number((elapsed / total * 100).toFixed(2)),
   })));
+  // Rank instrumented ticks so each peak retains its own stage breakdown.
+  const peaks = profiledTicks.sort((a, b) => b.elapsed - a.elapsed).slice(0, Math.ceil(profiledTicks.length * 0.05));
+  const peakMean = peaks.reduce((sum, tick) => sum + tick.elapsed, 0) / peaks.length;
+  console.log(`Pics : les 5 % de ticks instrumentés les plus lents (${peaks.length} ticks) ; tick moyen ${peakMean.toFixed(4)} ms`);
+  console.table(Object.keys(profilTotals).map((stage) => ({
+    étape: stage,
+    'moyenne ms': Number((peaks.reduce((sum, tick) => sum + (tick.stages[stage] || 0), 0) / peaks.length).toFixed(4)),
+  })).sort((a, b) => b['moyenne ms'] - a['moyenne ms']));
 } finally {
   await rm(directory, { recursive: true, force: true });
 }
