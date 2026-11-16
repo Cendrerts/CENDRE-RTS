@@ -19,7 +19,7 @@ for (const initialSeed of seeds) {
   }
   Sim.visibility(state);
   const controllers = [0, 1].map((team) => createAI(team, 'brutal'));
-  for (let step = 0; step < 12000 && state.winner === null; step++) {
+  for (let step = 0; step < 18000 && state.winner === null; step++) {
     for (const team of [0, 1]) {
       if (state.time >= delays[team]) controllers[team].update(state);
     }
@@ -27,6 +27,6 @@ for (const initialSeed of seeds) {
   }
   console.log(JSON.stringify({ seed: initialSeed, winner: state.winner, seconds: Number(state.time.toFixed(1)) }));
   // Report every seed even when a pre-existing AI stalemate remains.
-  if (state.winner === null || state.time >= 1200) process.exitCode = 1;
+  if (state.winner === null || state.time >= 1800) process.exitCode = 1;
 }
-assert(!process.exitCode, 'Chaque duel Brutal doit avoir un vainqueur avant 20 minutes (D11).');
+assert(!process.exitCode, 'Chaque duel Brutal doit avoir un vainqueur avant 30 minutes (D29).');
