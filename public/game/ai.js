@@ -806,7 +806,7 @@ export function createAI(team, difficulty = 'normal', state = null) {
       }
       // Last, so defensive micro cannot replace the safety order this update.
       // This includes deployed troops and raiders, leaving only the garrison.
-      if (forceWave && state.time - lastWave >= 120 && !(lateSiege && waveRoute)) {
+      if (forceWave && state.time - lastWave >= 120) {
         const reliefArmy = army.slice(garrison).filter((unit) =>
           state.time - (lastDeparture.get(unit.id) ?? -Infinity) >= 10);
         if (reliefArmy.length && launchAttack(state, reliefArmy, enemyBase, observedArmy, rebuildingBank)) {
