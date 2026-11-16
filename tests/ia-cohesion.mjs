@@ -25,8 +25,13 @@ function recruitAtRally(state, team, type) {
 
 for (const difficulty of ['brutal', 'impitoyable']) {
   for (const team of [0, 1]) {
-    for (const emergency of [false, true]) {
+    for (const { emergency, time } of [
+      { emergency: false, time: 240 },
+      { emergency: true, time: 240 },
+      { emergency: true, time: 1200 },
+    ]) {
       const state = scenario(team);
+      state.time = time;
       recruitAtRally(state, team, 'knight');
       const hero = recruitAtRally(state, team, 'hero');
       for (let index = 0; index < 14; index++) {
@@ -45,34 +50,87 @@ for (const difficulty of ['brutal', 'impitoyable']) {
       const controller = createAI(team, difficulty);
       controller.update(state);
       assert.equal(controller.metrics.waves, 1);
-      assert.equal(hero.orderQueue.length > 0, difficulty === 'impitoyable' && emergency,
-        'Impitoyable engage son héros dans la vague de secours uniquement');
+      assert.equal(hero.orderQueue.length, 0,
+        'La garnison conserve son héros, y compris pendant les secours');
       assert.equal(controller.metrics.waveSizes[0], 14,
         'Deux unités restent en garnison');
     }
   }
 }
 
-
-// Une partie prolongée doit pouvoir engager aussi les derniers gardes.
-for (const team of [0, 1]) {
-  const state = scenario(team);
-  state.time = 1200;
-  state.rubies[team] = 800;
-  const hero = recruitAtRally(state, team, 'hero');
-  for (let index = 0; index < 14; index++) {
-    recruitAtRally(state, team, 'knight');
+// Après le délai de trajet, les survivants blessés doivent aussi se regrouper.
+for (const difficulty of ['brutal', 'impitoyable']) {
+  for (const team of [0, 1]) {
+    const state = scenario(team);
+    for (let index = 0; index < 16; index++) {
+      recruitAtRally(state, team, 'knight');
+    }
+    Sim.spawn(state, 'knight', 1 - team);
+    state.visible[team].fill(1);
+    const controller = createAI(team, difficulty);
+    controller.update(state);
+    assert.equal(controller.metrics.waves, 1);
+    for (const unit of state.units.filter((unit) => unit.team === team)) {
+      unit.hp = Sim.stats('knight', 0).hp * 0.3;
+      unit.path = [];
+      unit.orderQueue = [];
+    }
+    state.time = 400;
+    controller.update(state);
+    assert.equal(controller.metrics.waves, 1,
+      'Le délai de trajet ne doit pas relancer les survivants sous le seuil normal');
   }
-  for (const unit of state.units) {
-    unit.x += team ? -500 : 500;
-  }
-  Sim.spawn(state, 'knight', 1 - team);
-  state.visible[team].fill(1);
-  const controller = createAI(team, 'impitoyable');
-  controller.update(state);
-  assert.equal(controller.metrics.waves, 1);
-  assert.equal(controller.metrics.waveSizes[0], 15, 'Tous les gardes rejoignent les secours tardifs');
-  assert(hero.orderQueue.length > 0);
 }
 
-console.log('PASS: garnison initiale conservée, héros engagé en secours par Impitoyable.');
+// La disparition des ennemis observés ouvre une contre-attaque, sans force suffisante.
+for (const difficulty of ['brutal', 'impitoyable']) {
+  for (const team of [0, 1]) {
+    const state = scenario(team);
+    for (let index = 0; index < 7; index++) {
+      const unit = recruitAtRally(state, team, 'knight');
+      unit.hp = Sim.stats('knight', 0).hp * 0.5;
+    }
+    for (let index = 0; index < 3; index++) {
+      Sim.spawn(state, 'knight', 1 - team);
+    }
+    state.visible[team].fill(1);
+    const controller = createAI(team, difficulty);
+    controller.update(state);
+    assert.equal(controller.metrics.waves, 0);
+    state.units = state.units.filter((unit) => unit.team === team);
+    state.time += 1;
+    controller.update(state);
+    assert.equal(controller.metrics.waves, 0,
+      'La fenêtre de contre-attaque ne doit pas lancer cinq blessés de force 2,5');
+  }
+}
+
+// La saturation ne remplace pas le seuil de force : les blessés attendent.
+for (const difficulty of ['brutal', 'impitoyable']) {
+  for (const team of [0, 1]) {
+    const state = scenario(team);
+    for (let index = 0; index < 9; index++) {
+      const unit = recruitAtRally(state, team, 'knight');
+      unit.hp = Sim.stats('knight', 0).hp * 0.5;
+    }
+    while (Sim.populationUsed(state, team) < Sim.unitLimit(team)) {
+      recruitAtRally(state, team, 'commis');
+    }
+    Sim.spawn(state, 'knight', 1 - team);
+    state.visible[team].fill(1);
+    const controller = createAI(team, difficulty);
+    controller.update(state);
+    assert.equal(controller.metrics.waves, 0,
+      'Une population pleine ne doit pas lancer sept attaquants de force 3,5');
+    for (const unit of state.units.filter((unit) => unit.team === team && unit.type === 'knight')) {
+      unit.hp = Sim.stats('knight', 0).hp;
+    }
+    state.time += 1;
+    controller.update(state);
+    assert.equal(controller.metrics.waves, 1,
+      'La vague part une fois le seuil normal de force atteint');
+    assert.equal(controller.metrics.waveSizes[0], 7);
+  }
+}
+
+console.log('PASS: garnison commune conservée et seuil de force respecté à population pleine.');

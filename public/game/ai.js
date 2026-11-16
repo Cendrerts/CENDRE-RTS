@@ -484,12 +484,13 @@ export function createAI(team, difficulty = 'normal', state = null) {
       // the population cap. Surviving troops can regroup after a lost fight.
       const attackWindow = !settings.micro || state.time >= (brutal ? owned.length > 1 ? 180 : 220 : 210);
       const garrison = brutal && intelligence.seenAt !== null && state.time - intelligence.seenAt < 90 ? 2 : 0;
-      // Keep the opening garrison; commit the hero only with a relief assault.
+      // Keep the opening garrison for normal and relief assaults.
       const garrisonIds = new Set(army.slice(0, garrison).map((unit) => unit.id));
       const attackers = brutal ? reserve.slice(garrison) : reserve;
       const waveStrength = attackers.reduce((strength, unit) => strength + unit.hp / Sim.stats(unit.type, 0).hp, 0);
       const counterattack = brutal && (state.time < counterUntil || threats.length >= Math.max(3, knownArmy.size) && army.length > threats.length * 1.5) && attackers.length >= 5;
-      const enoughTroops = counterattack || waveStrength >= (brutal ? Math.min(12, settings.wave + metrics.waves * 2) : settings.wave) && attackWindow;
+      const minimumWaveStrength = brutal ? Math.min(12, settings.wave + metrics.waves * 2) : settings.wave;
+      const enoughTroops = waveStrength >= minimumWaveStrength && (attackWindow || counterattack);
       const overdue = lastWave > 0 && state.time - lastWave > waveTravelTime;
       const assembly = brutal ? attackers : reserve;
       const assembled = assembly.filter((unit) => distance(unit, rally) < 240).length >= assembly.length * 0.7;
@@ -517,7 +518,8 @@ export function createAI(team, difficulty = 'normal', state = null) {
           }
         }
       }
-      if ((!brutal || attackers.length >= 5) && !defending && state.time >= retreatUntil && (enoughTroops || reserve.length > 0 && (saturated || overdue)) && assembled) {
+      // Saturation and elapsed travel time must not send weak reserves piecemeal.
+      if ((!brutal || attackers.length >= 5) && !defending && state.time >= retreatUntil && (enoughTroops || !brutal && reserve.length > 0 && (saturated || overdue)) && assembled) {
         for (const unit of attackers) deployed.add(unit.id);
         launchAttack(state, attackers, destination, observedArmy, rebuildingBank);
         actions++;
@@ -768,13 +770,7 @@ export function createAI(team, difficulty = 'normal', state = null) {
       // Last, so defensive micro cannot replace the safety order this update.
       // This includes deployed troops and raiders, leaving only the garrison.
       if (forceWave && state.time - lastWave >= 120) {
-        // In a prolonged siege, commit the remaining guards rather than stall.
-        const reliefGuardCount = difficulty === 'impitoyable' && state.time >= 1200 ? 0 : garrison;
-        const reliefGarrison = difficulty === 'impitoyable'
-          ? army.filter((unit) => unit.type !== 'hero').slice(0, reliefGuardCount)
-          : army.slice(0, garrison);
-        const reliefGarrisonIds = new Set(reliefGarrison.map((unit) => unit.id));
-        const reliefArmy = army.filter((unit) => !reliefGarrisonIds.has(unit.id));
+        const reliefArmy = army.slice(garrison);
         brazierMission = null;
         brazierUnits.clear();
         returningBrazierUnits.clear();
