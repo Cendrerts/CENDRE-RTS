@@ -72,7 +72,7 @@ export function createAI(team, difficulty = 'normal', state = null) {
     const points = distance(destination, state.bases[1 - team]) < 320
       ? [...approach.points.slice(1, -1), destination]
       : [destination];
-    waveRoute = { ids: new Set(ids), points, index: 0, rebuildingBank: rebuildingBank && units.length >= 10 };
+    waveRoute = { ids: new Set(ids), points, index: 0, stageAt: state.time, rebuildingBank: rebuildingBank && units.length >= 10 };
     Sim.order(state, ids, points[0].x, points[0].y, null, false);
     // Queue only the current stage: the next one is released by the AI
     // once seventy percent of the surviving wave has reached this one.
@@ -481,6 +481,13 @@ export function createAI(team, difficulty = 'normal', state = null) {
         (power(army) >= power(observedArmy) || saturated || state.rubies[team] >= 800 || state.time >= 600);
       // A late siege launched at the cap keeps streaming reinforcements
       // after losses drop the population below the cap (D30).
+      // A siege held more than 90 s at an intermediate stage is stalled:
+      // drop its route so the army regroups into a massed wave.
+      const lastStage = waveRoute ? waveRoute.points.length - 1 : 0;
+      const siegeStalled = waveRoute?.siege === true && waveRoute.index < lastStage && state.time - waveRoute.stageAt > 90;
+      if (siegeStalled) {
+        waveRoute = null;
+      }
       if (brutal && saturated && state.time >= 720 && waveRoute) waveRoute.siege = true;
       const lateSiege = brutal && state.time >= 720 && (saturated || waveRoute?.siege === true);
       const destination = (!decisiveAttack && [...remembered.values()].sort((a, b) => distance(a, state.bases[team]) - distance(b, state.bases[team]))[0]) || intelligence.bases[0] || { x: enemyBase.x, y: enemyBase.y };
@@ -537,6 +544,7 @@ export function createAI(team, difficulty = 'normal', state = null) {
         } else if (members.filter((unit) => distance(unit, point) < 140).length >= members.length * 0.7 &&
           !(lateSiege && decisiveAttack && waveRoute.index === waveRoute.points.length - 1)) {
           waveRoute.index++;
+          waveRoute.stageAt = state.time;
           if (waveRoute.index === waveRoute.points.length) {
             waveRoute = null;
           } else {

@@ -2,7 +2,11 @@ import assert from 'node:assert/strict';
 import { CendreSim as Sim } from '../public/game/sim.js';
 import { createAI } from '../public/game/ai.js';
 
-for (const capped of [true, false]) {
+for (const { capped, stalled } of [
+  { capped: true, stalled: false },
+  { capped: false, stalled: false },
+  { capped: true, stalled: true },
+]) {
   const state = Sim.create();
   state.units = [];
   state.camps = [];
@@ -35,11 +39,12 @@ for (const capped of [true, false]) {
   reinforcement.x = 2000;
   reinforcement.y = 1100;
   reinforcement.path = [];
-  state.time++;
+  // Sans déplacement des membres, la vague reste à son étape intermédiaire initiale.
+  state.time += stalled ? 91 : 1;
   controller.update(state);
   assert(state.units.length + state.queues[0].length < Sim.unitLimit(0));
   assert.equal(controller.metrics.waves, 1);
-  assert.equal(reinforcement.orderQueue.length > 0, capped,
-    `Renfort sous le plafond : siège initialement au plafond=${capped}`);
+  assert.equal(reinforcement.orderQueue.length > 0, capped && !stalled,
+    `Renfort sous le plafond : siège initialement au plafond=${capped}, bloqué=${stalled}`);
 }
-console.log('PASS: seul un siège établi au plafond conserve son flux de renforts après des pertes.');
+console.log('PASS: seul un siège établi au plafond et non bloqué conserve son flux de renforts après des pertes.');
