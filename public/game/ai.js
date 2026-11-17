@@ -425,7 +425,7 @@ export function createAI(team, difficulty = 'normal', state = null) {
           }
         }
       }
-      const forceWave = !extensionRecall && reliefWaveDue;
+      let forceWave = !extensionRecall && reliefWaveDue;
       if (invaders.length && brazierUnits.size) {
         brazierMission = null;
         brazierUnits.clear();
@@ -491,8 +491,8 @@ export function createAI(team, difficulty = 'normal', state = null) {
       // between recapturable depots scattered across the enlarged map.
       const decisiveAttack = (metrics.waves >= 2 || state.time >= 480) &&
         (power(army) >= power(observedArmy) || saturated || state.rubies[team] >= 800 || state.time >= 600);
-      // A late siege launched at the cap keeps streaming reinforcements
-      // after losses drop the population below the cap (D30).
+      // A siege launched at the cap keeps streaming reinforcements after
+      // losses, including before the late game when the bank is full (D30).
       // A siege held more than 90 s at an intermediate stage is stalled:
       // drop its route so the army regroups into a massed wave.
       const lastStage = waveRoute ? waveRoute.points.length - 1 : 0;
@@ -500,8 +500,12 @@ export function createAI(team, difficulty = 'normal', state = null) {
       if (siegeStalled) {
         waveRoute = null;
       }
-      if (brutal && saturated && state.time >= 720 && waveRoute) waveRoute.siege = true;
-      const lateSiege = brutal && state.time >= 720 && (saturated || waveRoute?.siege === true);
+      // A full bank must not wait for a long march back to the rally after
+      // abandoning a siege. Commit the surviving army on a fresh approach.
+      const bankWaveDue = brutal && saturated && state.rubies[team] > 1500 && !waveRoute && state.time - lastWave >= 10;
+      if (bankWaveDue) forceWave = true;
+      if (brutal && saturated && (state.time >= 720 || state.rubies[team] > 1500) && waveRoute) waveRoute.siege = true;
+      const lateSiege = brutal && (waveRoute?.siege === true || state.time >= 720 && saturated);
       const destination = (!decisiveAttack && [...remembered.values()].sort((a, b) => distance(a, state.bases[team]) - distance(b, state.bases[team]))[0]) || intelligence.bases[0] || { x: enemyBase.x, y: enemyBase.y };
       if (brutal && !(lateSiege && decisiveAttack && waveRoute) && !defending && lastWave > 0 && state.time - lastWave > waveTravelTime && lastRegroup < lastWave) {
         deployed.clear();
@@ -818,7 +822,7 @@ export function createAI(team, difficulty = 'normal', state = null) {
       }
       // Last, so defensive micro cannot replace the safety order this update.
       // This includes deployed troops and raiders, leaving only the garrison.
-      if (forceWave && state.time - lastWave >= 120) {
+      if (forceWave && (bankWaveDue || state.time - lastWave >= 120)) {
         const reliefArmy = army.slice(garrison).filter((unit) =>
           state.time - (lastDeparture.get(unit.id) ?? -Infinity) >= 10);
         if (reliefArmy.length && launchAttack(state, reliefArmy, enemyBase, observedArmy, rebuildingBank)) {
