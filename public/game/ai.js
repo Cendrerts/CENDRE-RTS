@@ -10,7 +10,8 @@ export function createAI(team, difficulty = 'normal', state = null) {
   if (state) Sim.configureIncome(state, team, settings.incomeBonus);
   let nextReaction = 0;
   let emergencyUntil = 0;
-  const evacuated = new Set();
+  let evacuationCoverUntil = 0;
+  const evacuated = new Map();
   const knownArmy = new Map();
   let counterUntil = 0;
   let nextMacro = 0;
@@ -188,7 +189,7 @@ export function createAI(team, difficulty = 'normal', state = null) {
         nextSurplusWorkers = state.time + 10;
       }
       if (reducedWorkerTarget && saturated && state.time >= nextSurplusWorkers && workers.length > 10 && intelligence.bases.length) {
-        const exposedWorkers = [...workers].sort((first, second) => {
+        const exposedWorkers = workers.filter((worker) => !evacuated.get(worker.id)).sort((first, second) => {
           const firstMine = mines[first.harvest?.mine] ?? first;
           const secondMine = mines[second.harvest?.mine] ?? second;
           return distance(secondMine, base) - distance(firstMine, base);
@@ -295,8 +296,9 @@ export function createAI(team, difficulty = 'normal', state = null) {
           const priority = (mine) => mine.index === natural.index ? -1 : distance(mine, state.bases[team]) * (established.has(mine.index) ? 0.1 : 1);
           const destination = mines.filter((mine) => mine.index >= 2 && mine.owner !== team)
             .sort((a, b) => (needsProductionSite ? Number(a.owner === 1 - team) - Number(b.owner === 1 - team) : 0) || priority(a) - priority(b))[0];
-          if (destination) {
-            expedition = { worker: workers.find((worker) => worker.id !== scout)?.id, index: destination.index };
+          const explorer = workers.find((worker) => worker.id !== scout && !evacuated.get(worker.id));
+          if (destination && explorer) {
+            expedition = { worker: explorer.id, index: destination.index };
           }
         }
         if (emergency && expedition && !needsProductionSite) {
@@ -365,7 +367,8 @@ export function createAI(team, difficulty = 'normal', state = null) {
         }
       }
       if (state.time >= 60 && !scouted && (settings.micro ? workers.length : army.length)) {
-        const explorer = settings.micro ? workers.find((worker) => worker.id !== expedition?.worker) : army.find((unit) => unit.type !== 'hero' && !brazierUnits.has(unit.id) && unit.id !== towerCapture?.unit && unit.id !== returningFromTower);
+        const explorer = settings.micro ? workers.find((worker) => worker.id !== expedition?.worker && !evacuated.get(worker.id)) :
+          army.find((unit) => unit.type !== 'hero' && !brazierUnits.has(unit.id) && unit.id !== towerCapture?.unit && unit.id !== returningFromTower);
         if (explorer) {
           scout = explorer.id;
           scouted = true;
@@ -395,16 +398,57 @@ export function createAI(team, difficulty = 'normal', state = null) {
       let economyThreat = null;
       let recallingArmy = false;
       let extensionRecall = false;
+      const concentratedPush = brutal && threats.length >= 8;
       if (brutal) {
+        // Regroup distant defenders before a superior force reaches the workers.
+        const approachingArmy = observedArmy.filter((enemy) => distance(base, enemy) < 2200);
+        if (approachingArmy.length >= 15 && approachingArmy.length >= army.length * 1.5 && !committedAssault) {
+          if (state.time >= evacuationCoverUntil) {
+            const coveringArmy = army.filter((unit) => distance(unit, rally) > 240);
+            for (const unit of coveringArmy) {
+              deployed.delete(unit.id);
+            }
+            if (coveringArmy.length) {
+              Sim.order(state, coveringArmy.map((unit) => unit.id), rally.x, rally.y, null, true);
+              actions++;
+            }
+            huntingCamp = null;
+          }
+          evacuationCoverUntil = state.time + 15;
+        }
+        // Keep fleeing workers behind the main, away from the mine and the fight.
+        const shelter = { x: base.x + (team ? 350 : -350), y: base.y };
+        const mainThreatened = observedArmy.some((enemy) => distance(base, enemy) < 500);
+        for (const id of evacuated.keys()) {
+          if (!workers.some((worker) => worker.id === id)) evacuated.delete(id);
+        }
         for (const worker of workers) {
           const danger = observedArmy.filter((enemy) => distance(worker, enemy) < 260);
           const guards = army.filter((unit) => distance(worker, unit) < 280);
+          const mine = evacuated.get(worker.id);
           if (power(danger) > power(guards)) {
             threatenedEconomy = true;
             economyThreat = danger[0];
-            evacuated.add(worker.id);
-            if (!worker.retreat || worker.harvest) Sim.order(state, [worker.id], base.x, base.y, null, true);
-          } else if (!danger.length) {
+            if (concentratedPush && !mine) {
+              const assignment = worker.id === expedition?.worker ? expedition.index : worker.harvest?.mine;
+              evacuated.set(worker.id, mines[assignment] ?? mines[team]);
+              if (worker.id === expedition?.worker) expedition = null;
+              if (worker.id === scout) scout = null;
+              Sim.order(state, [worker.id], shelter.x, shelter.y, null, true);
+            } else if (mine && !worker.path.length) {
+              // If the attackers reach the shelter, escape along the back of the base.
+              const flanks = [-300, 300].map((offset) => ({ x: shelter.x, y: base.y + offset }));
+              const clearance = (point) => Math.min(...observedArmy.map((enemy) => distance(point, enemy)));
+              const saferFlank = flanks.sort((a, b) => clearance(b) - clearance(a))[0];
+              if (clearance(saferFlank) > clearance(worker) + 100) {
+                Sim.order(state, [worker.id], saferFlank.x, saferFlank.y, null, true);
+              }
+            } else if (!mine) {
+              evacuated.set(worker.id, null);
+              if (!worker.retreat || worker.harvest) Sim.order(state, [worker.id], base.x, base.y, null, true);
+            }
+          } else if (!danger.length && (!mine || !mainThreatened &&
+            !observedArmy.some((enemy) => distance(mine, enemy) < 400))) {
             evacuated.delete(worker.id);
           }
         }
@@ -425,7 +469,8 @@ export function createAI(team, difficulty = 'normal', state = null) {
           }
         }
       }
-      const forceWave = !extensionRecall && reliefWaveDue;
+      const coveringEvacuation = state.time < evacuationCoverUntil;
+      const forceWave = !extensionRecall && !coveringEvacuation && reliefWaveDue;
       if (invaders.length && brazierUnits.size) {
         brazierMission = null;
         brazierUnits.clear();
@@ -568,7 +613,7 @@ export function createAI(team, difficulty = 'normal', state = null) {
       }
       // At the population cap, launch even below the normal strength threshold.
       // Below the cap, elapsed travel time alone cannot launch weak Brutal reserves.
-      if ((!brutal || attackers.length >= 5) && !defending && !recallingArmy && state.time >= retreatUntil && (enoughTroops || reserve.length > 0 && (saturated || !brutal && overdue)) && assembled &&
+      if ((!brutal || attackers.length >= 5) && !defending && !recallingArmy && !coveringEvacuation && state.time >= retreatUntil && (enoughTroops || reserve.length > 0 && (saturated || !brutal && overdue)) && assembled &&
         launchAttack(state, attackers, destination, observedArmy, rebuildingBank)) {
         for (const unit of attackers) deployed.add(unit.id);
         actions++;
@@ -579,7 +624,7 @@ export function createAI(team, difficulty = 'normal', state = null) {
       }
       // Capture orders use retreat mode to reach the tower without chasing targets.
       if (difficulty !== 'facile') {
-        const baseThreatened = defending || threats.some((enemy) => distance(enemy, base) < 650);
+        const baseThreatened = coveringEvacuation || defending || threats.some((enemy) => distance(enemy, base) < 650);
         const waveHasPriority = forceWave || lastWave === state.time && metrics.waves > 0;
         if (towerCapture) {
           const unit = army.find((candidate) => candidate.id === towerCapture.unit);
@@ -667,7 +712,7 @@ export function createAI(team, difficulty = 'normal', state = null) {
         }
       }
       if (difficulty !== 'facile') {
-        const baseThreatened = defending || threats.some((enemy) => distance(enemy, base) < 650);
+        const baseThreatened = coveringEvacuation || defending || threats.some((enemy) => distance(enemy, base) < 650);
         const hunters = army.filter((unit) =>
           unit.id !== scout && !raiders.has(unit.id) && !brazierUnits.has(unit.id) &&
           unit.id !== towerCapture?.unit && unit.id !== returningFromTower);
