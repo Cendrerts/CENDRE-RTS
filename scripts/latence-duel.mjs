@@ -5,8 +5,12 @@ import { CendreSim } from '../public/game/sim.js';
 import { Match } from '../server/match-do.js';
 
 const DELAIS_PAR_DEFAUT = [0, 40, 100];
+const GIGUES_PAR_DEFAUT = [0, 40];
 const CODE = 'ABCDEFG';
 const DEBUT_PARTIE = 3000;
+const INSTANT_ORDRE = DEBUT_PARTIE + 2000;
+const DEBUT_TROU = INSTANT_ORDRE + 500;
+const DUREE_TROU = 300;
 const INTERVALLE_IMAGE = 16;
 
 class Horloge {
@@ -46,11 +50,14 @@ class Horloge {
   }
 }
 
-function creerSocket(match, horloge, sockets, delai) {
+function creerSocket(match, horloge, sockets, delai, gigue, finTrou, compterLivraisonGroupee) {
   return class Socket {
     readyState = 0;
 
     constructor(url) {
+      let graine = 42;
+      let echeancePrecedente = -Infinity;
+      let livraisonPrecedente = -Infinity;
       // Le transport et les métadonnées de l'upgrade Cloudflare sont simulés.
       this.serveur = {
         attachment: { url, deadline: horloge.temps + 5000, closed: false },
@@ -60,7 +67,20 @@ function creerSocket(match, horloge, sockets, delai) {
         deserializeAttachment() {
           return structuredClone(this.attachment);
         },
-        send: (data) => horloge.setTimeout(() => this.onmessage?.({ data }), delai),
+        send: (data) => {
+          graine = (Math.imul(1664525, graine) + 1013904223) >>> 0;
+          const supplement = (graine / 2 ** 32) * gigue;
+          let echeance = horloge.temps + delai + supplement;
+          // Le trou bloque les livraisons prévues dans la fenêtre, puis la file repart en ordre.
+          if (echeance >= DEBUT_TROU && echeance < finTrou) echeance = finTrou;
+          echeance = Math.max(echeance, echeancePrecedente);
+          echeancePrecedente = echeance;
+          horloge.setTimeout(() => {
+            if (livraisonPrecedente === horloge.temps) compterLivraisonGroupee();
+            livraisonPrecedente = horloge.temps;
+            this.onmessage?.({ data });
+          }, echeance - horloge.temps);
+        },
         close: () => horloge.setTimeout(() => this.close(), delai),
       };
       sockets.push(this.serveur);
@@ -86,7 +106,7 @@ function distance(a, b) {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
-async function mesurerDelai(delai) {
+async function mesurerDelai(delai, gigue, trou) {
   const horloge = new Horloge();
   const sockets = [];
   const attentes = [];
@@ -118,7 +138,11 @@ async function mesurerDelai(delai) {
   }, {}, horloge);
   await match.ready;
 
-  const Socket = creerSocket(match, horloge, sockets, delai);
+  const finTrou = DEBUT_TROU + (trou ? DUREE_TROU : 0);
+  let messagesGroupes = 0;
+  const Socket = creerSocket(match, horloge, sockets, delai, gigue, finTrou, () => {
+    messagesGroupes++;
+  });
   const joueurs = sessions.map(() => {
     const motion = new RealtimeMotion();
     const joueur = { motion };
@@ -138,12 +162,12 @@ async function mesurerDelai(delai) {
     code: CODE,
     token: sessions[equipe].token,
   })));
-  const instantOrdre = DEBUT_PARTIE + 2000;
-  await horloge.avancer(instantOrdre);
+  await horloge.avancer(INSTANT_ORDRE);
   if (!joueurs.every(({ statut }) => statut === 'playing')) {
     throw new Error(`Le duel n'a pas démarré avec ${delai} ms de délai.`);
   }
   await connexions;
+  messagesGroupes = 0;
 
   const [joueur] = joueurs;
   const ouvrier = joueur.etat.units.find((unit) => unit.team === 0 && unit.type === 'commis');
@@ -162,42 +186,54 @@ async function mesurerDelai(delai) {
   let premiereImage = null;
   let sautMax = 0;
   let ecartServeur;
+  const deplacements = [];
   for (let image = 1; image * INTERVALLE_IMAGE <= 2000; image++) {
     const ecoule = image * INTERVALLE_IMAGE;
     if (ecoule > 1000 && ecartServeur === undefined) {
       // À 1 s, l'écran affiche encore l'image rendue à 992 ms.
-      await horloge.avancer(instantOrdre + 1000);
+      await horloge.avancer(INSTANT_ORDRE + 1000);
       ecartServeur = distance(precedente, uniteServeur());
     }
-    await horloge.avancer(instantOrdre + ecoule);
+    await horloge.avancer(INSTANT_ORDRE + ecoule);
     const position = positionAffichee();
     if (premiereImage === null && distance(position, ordre) < distanceInitiale) {
       premiereImage = image;
     }
-    sautMax = Math.max(sautMax, distance(position, precedente));
+    const deplacement = distance(position, precedente);
+    deplacements.push(deplacement);
+    sautMax = Math.max(sautMax, deplacement);
     precedente = position;
   }
 
   if (distance(uniteServeur(), ordre) >= distanceServeurInitiale) {
     throw new Error('L’ouvrier du serveur ne s’est pas rapproché de la destination.');
   }
+  const moyenne = deplacements.reduce((total, deplacement) => total + deplacement, 0) / deplacements.length;
+  const sautsVisibles = deplacements.filter((deplacement) => deplacement > 2 * moyenne).length;
+  const messagesGroupesMesures = messagesGroupes;
   joueurs[1].client.send({ type: 'leave' });
-  await horloge.avancer(horloge.temps + 2 * delai);
+  await horloge.avancer(horloge.temps + 2 * delai + gigue);
   if (!joueurs.every(({ statut }) => statut === 'ended')) {
     throw new Error('La fin du duel n’a pas été reçue par les deux clients.');
   }
   for (const { client } of joueurs) client.close();
   await Promise.all(attentes);
-  return { delai, premiereImage, sautMax, ecartServeur };
+  return { delai, gigue, trou, premiereImage, sautMax, ecartServeur, sautsVisibles, messagesGroupes: messagesGroupesMesures };
 }
 
-export async function mesurerLatenceDuel(delais = DELAIS_PAR_DEFAUT) {
-  if (!delais.length || delais.some((delai) => !Number.isSafeInteger(delai) || delai < 0)) {
-    throw new Error('Les délais doivent être des entiers positifs ou nuls en millisecondes.');
+export async function mesurerLatenceDuel(delais = DELAIS_PAR_DEFAUT, gigues = GIGUES_PAR_DEFAUT) {
+  for (const liste of [delais, gigues]) {
+    if (!liste.length || liste.some((valeur) => !Number.isSafeInteger(valeur) || valeur < 0)) {
+      throw new Error('Les délais et gigues doivent être des entiers positifs ou nuls en millisecondes.');
+    }
   }
   const mesures = [];
+  const gigueMax = Math.max(...gigues);
   for (const delai of delais) {
-    mesures.push(await mesurerDelai(delai));
+    for (const gigue of gigues) {
+      mesures.push(await mesurerDelai(delai, gigue, false));
+    }
+    mesures.push(await mesurerDelai(delai, gigueMax, true));
   }
   return { delais: mesures };
 }
@@ -205,16 +241,23 @@ export async function mesurerLatenceDuel(delais = DELAIS_PAR_DEFAUT) {
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
     const argumentsCLI = process.argv.slice(2);
-    const [option, liste] = argumentsCLI;
-    if (argumentsCLI.length && (argumentsCLI.length !== 2 || option !== '--delai' || !/^\d+(,\d+)*$/.test(liste))) {
-      throw new Error('Usage : node scripts/latence-duel.mjs [--delai 0,40,100]');
+    const options = new Map();
+    for (let index = 0; index < argumentsCLI.length; index += 2) {
+      const [option, liste] = argumentsCLI.slice(index, index + 2);
+      if (!['--delai', '--gigue'].includes(option) || options.has(option) || !/^\d+(,\d+)*$/.test(liste)) {
+        throw new Error('Usage : node scripts/latence-duel.mjs [--delai 0,40,100] [--gigue 0,40]');
+      }
+      options.set(option, liste.split(',').map(Number));
     }
-    const resultat = await mesurerLatenceDuel(liste?.split(',').map(Number));
-    console.table(resultat.delais.map(({ delai, premiereImage, sautMax, ecartServeur }) => ({
+    const resultat = await mesurerLatenceDuel(options.get('--delai'), options.get('--gigue'));
+    console.table(resultat.delais.map(({ delai, gigue, trou, premiereImage, sautMax, ecartServeur, sautsVisibles }) => ({
       'Délai aller (ms)': delai,
+      'Gigue (ms)': gigue,
+      'Trou (ms)': trou ? DUREE_TROU : 0,
       premiereImage,
       'sautMax (px)': sautMax.toFixed(2),
       'ecartServeur (px)': ecartServeur.toFixed(2),
+      sautsVisibles,
     })));
     console.log(JSON.stringify(resultat));
   } catch (erreur) {
