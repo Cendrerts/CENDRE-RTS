@@ -4,6 +4,7 @@ import { panelModel, panelVisibility } from './panel.js';
 import { readSettings, writeSettings } from './settings.js';
 import { bindAudioUnlock } from './audio-unlock.js';
 import { shouldAutoPause } from './auto-pause.js';
+import { clearSoloSave, readSoloSave, soloSaveLabel, writeSoloSave } from './solo-save.js';
 import { handleAbandonChoice } from './abandon-duel.js';
 import { minimapToWorld, clampCamera, attackDirection, groupAttackAlerts } from './camera.js';
 'use strict';
@@ -31,6 +32,9 @@ import { createRenderCache, prepareDrawList } from './render-cache.js';
 import { CendreSim as Sim } from './sim.js';
 import { createAI } from './ai.js';
 let soloAI = createAI(1);
+let soloDifficulty = 'normal';
+const soloSaveInterval = 15;
+let nextSoloSaveAt = soloSaveInterval;
 const { W, H, CELL, COLS, ROWS, TYPES, RULES } = Sim;
 const canvas = document.querySelector('#field'),
   ctx = canvas.getContext('2d'),
@@ -314,6 +318,35 @@ function choose(t) {
 const welcomeTitle = $('#modalTitle').textContent;
 const welcomeText = $('#modalText').textContent;
 const startLabel = $('#start').innerHTML;
+const resumeSoloButton = document.createElement('button');
+resumeSoloButton.type = 'button';
+resumeSoloButton.id = 'resumeSolo';
+resumeSoloButton.className = 'primary';
+resumeSoloButton.hidden = true;
+$('.factions').before(resumeSoloButton);
+let savedSolo = readSoloSave();
+if (savedSolo) {
+  const details = document.createElement('small');
+  details.textContent = soloSaveLabel(savedSolo);
+  resumeSoloButton.append('Reprendre la partie', details);
+  resumeSoloButton.hidden = false;
+}
+function saveActiveSolo() {
+  if (net || !running || state.winner !== null) return;
+  writeSoloSave({ state, player, difficulty: soloDifficulty, cameraX, cameraY, zoom });
+}
+function discardSoloSave() {
+  clearSoloSave();
+  savedSolo = null;
+  resumeSoloButton.hidden = true;
+}
+resumeSoloButton.onclick = () => {
+  if (net || running || !savedSolo || $('#joinRoom').disabled) return;
+  const save = savedSolo;
+  savedSolo = null;
+  resumeSoloButton.hidden = true;
+  beginSolo(save, true);
+};
 $('#matchMenu').onclick = async () => {
   if (net?.finished) await leaveRoom();
   $('#veil').classList.remove('match-ended');
@@ -329,27 +362,44 @@ $('#start').onclick = async () => {
     notify('Quittez le salon avant de lancer le solo.');
     return;
   }
+  discardSoloSave();
+  const newState = Sim.create();
+  beginSolo({
+    state: newState,
+    player: chosen,
+    difficulty: $('#aiDifficulty').value,
+    cameraX: newState.bases[chosen].x,
+    cameraY: newState.bases[chosen].y,
+    zoom: 2.6,
+  }, false);
+};
+function beginSolo(save, startPaused) {
   $('#veil').classList.remove('match-ended');
-  state = Sim.create();
+  state = save.state;
   observedTowerLosses.clear();
   knownBraises.clear();
   observedBraisesCycle = -1;
   controlGroupsUI?.reset();
   selected.clear();
-  player = chosen;
-  soloAI = createAI(1 - player, $('#aiDifficulty').value, state);
+  player = save.player;
+  soloDifficulty = save.difficulty;
+  soloAI = createAI(1 - player, soloDifficulty, state);
+  nextSoloSaveAt = state.time + soloSaveInterval;
   running = true;
-  paused = false;
-  zoom = 2.6;
-  cameraX = state.bases[player].x;
-  cameraY = state.bases[player].y;
+  paused = startPaused;
+  zoom = save.zoom;
+  cameraX = save.cameraX;
+  cameraY = save.cameraY;
   layout();
   setupPortraits();
   $('#veil').style.display = 'none';
   $('#pause').innerHTML = iconSvg('pause');
+  if (startPaused) openPauseMenu();
   updateUI();
-  notify('Explorez avec vos unités. Glisser : caméra · Maintenir + glisser : sélection · 2 doigts : zoom');
-};
+  if (!startPaused) {
+    notify('Explorez avec vos unités. Glisser : caméra · Maintenir + glisser : sélection · 2 doigts : zoom');
+  }
+}
 $('#all').onclick = () => {
   fieldDoubleTap.reset();
   panelContext = {};
@@ -401,6 +451,10 @@ for (const id of ['vibrationEnabled', 'joystickEnabled', 'voiceVolume', 'ambienc
   });
 }
 applySettings();
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') saveActiveSolo();
+});
+window.addEventListener('pagehide', saveActiveSolo);
 function closePauseMenu() {
   if ($('#pauseMenu').hidden) return;
   $('#pauseMenu').hidden = true;
@@ -481,6 +535,7 @@ $('#quitGame').onclick = () => {
   }
   closePauseMenu();
   running = false;
+  discardSoloSave();
   selected.clear();
   $('#veil').style.display = 'flex';
   updateAmbience();
@@ -871,6 +926,7 @@ addEventListener('keydown', (e) => {
 function finish() {
   closePauseMenu();
   running = false;
+  if (!net) discardSoloSave();
   if (net)
     $('#roomStatus').textContent = 'Duel terminé. Quittez le salon pour en créer un nouveau.';
   $('#modalTitle').textContent = state.winner === player ? 'Victoire !' : 'Votre base est tombée';
@@ -1249,6 +1305,10 @@ function frame(t) {
     if (!net) {
       soloAI.update(state);
       Sim.tick(state, dt);
+      if (state.time >= nextSoloSaveAt) {
+        saveActiveSolo();
+        nextSoloSaveAt += soloSaveInterval;
+      }
     }
     if (state.winner !== null) finish();
     if (toastTime > 0 && (toastTime -= dt) <= 0) $('#toast').textContent = '';
