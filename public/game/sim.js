@@ -134,7 +134,17 @@ for (let y = 0; y < ROWS; y++) {
     walk[y * COLS + x] = traversable(x * CELL + CELL / 2, y * CELL + CELL / 2) ? 1 : 0;
   }
 }
+const routePrev = new Int32Array(walk.length);
+const routeQueue = new Int32Array(walk.length);
+const routeStamp = new Uint32Array(walk.length);
+const routeDirections = [1, 0, -1, 0, 0, 1, 0, -1, 1, 1, -1, 1, 1, -1, -1, -1];
+let routeGeneration = 0;
+
 function nearest(x, y) {
+  if (x >= 0 && x < W && y >= 0 && y < H && x % CELL !== 0 && y % CELL !== 0) {
+    const cell = Math.floor(y / CELL) * COLS + Math.floor(x / CELL);
+    if (walk[cell]) return cell;
+  }
   let best = -1,
     d = Infinity;
   for (let i = 0; i < walk.length; i++)
@@ -150,40 +160,41 @@ function nearest(x, y) {
   return best;
 }
 function route(x, y, tx, ty) {
-  let a = nearest(x, y),
-    b = nearest(tx, ty);
-  if (a === b) return [];
-  let queue = [a],
-    head = 0,
-    prev = new Int32Array(walk.length).fill(-1);
-  prev[a] = a;
-  while (head < queue.length && prev[b] === -1) {
-    let i = queue[head++],
-      ix = i % COLS,
-      iy = Math.floor(i / COLS);
-    for (let [dx, dy] of [
-      [1, 0],
-      [-1, 0],
-      [0, 1],
-      [0, -1],
-      [1, 1],
-      [-1, 1],
-      [1, -1],
-      [-1, -1],
-    ]) {
-      let nx = ix + dx,
-        ny = iy + dy,
-        n = ny * COLS + nx;
-      if (nx < 0 || nx >= COLS || ny < 0 || ny >= ROWS || !walk[n] || prev[n] !== -1) continue;
+  routeGeneration = (routeGeneration + 1) >>> 0;
+  if (routeGeneration === 0) {
+    routeStamp.fill(0);
+    routeGeneration = 1;
+  }
+  const generation = routeGeneration;
+  const start = nearest(x, y);
+  const end = nearest(tx, ty);
+  if (start === end || start === -1 || end === -1) return [];
+  let head = 0;
+  let tail = 1;
+  routeQueue[0] = start;
+  routeStamp[start] = generation;
+  while (head < tail && routeStamp[end] !== generation) {
+    const i = routeQueue[head++];
+    const ix = i % COLS;
+    const iy = Math.floor(i / COLS);
+    for (let direction = 0; direction < routeDirections.length; direction += 2) {
+      const dx = routeDirections[direction];
+      const dy = routeDirections[direction + 1];
+      const nx = ix + dx;
+      const ny = iy + dy;
+      const n = ny * COLS + nx;
+      if (nx < 0 || nx >= COLS || ny < 0 || ny >= ROWS || !walk[n] || routeStamp[n] === generation) continue;
       if (dx && dy && (!walk[i + dx] || !walk[i + dy * COLS])) continue;
-      prev[n] = i;
-      queue.push(n);
+      routePrev[n] = i;
+      routeStamp[n] = generation;
+      routeQueue[tail++] = n;
     }
   }
-  if (prev[b] === -1) return [];
-  let out = [];
-  for (let n = b; n !== a; n = prev[n])
+  if (routeStamp[end] !== generation) return [];
+  const out = [];
+  for (let n = end; n !== start; n = routePrev[n]) {
     out.push({ x: (n % COLS) * CELL + 10, y: Math.floor(n / COLS) * CELL + 10 });
+  }
   return out.reverse();
 }
 function forest(u) {
