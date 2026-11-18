@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { CendreSim as S } from '../public/game/sim.js';
 import { command, pack, unpack, view } from '../lib/match.mjs';
+import { decodeSnapshotFog } from '../public/game/snapshot-fog.js';
 import { clampCamera, minimapToWorld } from '../public/game/camera.js';
 
 const initial = S.create();
@@ -105,6 +106,7 @@ for (const team of [0, 1]) {
 const restored = unpack(pack(initial));
 for (const team of [0, 1]) {
   const client = view(restored, team);
+  decodeSnapshotFog(client, team);
   assert.equal(client.visible[team].length, S.COLS * S.ROWS);
   assert.equal(client.explored[team].length, S.COLS * S.ROWS);
   assert.deepEqual(client.bases.map(({ x, y }) => ({ x, y })), initial.bases.map(({ x, y }) => ({ x, y })));

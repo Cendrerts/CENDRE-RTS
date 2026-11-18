@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { handle, pack, unpack, view, command } from '../lib/match.mjs';
 import { CendreSim as S } from '../public/game/sim.js';
+import { decodeSnapshotFog } from '../public/game/snapshot-fog.js';
 const sql = new DatabaseSync(':memory:');
 sql.exec(
   'CREATE TABLE matches(code TEXT PRIMARY KEY,data TEXT NOT NULL,revision INTEGER NOT NULL DEFAULT 0,expires INTEGER NOT NULL)',
@@ -42,6 +43,7 @@ await assert.rejects(
 const sync = (who, extra = {}, time = now + 4000) =>
   handle(db, { action: 'sync', code: a.code, token: who.token, ...extra }, time);
 let r = await sync(a);
+decodeSnapshotFog(r.state, r.team);
 assert.equal(r.status, 'playing');
 assert.equal(r.state.units.length, 1);
 assert.equal(r.state.units[0].type, 'commis');

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { Match } from '../server/match-do.js';
+import { decodeSnapshotFog } from '../public/game/snapshot-fog.js';
 
 class Clock {
   time = 100000;
@@ -132,6 +133,7 @@ game.ctx.acceptWebSocket(reconnect);
 await game.match.webSocketMessage(reconnect, JSON.stringify({ type: 'hello', token: game.second.token }));
 assert.equal(reconnect.messages[0].type, 'session');
 const snapshot = reconnect.messages[1];
+decodeSnapshotFog(snapshot.state, snapshot.team);
 assert.equal(snapshot.type, 'snapshot');
 assert.equal(snapshot.state.time, game.match.sim.time);
 assert(snapshot.state.units.some((entry) => entry.id === unit.id));
