@@ -398,11 +398,13 @@ export function createAI(team, difficulty = 'normal', state = null) {
       let economyThreat = null;
       let recallingArmy = false;
       let extensionRecall = false;
-      const concentratedPush = brutal && threats.length >= 8;
+      // Reserve the deep shelter for opening pushes.
+      const concentratedPush = brutal && state.time < 360 && threats.length >= 8;
       if (brutal) {
         // Regroup distant defenders before a superior force reaches the workers.
         const approachingArmy = observedArmy.filter((enemy) => distance(base, enemy) < 2200);
-        if (approachingArmy.length >= 15 && approachingArmy.length >= army.length * 1.5 && !committedAssault) {
+        // D30 : après 12 min, le siège tardif décide
+        if (state.time < 720 && approachingArmy.length >= 15 && approachingArmy.length >= army.length * 1.5 && !committedAssault) {
           if (state.time >= evacuationCoverUntil) {
             const coveringArmy = army.filter((unit) => distance(unit, rally) > 240);
             for (const unit of coveringArmy) {
