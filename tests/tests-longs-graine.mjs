@@ -20,6 +20,7 @@ const result = spawnSync(process.execPath, ['tests/ia-sans-blocage.mjs', '--grai
 assert.ifError(result.error);
 assert.equal(result.status, 0, result.stderr);
 const lines = result.stdout.trim().split('\n');
+// Résultat revalidé avec le seuil de contre-attaque après une perte visible (#181).
 const expected = 'Seed 23: cooks, 411.8s, rats team 0, rubies 35/700, waves 1/2, bank seconds 0/0';
 assert.deepEqual(lines.filter((line) => line.startsWith('Seed ')), [expected]);
 const reports = lines.filter((line) => line.startsWith('releve ')).map((line) => JSON.parse(line.slice(7)));
