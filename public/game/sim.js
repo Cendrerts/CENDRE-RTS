@@ -1630,6 +1630,114 @@ function predictMotion(state, unit, command, dt) {
   }
 }
 
+// Chaque objet est stocké une seule fois. Les valeurs entre crochets
+// désignent une entrée du graphe ou une valeur absente du JSON natif.
+function serialize(state) {
+  const nodes = [];
+  const indices = new Map();
+  function encode(value) {
+    if (value === undefined) return ['undefined'];
+    if (Number.isNaN(value)) return ['NaN'];
+    if (value === Infinity) return ['Infinity'];
+    if (value === -Infinity) return ['-Infinity'];
+    if (Object.is(value, -0)) return ['-0'];
+    if (value === null || typeof value !== 'object') return value;
+    if (indices.has(value)) return [indices.get(value)];
+
+    const index = nodes.length;
+    indices.set(value, index);
+    nodes.push(null);
+    if (value instanceof Uint8Array) {
+      nodes[index] = ['bytes', Array.from(value)];
+    } else if (Array.isArray(value)) {
+      nodes[index] = ['array', Array.from(value, encode)];
+    } else {
+      nodes[index] = ['object', Object.fromEntries(
+        Object.entries(value).map(([key, item]) => [key, encode(item)]),
+      )];
+    }
+    return [index];
+  }
+
+  encode(state);
+  return JSON.stringify({ version: 1, nodes });
+}
+
+function restore(texte) {
+  if (typeof texte !== 'string') return null;
+  try {
+    const save = JSON.parse(texte);
+    if (save?.version !== 1 || !Array.isArray(save.nodes) || !save.nodes.length) return null;
+
+    const nodes = save.nodes;
+    const objects = nodes.map((node) => {
+      if (!Array.isArray(node) || node.length !== 2) throw new TypeError();
+      const [kind, contents] = node;
+      if (kind === 'object' && contents && typeof contents === 'object' && !Array.isArray(contents)) {
+        return {};
+      }
+      if (kind === 'array' && Array.isArray(contents)) return [];
+      if (kind === 'bytes' && Array.isArray(contents) &&
+          contents.every((byte) => Number.isInteger(byte) && byte >= 0 && byte <= 255)) {
+        return Uint8Array.from(contents);
+      }
+      throw new TypeError();
+    });
+
+    function decode(value) {
+      if (value === null || typeof value === 'boolean' || typeof value === 'string' ||
+          Number.isFinite(value)) return value;
+      if (Array.isArray(value) && value.length === 1) {
+        const [reference] = value;
+        if (Number.isInteger(reference) && reference >= 0 && reference < objects.length) {
+          return objects[reference];
+        }
+        if (reference === 'undefined') return undefined;
+        if (reference === 'NaN') return NaN;
+        if (reference === 'Infinity') return Infinity;
+        if (reference === '-Infinity') return -Infinity;
+        if (reference === '-0') return -0;
+      }
+      throw new TypeError();
+    }
+
+    // Tous les objets existent déjà quand on rétablit les liens.
+    for (const [index, [kind, contents]] of nodes.entries()) {
+      const object = objects[index];
+      if (kind === 'array') {
+        for (const value of contents) object.push(decode(value));
+      } else if (kind === 'object') {
+        for (const [key, value] of Object.entries(contents)) {
+          Object.defineProperty(object, key, {
+            value: decode(value),
+            enumerable: true,
+            writable: true,
+            configurable: true,
+          });
+        }
+      }
+    }
+
+    const state = objects[0];
+    const collections = [
+      'units', 'monsters', 'bases', 'mines', 'slots', 'camps', 'corpses', 'watchtowers',
+      'braises', 'queues', 'shots', 'damageEvents', 'devourEvents', 'heroProgress',
+      'matchCounters', 'controlGroups', 'rubies', 'ingredients', 'incomeMultiplier',
+    ];
+    if (nodes[0][0] !== 'object' || !collections.every((key) => Array.isArray(state[key]))) return null;
+    if (!['time', 'id', 'monsterId', 'aiClock', 'fogClock', 'braisesNextAt']
+      .every((key) => Number.isFinite(state[key]))) return null;
+    if (![null, 0, 1].includes(state.winner) || !state.ragout || !state.festin) return null;
+    for (const fog of [state.visible, state.explored]) {
+      if (!Array.isArray(fog) || fog.length !== 2 ||
+          !fog.every((grid) => grid instanceof Uint8Array && grid.length === walk.length)) return null;
+    }
+    return state;
+  } catch {
+    return null;
+  }
+}
+
 export const CendreSim = {
   devour,
   cancelDevour,
@@ -1671,6 +1779,8 @@ export const CendreSim = {
   route,
   forest,
   create,
+  serialize,
+  restore,
   configureIncome,
   spawn,
   recruit,
