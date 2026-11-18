@@ -100,12 +100,12 @@ if (replay.seed === null && replay.block === null) {
         const active = progress !== previous[team];
         previous[team] = progress;
         inactive[team] = state.rubies[team] > 200 && !active ? inactive[team] + 0.1 : 0;
-        assert(inactive[team] <= 30, `Inactive AI: game ${game}, team ${team}`);
+        assert(inactive[team] <= 30, `Inactive AI: game ${game + 1}, team ${team}`);
       }
       S.tick(state, 0.1);
     }
-    assert.notEqual(state.winner, null, `Game ${game} must finish`);
-    assert(state.time < 1500, `Game ${game} exceeds 25 minutes`);
+    assert.notEqual(state.winner, null, `Game ${game + 1} must finish`);
+    assert(state.time < 1500, `Game ${game + 1} exceeds 25 minutes`);
 
     if (state.winner === normal) wins++;
     console.log(`Game ${game + 1}: ${state.time.toFixed(1)}s, winner ${state.winner === normal ? 'normal' : 'facile'}`);
@@ -304,14 +304,14 @@ function playSeries(strong, weak, minimumWins) {
     if (replay.seed !== null) {
       console.log(`expansion ${game + 1}: ${firstExpansion === null ? null : firstExpansion.toFixed(1)}`);
     }
-    assert.notEqual(state.winner, null, `${strong}/${weak}, game ${game}: no winner after 25 minutes`);
+    assert.notEqual(state.winner, null, `${strong}/${weak}, game ${game + 1}: no winner after 25 minutes (rejouer : node tests/ai.mjs --serie ${strong}-${weak} --graine ${game + 1})`);
     if (state.winner === strongTeam) victories++;
     if (strong === 'difficile') {
       if (firstExpansion !== null && firstExpansion < 240) earlyExpansions++;
       if (state.time > 720 && state.winner !== strongTeam) {
         assert(controllers[strongTeam].metrics.waves >= 3, `Only ${controllers[strongTeam].metrics.waves} waves in ${state.time}s`);
       }
-      if (samples) assert(rubySum / samples < 250, `Game ${game}: average bank ${rubySum / samples}`);
+      if (samples) assert(rubySum / samples < 250, `Game ${game + 1}: average bank ${rubySum / samples} (rejouer : node tests/ai.mjs --serie ${strong}-${weak} --graine ${game + 1})`);
       bankSum += rubySum;
       bankSamples += samples;
     }
