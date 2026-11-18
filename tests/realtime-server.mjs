@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { Match } from '../server/match-do.js';
 import worker from '../server/worker.js';
 import { CendreSim as S } from '../public/game/sim.js';
+import { decodeSnapshotFog } from '../public/game/snapshot-fog.js';
 
 class Clock {
   time = 100000;
@@ -124,6 +125,7 @@ assert(Math.abs(match.sim.time - 1) < 1e-10, '20 fixed ticks per second');
 assert.equal(sa.messages.filter((m) => m.type === 'snapshot').length, 10);
 assert.equal(ctx.storage.writes, writes, 'no storage writes per tick');
 const snapshot = sa.messages.at(-1).state;
+decodeSnapshotFog(snapshot, a.team);
 assert(snapshot.units.every((unit) => unit.team === a.team));
 assert.equal(snapshot.rubies[1], 0);
 assert(snapshot.visible[1].every((cell) => cell === 0));

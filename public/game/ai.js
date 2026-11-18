@@ -399,7 +399,7 @@ export function createAI(team, difficulty = 'normal', state = null) {
       let recallingArmy = false;
       let extensionRecall = false;
       // Reserve the deep shelter for opening pushes.
-      const concentratedPush = brutal && state.time < 360 && threats.length >= 8;
+      const concentratedPush = brutal && state.time < 300 && threats.length >= 8;
       if (brutal) {
         // Regroup distant defenders before a superior force reaches the workers.
         const approachingArmy = observedArmy.filter((enemy) => distance(base, enemy) < 2200);
@@ -582,8 +582,10 @@ export function createAI(team, difficulty = 'normal', state = null) {
       const garrisonIds = new Set(army.slice(0, garrison).map((unit) => unit.id));
       const attackers = brutal ? reserve.slice(garrison) : reserve;
       const waveStrength = attackers.reduce((strength, unit) => strength + unit.hp / Sim.stats(unit.type, 0).hp, 0);
-      const counterattack = brutal && (state.time < counterUntil || threats.length >= Math.max(3, knownArmy.size) && army.length > threats.length * 1.5) && attackers.length >= 5;
-      const minimumWaveStrength = brutal ? Math.min(12, settings.wave + metrics.waves * 2) : settings.wave;
+      const enemyArmyCleared = brutal && state.time < counterUntil;
+      const counterattack = brutal && (enemyArmyCleared || threats.length >= Math.max(3, knownArmy.size) && army.length > threats.length * 1.5) && attackers.length >= 5;
+      // A visible army wipe lets a smaller wave leave while the garrison stays home.
+      const minimumWaveStrength = enemyArmyCleared ? 5 : brutal ? Math.min(12, settings.wave + metrics.waves * 2) : settings.wave;
       const enoughTroops = waveStrength >= minimumWaveStrength && (attackWindow || counterattack);
       const overdue = lastWave > 0 && state.time - lastWave > waveTravelTime;
       const assembly = brutal ? attackers : reserve;
