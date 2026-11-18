@@ -11,7 +11,10 @@ spawnState.mines = [];
 for (const team of [0, 1]) {
   for (const type of ['commis', 'knight']) {
     Sim.spawn(spawnState, type, team);
-    const unit = spawnState.units.at(-1);
+    const spawnedId = spawnState.units.at(-1).id;
+    const reference = view(spawnState, team, { compactUnits: false });
+    const unit = reference.units.find((entry) => entry.id === spawnedId);
+    assert.ok(unit, `${type}, équipe ${team}`);
     for (const [field, fallback] of Object.entries(SNAPSHOT_UNIT_DEFAULTS)) {
       assert.deepEqual(unit[field], fallback, `${type}, équipe ${team}, ${field}`);
     }
@@ -37,7 +40,8 @@ for (const team of [0, 1]) {
     const { state: decoded } = await connected;
     assert.deepEqual(decoded.units, reference.units);
     for (const field of ['path', 'orderQueue']) {
-      const arrays = decoded.units.map((unit) => unit[field]).filter(Array.isArray);
+      const arrays = decoded.units.map((unit) => unit[field]);
+      assert.ok(arrays.every(Array.isArray), `${field}, équipe ${team}`);
       assert.equal(new Set(arrays).size, arrays.length, `${field}, équipe ${team}`);
     }
 
@@ -51,5 +55,4 @@ for (const team of [0, 1]) {
   }
 }
 
-// These fields are present on fresh units and preserve the old decoded shape.
-assert(reductions.every((reduction) => reduction >= 0.22));
+assert(reductions.every((reduction) => reduction >= 0.30));

@@ -1,6 +1,7 @@
-// Defaults shared by freshly spawned units before any automatic orders.
+// Snapshot defaults for freshly spawned units before any automatic orders.
 export const SNAPSHOT_UNIT_DEFAULTS = Object.freeze({
   path: Object.freeze([]),
+  orderQueue: Object.freeze([]),
   harvest: null,
   cargo: 0,
   hold: false,
