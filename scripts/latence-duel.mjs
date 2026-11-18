@@ -176,7 +176,7 @@ async function mesurerDelai(delai, gigue, trou) {
     return joueur.motion.position(unite, horloge.temps);
   };
   let precedente = positionAffichee();
-  const ordre = { kind: 'move', ids: [ouvrier.id], x: precedente.x + 300, y: precedente.y };
+  const ordre = { kind: 'move', ids: [ouvrier.id], x: precedente.x + 600, y: precedente.y };
   const uniteServeur = () => match.sim.units.find(({ id }) => id === ouvrier.id);
   const distanceServeurInitiale = distance(uniteServeur(), ordre);
   const distanceInitiale = distance(precedente, ordre);
@@ -187,7 +187,7 @@ async function mesurerDelai(delai, gigue, trou) {
   let sautMax = 0;
   let ecartServeur;
   const deplacements = [];
-  for (let image = 1; image * INTERVALLE_IMAGE <= 2000; image++) {
+  for (let image = 1; image * INTERVALLE_IMAGE <= 3000; image++) {
     const ecoule = image * INTERVALLE_IMAGE;
     if (ecoule > 1000 && ecartServeur === undefined) {
       // À 1 s, l'écran affiche encore l'image rendue à 992 ms.
@@ -204,6 +204,9 @@ async function mesurerDelai(delai, gigue, trou) {
     sautMax = Math.max(sautMax, deplacement);
     precedente = position;
   }
+  // À 3 s, l'écran affiche encore l'image rendue à 2992 ms.
+  await horloge.avancer(INSTANT_ORDRE + 3000);
+  const ecartServeur3s = distance(precedente, uniteServeur());
 
   if (distance(uniteServeur(), ordre) >= distanceServeurInitiale) {
     throw new Error('L’ouvrier du serveur ne s’est pas rapproché de la destination.');
@@ -218,7 +221,10 @@ async function mesurerDelai(delai, gigue, trou) {
   }
   for (const { client } of joueurs) client.close();
   await Promise.all(attentes);
-  return { delai, gigue, trou, premiereImage, sautMax, ecartServeur, sautsVisibles, messagesGroupes: messagesGroupesMesures };
+  return {
+    delai, gigue, trou, premiereImage, sautMax, ecartServeur, ecartServeur3s, sautsVisibles,
+    messagesGroupes: messagesGroupesMesures,
+  };
 }
 
 export async function mesurerLatenceDuel(delais = DELAIS_PAR_DEFAUT, gigues = GIGUES_PAR_DEFAUT) {
@@ -250,13 +256,14 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       options.set(option, liste.split(',').map(Number));
     }
     const resultat = await mesurerLatenceDuel(options.get('--delai'), options.get('--gigue'));
-    console.table(resultat.delais.map(({ delai, gigue, trou, premiereImage, sautMax, ecartServeur, sautsVisibles }) => ({
+    console.table(resultat.delais.map(({ delai, gigue, trou, premiereImage, sautMax, ecartServeur, ecartServeur3s, sautsVisibles }) => ({
       'Délai aller (ms)': delai,
       'Gigue (ms)': gigue,
       'Trou (ms)': trou ? DUREE_TROU : 0,
       premiereImage,
       'sautMax (px)': sautMax.toFixed(2),
       'ecartServeur (px)': ecartServeur.toFixed(2),
+      'ecartServeur3s (px)': ecartServeur3s.toFixed(2),
       sautsVisibles,
     })));
     console.log(JSON.stringify(resultat));
