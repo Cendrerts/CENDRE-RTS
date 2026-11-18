@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { createAI } from '../public/game/ai.js';
 import { CendreSim as Sim } from '../public/game/sim.js';
-import { clearSoloSave, readSoloSave, restoreSoloSave, writeSoloSave } from '../public/game/solo-save.js';
+import { clearSoloSave, readSoloSave, restoreSoloSave, soloSaveLabel, writeSoloSave } from '../public/game/solo-save.js';
 
 const key = 'cendre-solo-v1';
 const storage = new Map();
@@ -29,7 +29,9 @@ function play(current, enemy, seconds) {
   }
 }
 
-play(state, opponentController, 240);
+play(state, opponentController, 120);
+assert.equal(soloSaveLabel({ state, player, difficulty }), 'Cuistots · Brutal · 2:00');
+play(state, opponentController, 120);
 assert(Math.abs(state.time - 240) < 1e-8);
 state.controlGroups[3] = [state.units.find((unit) => unit.team === player).id];
 const camera = { cameraX: 620, cameraY: 700, zoom: 2.8 };

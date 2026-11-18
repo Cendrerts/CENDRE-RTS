@@ -4,7 +4,7 @@ import { panelModel, panelVisibility } from './panel.js';
 import { readSettings, writeSettings } from './settings.js';
 import { bindAudioUnlock } from './audio-unlock.js';
 import { shouldAutoPause } from './auto-pause.js';
-import { clearSoloSave, readSoloSave, writeSoloSave } from './solo-save.js';
+import { clearSoloSave, readSoloSave, soloSaveLabel, writeSoloSave } from './solo-save.js';
 import { handleAbandonChoice } from './abandon-duel.js';
 import { minimapToWorld, clampCamera, attackDirection, groupAttackAlerts } from './camera.js';
 'use strict';
@@ -326,13 +326,8 @@ resumeSoloButton.hidden = true;
 $('.factions').before(resumeSoloButton);
 let savedSolo = readSoloSave();
 if (savedSolo) {
-  const { state: savedState, player: savedPlayer, difficulty } = savedSolo;
-  const faction = savedPlayer === 0 ? 'Cuistots' : 'Rats';
-  const difficultyLabel = difficulty[0].toUpperCase() + difficulty.slice(1);
-  const minutes = Math.floor(savedState.time / 60);
-  const seconds = String(Math.floor(savedState.time % 60)).padStart(2, '0');
   const details = document.createElement('small');
-  details.textContent = `${faction} · ${difficultyLabel} · ${minutes}:${seconds}`;
+  details.textContent = soloSaveLabel(savedSolo);
   resumeSoloButton.append('Reprendre la partie', details);
   resumeSoloButton.hidden = false;
 }

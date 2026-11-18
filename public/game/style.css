@@ -69,3 +69,6 @@ footer{border-top:3px ridge #626963;background:linear-gradient(#202a2a,#0c1319);
 .intro:has(#start:disabled) #resumeSolo {
   display: none;
 }
+#veil:not(.invitation, .match-ended) .intro:has(#resumeSolo:not([hidden])):has(#start:enabled) #modalText {
+  display: none;
+}

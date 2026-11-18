@@ -3,6 +3,15 @@ import { CendreSim as Sim } from './sim.js';
 
 const SOLO_SAVE_KEY = 'cendre-solo-v1';
 
+export function soloSaveLabel({ state, player, difficulty }) {
+  const faction = player === 0 ? 'Cuistots' : 'Rats';
+  const difficultyLabel = difficulty[0].toUpperCase() + difficulty.slice(1);
+  const elapsedSeconds = Math.round(state.time);
+  const minutes = Math.floor(elapsedSeconds / 60);
+  const seconds = String(elapsedSeconds % 60).padStart(2, '0');
+  return `${faction} · ${difficultyLabel} · ${minutes}:${seconds}`;
+}
+
 export function restoreSoloSave(text) {
   try {
     const save = JSON.parse(text);
