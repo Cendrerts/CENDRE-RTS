@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -11,11 +11,15 @@ import { loadedScenario } from '../scripts/render-scenario.mjs';
 
 const directory = await mkdtemp(join(tmpdir(), 'cendre-sim-identique-'));
 try {
-  // Keep the reference's own imports, including the AI's sim.js binding.
   const files = execFileSync('git', ['ls-tree', '-r', '--name-only', 'origin/main', 'public/game/'], { encoding: 'utf8' }).trim().split('\n');
   for (const file of files.filter((name) => name.endsWith('.js'))) {
     const source = execFileSync('git', ['show', `origin/main:${file}`]);
     await writeFile(join(directory, file.slice('public/game/'.length)), source);
+  }
+  // Use the branch's AI on both sides so the test only compares the simulations.
+  for (const file of ['ai.js', 'ai-config.js']) {
+    const source = await readFile(new URL(`../public/game/${file}`, import.meta.url));
+    await writeFile(join(directory, file), source);
   }
   await writeFile(join(directory, 'package.json'), '{"type":"module"}');
   const { CendreSim: Reference } = await import(pathToFileURL(join(directory, 'sim.js')));
