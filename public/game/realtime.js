@@ -9,6 +9,13 @@ export function networkQuality(rtt) {
 import { CendreSim as Sim } from './sim.js';
 import { decodeSnapshotFog } from './snapshot-fog.js';
 import { decodeSnapshotUnits } from './snapshot-units.js';
+
+const maxUnitSpeed = Math.max(...Object.keys(Sim.TYPES).flatMap((type) => [
+  Sim.stats(type, 0).speed,
+  Sim.stats(type, 1).speed,
+]));
+const displaySpeedLimit = 1.5 * maxUnitSpeed / 1000;
+
 // A session survives socket replacement; sequence numbers make retries idempotent.
 export class RealtimeClient {
   constructor({ url = '/api/ws', Socket = globalThis.WebSocket, clock = globalThis,
@@ -270,8 +277,20 @@ export class RealtimeMotion {
     const dx = target.x - previous.x;
     const dy = target.y - previous.y;
     const distance = Math.hypot(dx, dy);
-    // 120 ms correction, with a screen-space-safe velocity ceiling at maximum zoom.
-    const amount = Math.min(1, distance ? dt * 0.1 / distance : 1);
+    let speedLimit = displaySpeedLimit;
+    if (!prediction && !correction && this.snapshots.length > 1) {
+      const preceding = this.snapshots.at(-2);
+      const precedingUnit = preceding.units.get(unit.id);
+      const elapsed = latest.time - preceding.time;
+      if (precedingUnit && elapsed > 0) {
+        const latestUnit = latest.units.get(unit.id);
+        const observedSpeed = Math.hypot(latestUnit.x - precedingUnit.x, latestUnit.y - precedingUnit.y) / elapsed;
+        // A burst of snapshots should not make a slow unit catch up at full speed.
+        // Keep some room for corrections after the unit has stopped.
+        speedLimit = Math.min(displaySpeedLimit, Math.max(displaySpeedLimit / 2, 1.5 * observedSpeed));
+      }
+    }
+    const amount = Math.min(1, distance ? dt * speedLimit / distance : 1);
     const result = { x: previous.x + dx * amount, y: previous.y + dy * amount, at: now };
     this.display.set(unit.id, result);
     return result;
