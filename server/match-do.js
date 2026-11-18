@@ -11,6 +11,7 @@ export class Match {
     this.room = null;
     this.timer = null;
     this.snapshotFields = new WeakMap();
+    this.snapshotUnits = new WeakMap();
     this.ready = state.blockConcurrencyWhile(async () => {
       const saved = await state.storage.get('room');
       if (saved) {
@@ -66,6 +67,14 @@ export class Match {
       fields[field] = JSON.stringify(state[field]);
       if (previousFields?.[field] === fields[field]) delete state[field];
     }
+    const previousUnits = this.snapshotUnits.get(socket);
+    const units = new Map();
+    state.units = state.units.filter((unit) => {
+      const json = JSON.stringify(unit);
+      units.set(unit.id, json);
+      return previousUnits?.get(unit.id) !== json;
+    });
+    state.unitIds = Array.from(units.keys());
     const sent = this.send(socket, {
       type: 'snapshot',
       code: this.room.code,
@@ -77,7 +86,10 @@ export class Match {
       reason: this.room.reason || null,
       state,
     });
-    if (sent) this.snapshotFields.set(socket, fields);
+    if (sent) {
+      this.snapshotFields.set(socket, fields);
+      this.snapshotUnits.set(socket, units);
+    }
   }
 
   disconnectCountdown() {

@@ -42,6 +42,7 @@ export class RealtimeClient {
     }
     const socket = this.socket;
     const snapshotFields = {};
+    let snapshotUnits = new Map();
     socket.onopen = () => {
       if (socket === this.socket && !this.closed) {
         socket.send(JSON.stringify({ type: 'hello', token: this.parameters.token }));
@@ -69,6 +70,14 @@ export class RealtimeClient {
         if (state) {
           decodeSnapshotFog(state, data.team);
           decodeSnapshotUnits(state);
+          if (Array.isArray(state.unitIds)) {
+            for (const unit of state.units) {
+              snapshotUnits.set(unit.id, unit);
+            }
+            snapshotUnits = new Map(state.unitIds.map((id) => [id, snapshotUnits.get(id)]));
+            state.units = structuredClone(Array.from(snapshotUnits.values()));
+            delete state.unitIds;
+          }
           for (const field of ['slots', 'explored']) {
             if (Object.hasOwn(state, field)) {
               snapshotFields[field] = state[field];
