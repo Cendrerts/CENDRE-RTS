@@ -15,7 +15,12 @@ for (const override of [
 }
 
 const source = readFileSync(new URL('../public/game/game.js', import.meta.url), 'utf8');
-const handlers = source.slice(source.indexOf('function closePauseMenu()'), source.indexOf("$('#closePause').onclick"));
+const save = source.slice(source.indexOf('function saveActiveSolo()'), source.indexOf('function discardSoloSave()'));
+const listenerStart = source.indexOf("window.addEventListener('pagehide', saveActiveSolo)");
+const handlers = source.slice(
+  source.lastIndexOf("document.addEventListener('visibilitychange'", listenerStart),
+  source.indexOf("$('#closePause').onclick"),
+);
 const frame = source.slice(source.indexOf('function frame(t)'), source.indexOf('// Player-filtered snapshots'));
 for (const multiplayer of [false, true]) {
   for (const eventName of ['visibilitychange', 'pagehide']) {
@@ -27,8 +32,12 @@ for (const multiplayer of [false, true]) {
       return elements.get(selector);
     };
     const listeners = new Map();
-    const addEventListener = (name, handler) => listeners.set(name, handler);
+    const addEventListener = (name, handler) => {
+      if (!listeners.has(name)) listeners.set(name, []);
+      listeners.get(name).push(handler);
+    };
     const state = { time: 0, winner: null };
+    const savedTimes = [];
     const context = vm.createContext({
       $, shouldAutoPause, running: true, paused: false,
       net: multiplayer ? {} : null,
@@ -36,6 +45,9 @@ for (const multiplayer of [false, true]) {
       window: { addEventListener },
       touchUI: null, radial: null, updateAmbience() {},
       debug: false, debugDisplay: null, last: 0, lastUI: 0, toastTime: 0, state,
+      nextSoloSaveAt: 15, soloSaveInterval: 15,
+      cameraX: 0, cameraY: 0, zoom: 2, soloDifficulty: 'normal',
+      writeSoloSave({ state: saved }) { savedTimes.push(saved.time); },
       soloAI: { update() {} },
       Sim: { tick(current, dt) { current.time += dt; } },
       gestures: { tick() {} }, applyFieldGesture() {},
@@ -43,12 +55,13 @@ for (const multiplayer of [false, true]) {
       preparedUnits: [], prepareDrawList() { return []; }, player: 0,
       requestAnimationFrame() {},
     });
-    vm.runInContext(handlers + frame, context);
-    listeners.get(eventName)();
+    vm.runInContext(save + handlers + frame, context);
+    for (const listener of listeners.get(eventName)) listener();
     assert.equal(context.paused, !multiplayer);
     assert.equal($('#pauseMenu').hidden, multiplayer);
+    assert.deepEqual(savedTimes, multiplayer ? [] : [0]);
     context.document.visibilityState = 'visible';
-    listeners.get('visibilitychange')();
+    for (const listener of listeners.get('visibilitychange')) listener();
     vm.runInContext('frame(50); frame(100);', context);
     assert.equal(state.time, 0);
     assert.equal(context.paused, !multiplayer);
@@ -56,6 +69,13 @@ for (const multiplayer of [false, true]) {
     if (!multiplayer) {
       vm.runInContext('closePauseMenu(); frame(150);', context);
       assert(state.time > 0);
+      state.time = 14.98;
+      vm.runInContext('frame(160);', context);
+      assert.deepEqual(savedTimes, [0]);
+      vm.runInContext('frame(180); frame(200);', context);
+      assert.equal(savedTimes.length, 2);
+      assert(savedTimes[1] >= 15);
+      assert.equal(context.nextSoloSaveAt, 30);
     }
   }
 }

@@ -50,3 +50,22 @@ footer{border-top:3px ridge #626963;background:linear-gradient(#202a2a,#0c1319);
 #veil.match-ended #matchActions{display:flex;gap:10px;margin-top:14px}
 #veil.match-ended #matchActions button{display:block;flex:1;min-height:44px;margin:0;font-size:15px}
 #veil.match-ended #matchMenu{background:#17282c;color:#eee6d5;border:1px solid #78806a}
+
+#resumeSolo {
+  min-height: 44px;
+  padding-block: 9px;
+}
+#resumeSolo small {
+  display: block;
+  font-size: 12px;
+}
+@media (max-height: 550px), (max-width: 850px) {
+  #resumeSolo {
+    padding-block: 5px;
+  }
+}
+#veil.invitation #resumeSolo,
+#veil.match-ended #resumeSolo,
+.intro:has(#start:disabled) #resumeSolo {
+  display: none;
+}
