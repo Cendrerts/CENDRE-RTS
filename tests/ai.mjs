@@ -1,10 +1,11 @@
+// node tests/ai.mjs --bloc poussees joue uniquement Brutal contre les poussées scriptées.
 import { parseReplayOptions, reportReplay } from '../scripts/tests-longs-options.mjs';
 import assert from 'node:assert/strict';
 import { CendreSim as S } from '../public/game/sim.js';
 import { createAI } from '../public/game/ai.js';
 import { BUILD_ORDERS, DIFFICULTIES } from '../public/game/ai-config.js';
 
-const replay = parseReplayOptions(1, 20, true);
+const replay = parseReplayOptions(1, 20, true, process.argv.slice(2), true);
 
 let seed = 18;
 function random() {
@@ -12,7 +13,7 @@ function random() {
   return seed / 4294967296;
 }
 
-if (replay.seed === null) {
+if (replay.seed === null && replay.block === null) {
   assert.deepEqual(Object.keys(DIFFICULTIES), ['facile', 'normal', 'difficile', 'brutal', 'impitoyable']);
   assert.throws(() => createAI(0, 'unknown'));
   for (const order of BUILD_ORDERS) {
@@ -329,8 +330,10 @@ function playSeries(strong, weak, minimumWins) {
   }
   console.log(`PASS: ${strong} beats ${weak} ${victories}/20 (required ${minimumWins}).`);
 }
-playSeries('difficile', 'normal', 15);
-playSeries('brutal', 'difficile', 13);
+if (replay.block === null) {
+  playSeries('difficile', 'normal', 15);
+  playSeries('brutal', 'difficile', 13);
+}
 
 if (replay.seed === null) {
   // Fixed orders only: the push trigger is the placement of the second depot.
@@ -434,7 +437,9 @@ if (replay.seed === null) {
     }
     assert(victories >= 8, `Brutal won ${victories}/10 against ${strategy}`);
   }
+}
 
+if (replay.seed === null && replay.block === null) {
   // With no rush to repel, both factions launch a real first wave before 4 min.
   for (const team of [0, 1]) {
     const state = S.create();
