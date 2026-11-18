@@ -7,6 +7,7 @@ export function networkQuality(rtt) {
 }
 
 import { CendreSim as Sim } from './sim.js';
+import { decodeSnapshotFog } from './snapshot-fog.js';
 // A session survives socket replacement; sequence numbers make retries idempotent.
 export class RealtimeClient {
   constructor({ url = '/api/ws', Socket = globalThis.WebSocket, clock = globalThis,
@@ -62,6 +63,7 @@ export class RealtimeClient {
         this.awaitingPong = false;
         this.ping();
       } else if (data.type === 'snapshot') {
+        decodeSnapshotFog(data.state, data.team);
         if (!this.connected) {
           this.connected = true;
           this.clock.clearTimeout(this.graceTimer);

@@ -20,6 +20,7 @@ import { initTouchUI } from './mobile.js';
 import { createControlGroups, groupUnits, assignGroup, initControlGroups } from './control-groups.js';
 import { NetworkMotion, pollDelay } from './network-motion.js';
 import { RealtimeClient, RealtimeMotion, normalizeRoomCode, networkQuality } from './realtime.js';
+import { decodeSnapshotFog } from './snapshot-fog.js';
 let realtime = null;
 import { ratSVG, ratSprites } from './rats.js';
 import { cookSVG, cookSprites } from './cooks.js';
@@ -1305,6 +1306,7 @@ async function requestMatch(body) {
   }
   if (!r.ok)
     throw Object.assign(new Error(data.error || 'Connexion impossible.'), { status: r.status });
+  decodeSnapshotFog(data.state, data.team);
   return data;
 }
 function persistRoom() {
