@@ -538,8 +538,8 @@ export function createAI(team, difficulty = 'normal', state = null) {
       // between recapturable depots scattered across the enlarged map.
       const decisiveAttack = (metrics.waves >= 2 || state.time >= 480) &&
         (power(army) >= power(observedArmy) || saturated || state.rubies[team] >= 800 || state.time >= 600);
-      // A late siege launched at the cap keeps streaming reinforcements
-      // after losses drop the population below the cap (D30).
+      // A siege launched at the cap keeps receiving reinforcements after losses.
+      // A decisive wave with a rebuilding bank can sustain a siege before 12 min.
       // A siege held more than 90 s at an intermediate stage is stalled:
       // drop its route so the army regroups into a massed wave.
       const lastStage = waveRoute ? waveRoute.points.length - 1 : 0;
@@ -547,15 +547,18 @@ export function createAI(team, difficulty = 'normal', state = null) {
       if (siegeStalled) {
         waveRoute = null;
       }
-      if (brutal && saturated && state.time >= 720 && waveRoute) waveRoute.siege = true;
-      const lateSiege = brutal && state.time >= 720 && (saturated || waveRoute?.siege === true);
+      if (waveRoute && brutal && (saturated && state.time >= 720 ||
+        decisiveAttack && waveRoute.rebuildingBank && waveRoute.points.length > 1)) {
+        waveRoute.siege = true;
+      }
+      const sustainedSiege = brutal && (waveRoute?.siege === true || saturated && state.time >= 720);
       const destination = (!decisiveAttack && [...remembered.values()].sort((a, b) => distance(a, state.bases[team]) - distance(b, state.bases[team]))[0]) || intelligence.bases[0] || { x: enemyBase.x, y: enemyBase.y };
-      if (brutal && !(lateSiege && decisiveAttack && waveRoute) && !defending && lastWave > 0 && state.time - lastWave > waveTravelTime && lastRegroup < lastWave) {
+      if (brutal && !(sustainedSiege && decisiveAttack && waveRoute) && !defending && lastWave > 0 && state.time - lastWave > waveTravelTime && lastRegroup < lastWave) {
         deployed.clear();
         Sim.order(state, army.filter((unit) => !brazierUnits.has(unit.id) && unit.id !== towerCapture?.unit).map((unit) => unit.id), rally.x, rally.y, null, false);
         lastRegroup = state.time;
       }
-      const reinforcing = lateSiege && decisiveAttack && waveRoute && !defending && state.time >= retreatUntil &&
+      const reinforcing = sustainedSiege && decisiveAttack && waveRoute && !defending && state.time >= retreatUntil &&
         army.some((unit) => waveRoute.ids.has(unit.id) && deployed.has(unit.id) && !unit.retreat);
       if (reinforcing) {
         const reinforcements = army.filter((unit) => !brazierUnits.has(unit.id) && !deployed.has(unit.id) && !unit.retreat && unit.id !== scout && !raiders.has(unit.id));
@@ -603,7 +606,7 @@ export function createAI(team, difficulty = 'normal', state = null) {
         if (!members.length) {
           waveRoute = null;
         } else if (members.filter((unit) => distance(unit, point) < 140).length >= members.length * 0.7 &&
-          !(lateSiege && decisiveAttack && waveRoute.index === waveRoute.points.length - 1)) {
+          !(sustainedSiege && decisiveAttack && waveRoute.index === waveRoute.points.length - 1)) {
           waveRoute.index++;
           waveRoute.stageAt = state.time;
           if (waveRoute.index === waveRoute.points.length) {

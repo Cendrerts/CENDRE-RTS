@@ -134,14 +134,18 @@ for (const team of [0, 1]) {
     Math.hypot(point.x - state.bases[1].x, point.y - state.bases[1].y) < 200)));
 }
 
-// Streaming reinforcements require Brutal, the population cap and 720 seconds.
-for (const [difficulty, time, capped, expected] of [
+// A capped decisive wave with a rebuilding bank can take reinforcements early.
+for (const [difficulty, time, capped, expected, bank = 0] of [
   ['normal', 800, true, false],
   ['difficile', 800, true, false],
   ['brutal', 718, true, false],
   ['brutal', 800, false, false],
   ['brutal', 720, true, true],
   ['impitoyable', 720, true, true],
+  ['brutal', 480, true, false, 799],
+  ['brutal', 480, true, true, 800],
+  ['impitoyable', 480, true, true, 800],
+  ['impitoyable', 480, false, false, 800],
 ]) {
   const state = Sim.create();
   state.units = [];
@@ -155,7 +159,12 @@ for (const [difficulty, time, capped, expected] of [
     unit.y = state.bases[0].y - 65;
     unit.path = [];
   }
-  state.rubies[0] = 0;
+  if (bank && capped) {
+    while (Sim.populationUsed(state, 0) < Sim.unitLimit(0)) {
+      state.queues[0].push({ type: 'knight' });
+    }
+  }
+  state.rubies[0] = bank;
   state.time = time;
   state.visible[0].fill(0);
   const controller = createAI(0, difficulty);
@@ -175,7 +184,7 @@ for (const [difficulty, time, capped, expected] of [
   controller.update(state);
   assert.equal(controller.metrics.waves, 1);
   assert.equal(reinforcement.orderQueue.length > 0, expected,
-    `${difficulty} at ${state.time}s, capped=${capped}: streaming reinforcements`);
+    `${difficulty} at ${state.time}s, capped=${capped}, bank=${bank}: streaming reinforcements`);
 }
 
 // A raid on an undefended expansion evacuates workers and recalls the army.
