@@ -10,6 +10,7 @@ export class Match {
     this.clock = clock;
     this.room = null;
     this.timer = null;
+    this.snapshotFields = new WeakMap();
     this.ready = state.blockConcurrencyWhile(async () => {
       const saved = await state.storage.get('room');
       if (saved) {
@@ -48,15 +49,24 @@ export class Match {
   send(socket, message) {
     try {
       socket.send(JSON.stringify(message));
+      return true;
     } catch {
       this.webSocketClose(socket);
+      return false;
     }
   }
 
   snapshot(socket) {
     const { team } = socket.deserializeAttachment();
     const player = this.room.players.find((entry) => entry.team === team);
-    this.send(socket, {
+    const state = view(this.sim, team);
+    const previousFields = this.snapshotFields.get(socket);
+    const fields = {};
+    for (const field of ['slots', 'explored']) {
+      fields[field] = JSON.stringify(state[field]);
+      if (previousFields?.[field] === fields[field]) delete state[field];
+    }
+    const sent = this.send(socket, {
       type: 'snapshot',
       code: this.room.code,
       team,
@@ -65,8 +75,9 @@ export class Match {
       countdown: Math.max(0, Math.ceil((this.room.startAt - this.now()) / 1000)) || 0,
       disconnectCountdown: this.disconnectCountdown(),
       reason: this.room.reason || null,
-      state: view(this.sim, team),
+      state,
     });
+    if (sent) this.snapshotFields.set(socket, fields);
   }
 
   disconnectCountdown() {

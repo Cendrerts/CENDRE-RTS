@@ -40,6 +40,7 @@ export class RealtimeClient {
       return;
     }
     const socket = this.socket;
+    const snapshotFields = {};
     socket.onopen = () => {
       if (socket === this.socket && !this.closed) {
         socket.send(JSON.stringify({ type: 'hello', token: this.parameters.token }));
@@ -63,7 +64,17 @@ export class RealtimeClient {
         this.awaitingPong = false;
         this.ping();
       } else if (data.type === 'snapshot') {
-        decodeSnapshotFog(data.state, data.team);
+        const state = data.state;
+        if (state) {
+          decodeSnapshotFog(state, data.team);
+          for (const field of ['slots', 'explored']) {
+            if (Object.hasOwn(state, field)) {
+              snapshotFields[field] = state[field];
+            } else if (Object.hasOwn(snapshotFields, field)) {
+              state[field] = snapshotFields[field];
+            }
+          }
+        }
         if (!this.connected) {
           this.connected = true;
           this.clock.clearTimeout(this.graceTimer);
