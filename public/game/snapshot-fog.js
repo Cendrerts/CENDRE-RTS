@@ -11,9 +11,8 @@ export function encodeFogGrid(grid) {
 }
 
 export function decodeSnapshotFog(state, team) {
-  if (typeof state?.visible !== 'string') return;
-
   for (const field of ['visible', 'explored']) {
+    if (typeof state?.[field] !== 'string') continue;
     const bytes = atob(state[field]);
     const grid = new Array(cellCount);
     for (let cell = 0; cell < cellCount; cell++) {
