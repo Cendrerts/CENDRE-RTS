@@ -13,7 +13,7 @@ const DEBUT_TROU = INSTANT_ORDRE + 500;
 const DUREE_TROU = 300;
 const INTERVALLE_IMAGE = 16;
 
-class Horloge {
+export class Horloge {
   temps = 0;
   taches = new Set();
   Date = { now: () => this.temps };
