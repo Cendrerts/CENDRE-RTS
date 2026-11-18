@@ -440,17 +440,17 @@ if (replay.seed === null) {
 }
 
 if (replay.seed === null && replay.block === null) {
-  // With no rush to repel, both factions launch a real first wave before 4 min.
+  // D57 : grande carte, 1re vague avant 5 min
   for (const team of [0, 1]) {
     const state = S.create();
     const controller = createAI(team, 'brutal');
-    while (state.time < 240 && controller.metrics.waves === 0) {
+    while (state.time < 300 && controller.metrics.waves === 0) {
       controller.update(state);
       S.tick(state, 0.1);
     }
     assert(controller.metrics.waves > 0);
     assert(controller.metrics.waveSizes[0] >= 7);
-    assert(state.time < 240);
+    assert(state.time < 300);
   }
 
   // Brutal delays its expansion without defenders, even with money to pay.
@@ -497,7 +497,7 @@ if (replay.seed === null && replay.block === null) {
   }
 
   // A visibly destroyed army opens an immediate counterattack, before the timer.
-  {
+  for (const difficulty of ['brutal', 'impitoyable']) {
     const state = S.create();
     state.units = [];
     for (let index = 0; index < 8; index++) S.spawn(state, 'knight', 0);
@@ -510,8 +510,9 @@ if (replay.seed === null && replay.block === null) {
     state.rubies[0] = 0;
     state.time = 60;
     S.visibility(state);
-    const controller = createAI(0, 'brutal');
+    const controller = createAI(0, difficulty);
     controller.update(state);
+    assert.equal(controller.intelligence.composition.knight, 3);
     assert.equal(controller.metrics.waves, 0);
     state.units = state.units.filter((unit) => unit.team === 0);
     S.visibility(state);
