@@ -373,21 +373,7 @@ $('#hold').onclick = () => {
     sendCommand({ kind: 'hold', ids: [...selected] });
     return;
   }
-  state.units
-    .filter((u) => selected.has(u.id))
-    .forEach((u) => {
-      Sim.cancelDevour(u);
-      u.orderQueue = [];
-      u.queueActive = false;
-      u.patrol = null;
-      u.manual = null;
-      u.followId = null;
-      u.harvest = null;
-      u.retreat = false;
-      u.path = [];
-      u.target = null;
-      u.hold = true;
-    });
+  Sim.hold(state, player, [...selected]);
   notify('Position tenue · Attaque des ennemis à portée');
 };
 function applySettings() {

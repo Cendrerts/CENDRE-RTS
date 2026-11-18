@@ -919,6 +919,23 @@ function cancelDevour(unit) {
   unit.retreat = false;
   unit.stuck = null;
 }
+function hold(s, team, ids) {
+  const selectedIds = new Set(ids);
+  for (const unit of s.units) {
+    if (unit.team !== team || !(unit.hp > 0) || !selectedIds.has(unit.id)) continue;
+    cancelDevour(unit);
+    unit.orderQueue = [];
+    unit.queueActive = false;
+    unit.patrol = null;
+    unit.manual = null;
+    unit.followId = null;
+    unit.harvest = null;
+    unit.retreat = false;
+    unit.path = [];
+    unit.target = null;
+    unit.hold = true;
+  }
+}
 function devour(s, team, ids, corpseId) {
   const corpse = s.corpses.find((item) => item.id === corpseId && item.expiresAt > s.time);
   const units = s.units.filter((unit) => ids.includes(unit.id) && unit.team === team && unit.hp > 0);
@@ -1616,6 +1633,7 @@ function predictMotion(state, unit, command, dt) {
 export const CendreSim = {
   devour,
   cancelDevour,
+  hold,
   cookDish,
   cookDishBlockReason,
   ragoutActive,
