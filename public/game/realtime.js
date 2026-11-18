@@ -8,6 +8,7 @@ export function networkQuality(rtt) {
 
 import { CendreSim as Sim } from './sim.js';
 import { decodeSnapshotFog } from './snapshot-fog.js';
+import { decodeSnapshotUnits } from './snapshot-units.js';
 // A session survives socket replacement; sequence numbers make retries idempotent.
 export class RealtimeClient {
   constructor({ url = '/api/ws', Socket = globalThis.WebSocket, clock = globalThis,
@@ -67,6 +68,7 @@ export class RealtimeClient {
         const state = data.state;
         if (state) {
           decodeSnapshotFog(state, data.team);
+          decodeSnapshotUnits(state);
           for (const field of ['slots', 'explored']) {
             if (Object.hasOwn(state, field)) {
               snapshotFields[field] = state[field];
