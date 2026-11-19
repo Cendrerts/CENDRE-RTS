@@ -49,6 +49,7 @@ export class RealtimeClient {
     }
     const socket = this.socket;
     const snapshotFields = {};
+    let queueSnapshot;
     let snapshotUnits = new Map();
     socket.onopen = () => {
       if (socket === this.socket && !this.closed) {
@@ -91,6 +92,19 @@ export class RealtimeClient {
             } else if (Object.hasOwn(snapshotFields, field)) {
               state[field] = snapshotFields[field];
             }
+          }
+          if (Object.hasOwn(state, 'queues')) {
+            queueSnapshot = { queues: structuredClone(state.queues), time: state.time };
+          } else if (queueSnapshot) {
+            const elapsed = state.time - queueSnapshot.time;
+            state.queues = queueSnapshot.queues.map((queue) => {
+              const activeProducers = new Set();
+              return queue.map((job) => {
+                if (activeProducers.has(job.producerId)) return { ...job };
+                activeProducers.add(job.producerId);
+                return { ...job, remaining: Math.max(0, job.remaining - elapsed) };
+              });
+            });
           }
         }
         if (!this.connected) {
