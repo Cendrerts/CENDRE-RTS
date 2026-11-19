@@ -179,7 +179,7 @@ for (const peer of peers) {
   attachSocket(peer);
   peer.client.open();
   const wire = snapshot(peer);
-  assert.deepEqual(wire.units.map((unit) => unit.id), wire.unitIds);
+  assert.deepEqual(wire.units, JSON.parse(JSON.stringify(view(match.sim, player.team).units)));
 }
 
 console.log(`Brutal miroir (graine 18, ${count} snapshots) — units : ${(before / count).toFixed(1)} → ${(after / count).toFixed(1)} octets en moyenne.`);
@@ -242,3 +242,42 @@ for (let tick = 1; tick <= 40; tick++) {
   assert.deepEqual(getVisibleMiner(), initialMinerView);
 }
 assert(Math.abs(miner.harvest.elapsed - initialElapsed - 2) < 1e-8);
+
+match.sim = Sim.create();
+attachSocket(observer);
+observer.client.open();
+const walker = match.sim.units.find((unit) => unit.team === team);
+Sim.order(match.sim, [walker.id], walker.x + 18, walker.y + 18);
+const start = snapshot(observer);
+Sim.tick(match.sim, 0.05);
+assert(walker.path.length > 0);
+const moving = snapshot(observer).units.find((unit) => unit.id === walker.id);
+const previousWalker = start.units.find((unit) => unit.id === walker.id);
+assert.deepEqual(Object.keys(moving).sort(), ['id', 'x', 'y']);
+assert.notEqual(moving.x, previousWalker.x);
+assert.notEqual(moving.y, previousWalker.y);
+
+walker.hold = true;
+assert.deepEqual(snapshot(observer).units.find((unit) => unit.id === walker.id), { id: walker.id, hold: true });
+walker.hold = false;
+assert.deepEqual(snapshot(observer).units.find((unit) => unit.id === walker.id), { id: walker.id, unset: ['hold'] });
+
+// La vue serveur filtre le chemin interne. Injecter un chemin sur le fil
+// permet de vérifier sa suppression et la restauration de la valeur par défaut.
+const path = [{ x: moving.x + 10, y: moving.y + 10 }];
+const receivePathChange = (change) => observer.client.socket.receive(JSON.stringify({
+  type: 'snapshot',
+  team,
+  state: { unitIds: start.unitIds, units: [{ id: walker.id, ...change }] },
+}));
+receivePathChange({ path });
+assert.deepEqual(observer.decoded.units.find((unit) => unit.id === walker.id).path, path);
+receivePathChange({ unset: ['path'] });
+assert.deepEqual(observer.decoded.units, view(match.sim, team, { compactUnits: false }).units);
+
+// Un serveur qui perd son cache peut renvoyer la liste complète sur le même socket.
+walker.hold = true;
+snapshot(observer);
+walker.hold = false;
+match.snapshotUnits.delete(observer.socket);
+assert.equal(snapshot(observer).resetUnits, true);

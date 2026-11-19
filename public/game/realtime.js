@@ -77,15 +77,22 @@ export class RealtimeClient {
         const state = data.state;
         if (state) {
           decodeSnapshotFog(state, data.team);
-          decodeSnapshotUnits(state);
           if (Array.isArray(state.unitIds)) {
-            for (const unit of state.units) {
-              snapshotUnits.set(unit.id, unit);
+            if (state.resetUnits) snapshotUnits.clear();
+            for (const { unset, ...change } of state.units) {
+              const unit = snapshotUnits.get(change.id) ?? {};
+              Object.assign(unit, change);
+              for (const field of unset ?? []) {
+                delete unit[field];
+              }
+              snapshotUnits.set(change.id, unit);
             }
             snapshotUnits = new Map(state.unitIds.map((id) => [id, snapshotUnits.get(id)]));
             state.units = structuredClone(Array.from(snapshotUnits.values()));
             delete state.unitIds;
+            delete state.resetUnits;
           }
+          decodeSnapshotUnits(state);
           for (const field of ['slots', 'explored', 'mines', 'camps', 'watchtowers', 'braises', 'bases', 'corpses']) {
             if (Object.hasOwn(state, field)) {
               snapshotFields[field] = state[field];
