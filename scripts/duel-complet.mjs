@@ -12,6 +12,7 @@ const DELAI = 40;
 const MINUTE = 60_000;
 const TICKS_PAR_SECONDE = 20;
 const GRAINE = 42;
+const CHAMPS_STABLES = ['mines', 'camps', 'watchtowers', 'braises', 'bases'];
 
 function creerSocket(match, horloge, sockets, joueurs) {
   return class Socket {
@@ -32,9 +33,10 @@ function creerSocket(match, horloge, sockets, joueurs) {
           // Figer la vue au moment de l’émission, avant les 40 ms de transport.
           let reference = null;
           if (JSON.parse(data).type === 'snapshot') {
-            const { units, mines } = view(match.sim, equipe, { compactUnits: false });
+            const vue = view(match.sim, equipe, { compactUnits: false });
+            const champs = Object.fromEntries(CHAMPS_STABLES.map((champ) => [champ, vue[champ]]));
             reference = {
-              ...JSON.parse(JSON.stringify({ units, mines })),
+              ...JSON.parse(JSON.stringify({ units: vue.units, ...champs })),
               visible: match.sim.visible[equipe].slice(),
               explored: match.sim.explored[equipe].slice(),
             };
@@ -115,8 +117,10 @@ function verifierSnapshot(joueur, { state, team, status }) {
       }
     }
   }
-  if (!isDeepStrictEqual(reference.mines, state.mines)) {
-    ecart(null, premierChamp(reference.mines, state.mines, ['mines']));
+  for (const champ of CHAMPS_STABLES) {
+    if (!isDeepStrictEqual(reference[champ], state[champ])) {
+      ecart(null, premierChamp(reference[champ], state[champ], [champ]));
+    }
   }
 }
 
