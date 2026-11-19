@@ -66,9 +66,20 @@ export class Match {
     const state = view(this.sim, team);
     const previousFields = this.snapshotFields.get(socket);
     const fields = { time: state.time };
-    for (const field of ['slots', 'explored', 'mines', 'camps', 'watchtowers', 'braises', 'bases', 'corpses']) {
+    for (const field of ['slots', 'explored', 'camps', 'watchtowers', 'braises', 'bases', 'corpses']) {
       fields[field] = JSON.stringify(state[field]);
       if (previousFields?.[field] === fields[field]) delete state[field];
+    }
+    fields.mines = state.mines.map((mine) => JSON.stringify(mine));
+    if (previousFields?.mines.length === fields.mines.length) {
+      const minesChanged = [];
+      for (const [index, mine] of state.mines.entries()) {
+        if (fields.mines[index] !== previousFields.mines[index]) {
+          minesChanged.push([index, mine]);
+        }
+      }
+      if (minesChanged.length > 0) state.minesChanged = minesChanged;
+      delete state.mines;
     }
     fields.queues = JSON.stringify(state.queues.map((queue) =>
       queue.map(({ id, type, producerId, total }) => [id, type, producerId, total]),
