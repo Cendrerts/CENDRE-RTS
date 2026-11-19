@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { RealtimeClient, RealtimeMotion, normalizeRoomCode, networkQuality } from '../public/game/realtime.js';
 import { CendreSim as Sim } from '../public/game/sim.js';
+import { Match } from '../server/match-do.js';
 class Clock {
   time = 0;
   next = 0;
@@ -91,6 +92,72 @@ sockets.at(-1).message({ type: 'ack', seq: 1 });
 assert.equal(client.pending.size, 0);
 assert.equal(client.session.code, 'ABCDEFG');
 client.close();
+
+const match = new Match({
+  storage: { get: async () => null },
+  blockConcurrencyWhile: (callback) => callback(),
+}, {}, { Date: { now: () => clock.time } });
+await match.ready;
+match.room = { code: 'ABCDEFG', started: false, startAt: 0, players: [{ team: 0, seq: 0 }] };
+match.sim = Sim.create();
+let damageState;
+const damageClient = new RealtimeClient({
+  Socket,
+  clock,
+  now: () => clock.time,
+  onSnapshot: ({ state }) => {
+    damageState = state;
+  },
+});
+const damageConnection = damageClient.connect({ code: 'ABCDEFG', token: 'secret' });
+clock.advance(clock.time + 1);
+await damageConnection;
+const createPeer = (socket) => ({
+  deserializeAttachment: () => ({ team: 0 }),
+  send: (raw) => {
+    const message = JSON.parse(raw);
+    socket.lastWireState = message.state;
+    socket.onmessage({ data: raw });
+  },
+});
+const firstSocket = sockets.at(-1);
+const firstPeer = createPeer(firstSocket);
+const sendSnapshot = (time, peer = firstPeer) => {
+  match.sim.time = time;
+  match.snapshot(peer);
+};
+const hit = { x: 300, y: 200, team: 0, time: 1 };
+sendSnapshot(0.9);
+match.sim.damageEvents.push(hit);
+sendSnapshot(1);
+assert.deepEqual(firstSocket.lastWireState.damageEvents, [hit]);
+assert.deepEqual(damageState.damageEvents, [hit]);
+damageState.damageEvents[0].x = 0;
+damageState.damageEvents.pop();
+sendSnapshot(1);
+assert.equal(Object.hasOwn(firstSocket.lastWireState, 'damageEvents'), false);
+assert.deepEqual(damageState.damageEvents, [hit]);
+const previousDamageState = damageState;
+sendSnapshot(2.99);
+assert.equal(Object.hasOwn(firstSocket.lastWireState, 'damageEvents'), false);
+assert.deepEqual(damageState.damageEvents, [hit]);
+sendSnapshot(3);
+assert.deepEqual(damageState.damageEvents, []);
+assert.deepEqual(previousDamageState.damageEvents, [hit]);
+
+const recentHit = { ...hit, time: 3.1 };
+const unseenHit = { ...hit, time: 3.2 };
+match.sim.damageEvents.push(recentHit);
+sendSnapshot(3.1);
+firstSocket.close();
+clock.advance(clock.time + 501);
+const secondSocket = sockets.at(-1);
+assert.notEqual(secondSocket, firstSocket);
+match.sim.damageEvents.push(unseenHit);
+sendSnapshot(3.3, createPeer(secondSocket));
+assert.deepEqual(secondSocket.lastWireState.damageEvents, [recentHit, unseenHit]);
+assert.deepEqual(damageState.damageEvents, [recentHit, unseenHit]);
+damageClient.close();
 
 const deadlineClockStart = clock.time;
 const expiring = new RealtimeClient({ Socket, clock, now: () => clock.time, onStatus: (status) => statuses.push(status) });

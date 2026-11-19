@@ -65,7 +65,7 @@ export class Match {
     const player = this.room.players.find((entry) => entry.team === team);
     const state = view(this.sim, team);
     const previousFields = this.snapshotFields.get(socket);
-    const fields = {};
+    const fields = { time: state.time };
     for (const field of ['slots', 'explored', 'mines', 'camps', 'watchtowers', 'braises', 'bases', 'corpses']) {
       fields[field] = JSON.stringify(state[field]);
       if (previousFields?.[field] === fields[field]) delete state[field];
@@ -74,6 +74,10 @@ export class Match {
       queue.map(({ id, type, producerId, total }) => [id, type, producerId, total]),
     ));
     if (previousFields?.queues === fields.queues) delete state.queues;
+    if (previousFields) {
+      state.damageEvents = state.damageEvents.filter((event) => event.time > previousFields.time);
+      if (state.damageEvents.length === 0) delete state.damageEvents;
+    }
     const previousUnits = this.snapshotUnits.get(socket);
     const units = new Map();
     const changes = [];
