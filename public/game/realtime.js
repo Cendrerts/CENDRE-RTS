@@ -51,6 +51,7 @@ export class RealtimeClient {
     const snapshotFields = {};
     let queueSnapshot;
     let snapshotUnits = new Map();
+    let damageEvents = [];
     socket.onopen = () => {
       if (socket === this.socket && !this.closed) {
         socket.send(JSON.stringify({ type: 'hello', token: this.parameters.token }));
@@ -77,6 +78,10 @@ export class RealtimeClient {
         const state = data.state;
         if (state) {
           decodeSnapshotFog(state, data.team);
+          if (state.resetUnits) damageEvents = [];
+          damageEvents.push(...(state.damageEvents ?? []));
+          damageEvents = damageEvents.filter((event) => state.time - event.time < 2);
+          state.damageEvents = structuredClone(damageEvents);
           if (Array.isArray(state.unitIds)) {
             if (state.resetUnits) snapshotUnits.clear();
             for (const { unset, ...change } of state.units) {

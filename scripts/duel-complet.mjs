@@ -40,7 +40,9 @@ function creerSocket(match, horloge, sockets, joueurs) {
             const vue = view(match.sim, equipe, { compactUnits: false });
             const champs = Object.fromEntries(CHAMPS_STABLES.map((champ) => [champ, vue[champ]]));
             reference = {
-              ...JSON.parse(JSON.stringify({ units: vue.units, queues: vue.queues, ...champs })),
+              ...JSON.parse(JSON.stringify({
+                units: vue.units, queues: vue.queues, damageEvents: vue.damageEvents, ...champs,
+              })),
               visible: match.sim.visible[equipe].slice(),
               explored: match.sim.explored[equipe].slice(),
             };
@@ -92,6 +94,13 @@ function premierChamp(attendu, recu, chemin = []) {
   return chemin.join('.') || 'unité';
 }
 
+function retirerEvenement(evenements, evenement) {
+  const index = evenements.findIndex((candidat) => isDeepStrictEqual(candidat, evenement));
+  if (index === -1) return false;
+  evenements.splice(index, 1);
+  return true;
+}
+
 function verifierSnapshot(joueur, { state, team, status }) {
   joueur.etat = state;
   joueur.statut = status;
@@ -131,6 +140,16 @@ function verifierSnapshot(joueur, { state, team, status }) {
     if (!isDeepStrictEqual(reference[champ], state[champ])) {
       ecart(null, premierChamp(reference[champ], state[champ], [champ]));
     }
+  }
+  const recents = joueur.degatsVus.filter((event) => state.time - event.time < 2);
+  const degatsRecus = [...(state.damageEvents ?? [])];
+  for (const evenement of reference.damageEvents) {
+    if (!retirerEvenement(degatsRecus, evenement)) ecart(null, 'damageEvents.manquant');
+    retirerEvenement(recents, evenement);
+  }
+  joueur.degatsVus = [...recents, ...reference.damageEvents];
+  for (const evenement of degatsRecus) {
+    if (!retirerEvenement(recents, evenement)) ecart(null, 'damageEvents.inattendu');
   }
   const files = state.queues?.map((file, equipe) => file.map((job, index) => {
     const attendu = reference.queues[equipe]?.[index];
@@ -229,7 +248,7 @@ export async function mesurerDuelComplet(minutes = 10) {
   const attentes = [];
   const joueurs = [0, 1].map((equipe) => ({
     equipe, token: `duel-complet-${equipe}`, sequence: 0, receptions: [], ecarts: 0,
-    dernierTotalEcarts: 0, premierEcart: null,
+    dernierTotalEcarts: 0, premierEcart: null, degatsVus: [],
   }));
   let graine = GRAINE;
   const aleatoire = () => {
