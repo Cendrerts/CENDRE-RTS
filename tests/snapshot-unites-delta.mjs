@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readdir, readFile } from 'node:fs/promises';
 import { view } from '../lib/match.mjs';
 import { createAI } from '../public/game/ai.js';
 import { CendreSim as Sim } from '../public/game/sim.js';
@@ -183,3 +184,40 @@ for (const peer of peers) {
 
 console.log(`Brutal miroir (graine 18, ${count} snapshots) — units : ${(before / count).toFixed(1)} → ${(after / count).toFixed(1)} octets en moyenne.`);
 console.log(`Avec le champ unitIds : ${((after + idsOverhead) / count).toFixed(1)} octets en moyenne.`);
+
+const gameDirectory = new URL('../public/game/', import.meta.url);
+for (const file of await readdir(gameDirectory, { recursive: true, withFileTypes: true })) {
+  if (!file.isFile() || ['sim.js', 'ai.js'].includes(file.name)) continue;
+  if (!/\.(?:[cm]?js|html)$/.test(file.name)) continue;
+  const source = await readFile(`${file.parentPath}/${file.name}`, 'utf8');
+  assert.doesNotMatch(source, /\b(?:harvest|h)\s*(?:\?\.|\.)\s*elapsed\b/, file.name);
+}
+
+match.sim = Sim.create();
+const team = observer.player.team;
+const miner = match.sim.units.find((unit) => unit.team === team && unit.type === 'commis');
+assert(Sim.gather(match.sim, team, [miner.id], team));
+for (let tick = 0; tick < 100 && miner.harvest.phase !== 'MINAGE'; tick++) {
+  Sim.tick(match.sim, 0.05);
+}
+assert.equal(miner.harvest.phase, 'MINAGE');
+
+attachSocket(observer);
+const firstSnapshot = snapshot(observer);
+const firstMiner = firstSnapshot.units.find((unit) => unit.id === miner.id);
+assert.deepEqual(firstMiner.harvest, { mine: team, phase: 'MINAGE' });
+const getVisibleMiner = () => view(match.sim, team, { compactUnits: false }).units
+  .find((unit) => unit.id === miner.id);
+const initialMinerView = getVisibleMiner();
+assert.deepEqual(initialMinerView.harvest, firstMiner.harvest);
+const initialElapsed = miner.harvest.elapsed;
+
+for (let tick = 1; tick <= 40; tick++) {
+  Sim.tick(match.sim, 0.05);
+  if (tick % 2 !== 0) continue;
+  const wire = snapshot(observer);
+  assert(wire.unitIds.includes(miner.id));
+  assert(!wire.units.some((unit) => unit.id === miner.id));
+  assert.deepEqual(getVisibleMiner(), initialMinerView);
+}
+assert(Math.abs(miner.harvest.elapsed - initialElapsed - 2) < 1e-8);

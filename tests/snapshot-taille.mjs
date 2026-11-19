@@ -48,12 +48,12 @@ for (const { name, state, limit } of scenarios) {
 const roundingState = Sim.create();
 const worker = roundingState.units.find((unit) => unit.team === 0);
 worker.hp = 49.96;
-worker.harvest = { mine: 0, elapsed: 0.126 };
+worker.harvest = { mine: 0, phase: 'MINAGE', depot: -1, elapsed: 0.126 };
 worker.orderQueue = [{ x: 123.456, y: 789, target: { id: 2 } }];
 worker.target = worker;
 const transmittedWorker = view(roundingState, 0).units.find((unit) => unit.id === worker.id);
 assert.equal(transmittedWorker.hp, 50);
-assert.deepEqual(transmittedWorker.harvest, { mine: 0, elapsed: 0.1 });
+assert.deepEqual(transmittedWorker.harvest, { mine: 0, phase: 'MINAGE', depot: -1 });
 assert.deepEqual(transmittedWorker.orderQueue, [{ x: 123.5, y: 789, target: { id: 2 } }]);
 assert(!Object.hasOwn(transmittedWorker, 'target'));
 assert(!Object.hasOwn(transmittedWorker, 'cool'));
