@@ -85,7 +85,7 @@ export class RealtimeClient {
             state.units = structuredClone(Array.from(snapshotUnits.values()));
             delete state.unitIds;
           }
-          for (const field of ['slots', 'explored', 'mines']) {
+          for (const field of ['slots', 'explored', 'mines', 'camps', 'watchtowers', 'braises', 'bases']) {
             if (Object.hasOwn(state, field)) {
               snapshotFields[field] = state[field];
             } else if (Object.hasOwn(snapshotFields, field)) {
