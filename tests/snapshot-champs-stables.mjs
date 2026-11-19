@@ -79,6 +79,8 @@ assert(Object.hasOwn(firstState, 'slots'));
 assert.equal(typeof firstState.explored, 'string');
 assert(Array.isArray(firstState.mines));
 const firstView = view(match.sim, player.team, { compactUnits: false });
+assert.deepEqual(firstState.mines, firstView.mines);
+assert(!Object.hasOwn(firstState, 'minesChanged'));
 for (const field of stableFields) {
   assert(Array.isArray(firstState[field]), field);
   assert.deepEqual(firstState[field], firstView[field], field);
@@ -91,6 +93,7 @@ const reducedState = JSON.parse(reduced).state;
 assert(!Object.hasOwn(reducedState, 'slots'));
 assert(!Object.hasOwn(reducedState, 'explored'));
 assert(!Object.hasOwn(reducedState, 'mines'));
+assert(!Object.hasOwn(reducedState, 'minesChanged'));
 for (const field of stableFields) {
   assert(!Object.hasOwn(reducedState, field), field);
 }
@@ -151,13 +154,19 @@ client.socket.receive(discovery);
 assert.deepEqual(received.at(-1).slots, builtState.slots);
 assert.deepEqual(received.at(-1).explored, expectedExplored);
 
-match.sim.mines[0].remaining--;
+const mineIndex = 1;
+match.sim.mines[mineIndex].remaining--;
 match.snapshot(socket);
 const mining = socket.messages.at(-1);
 const minedState = JSON.parse(mining).state;
-assert.equal(minedState.mines[0].remaining, firstState.mines[0].remaining - 1);
+const minedView = view(match.sim, player.team, { compactUnits: false });
+assert(!Object.hasOwn(minedState, 'mines'));
+assert.deepEqual(minedState.minesChanged, [[mineIndex, minedView.mines[mineIndex]]]);
+const beforeMining = received.at(-1);
 client.socket.receive(mining);
-assert.deepEqual(received.at(-1).mines, minedState.mines);
+assert.deepEqual(received.at(-1).mines, minedView.mines);
+assert(!Object.hasOwn(received.at(-1), 'minesChanged'));
+assert.deepEqual(beforeMining.mines, firstState.mines);
 
 Sim.spawn(match.sim, 'knight', player.team);
 const attacker = match.sim.units.at(-1);
@@ -192,7 +201,7 @@ const replacementSnapshot = replacement.messages.at(-1);
 const replacementState = JSON.parse(replacementSnapshot).state;
 assert.deepEqual(replacementState.slots, builtState.slots);
 assert.equal(replacementState.explored, casualtyState.explored ?? discoveryState.explored);
-assert.deepEqual(replacementState.mines, minedState.mines);
+assert(!Object.hasOwn(replacementState, 'minesChanged'));
 const disconnectedSocket = client.socket;
 disconnectedSocket.onclose();
 client.retry();
@@ -200,6 +209,8 @@ assert.notEqual(client.socket, disconnectedSocket);
 client.socket.receive(JSON.stringify({ type: 'session', code: player.code, token: player.token }));
 client.socket.receive(replacementSnapshot);
 const replacementView = view(match.sim, player.team, { compactUnits: false });
+assert.deepEqual(replacementState.mines, replacementView.mines);
+assert.deepEqual(received.at(-1).mines, replacementView.mines);
 for (const field of stableFields) {
   assert.deepEqual(replacementState[field], replacementView[field], field);
   assert.deepEqual(received.at(-1)[field], replacementView[field], field);

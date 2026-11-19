@@ -49,6 +49,7 @@ export class RealtimeClient {
     }
     const socket = this.socket;
     const snapshotFields = {};
+    let snapshotMines;
     let queueSnapshot;
     let snapshotUnits = new Map();
     let damageEvents = [];
@@ -98,7 +99,19 @@ export class RealtimeClient {
             delete state.resetUnits;
           }
           decodeSnapshotUnits(state);
-          for (const field of ['slots', 'explored', 'mines', 'camps', 'watchtowers', 'braises', 'bases', 'corpses']) {
+          if (Object.hasOwn(state, 'mines')) {
+            snapshotMines = state.mines;
+          } else if (snapshotMines) {
+            if (state.minesChanged) {
+              snapshotMines = snapshotMines.slice();
+              for (const [index, mine] of state.minesChanged) {
+                snapshotMines[index] = mine;
+              }
+            }
+            state.mines = snapshotMines;
+          }
+          delete state.minesChanged;
+          for (const field of ['slots', 'explored', 'camps', 'watchtowers', 'braises', 'bases', 'corpses']) {
             if (Object.hasOwn(state, field)) {
               snapshotFields[field] = state[field];
             } else if (Object.hasOwn(snapshotFields, field)) {
