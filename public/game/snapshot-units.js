@@ -5,6 +5,8 @@ export const SNAPSHOT_UNIT_DEFAULTS = Object.freeze({
   harvest: null,
   cargo: 0,
   hold: false,
+  queueActive: false,
+  patrol: null,
 });
 
 const defaults = Object.entries(SNAPSHOT_UNIT_DEFAULTS);
