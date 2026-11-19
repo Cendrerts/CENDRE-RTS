@@ -3,6 +3,9 @@ import { MatchError, command, digest, pack, unpack, view } from '../lib/match.mj
 
 const STEP_MS = 50;
 const SAVE_MS = 5000;
+const COMMAND_REFILL_MS = 100;
+const COMMAND_BURST = 20;
+const COMMAND_ERROR_INTERVAL_MS = 1000;
 
 export class Match {
   constructor(state, env, clock = globalThis) {
@@ -246,13 +249,14 @@ export class Match {
   }
 
   webSocketMessage(socket, raw) {
-    const receivedAttachment = socket.deserializeAttachment();
-    if (receivedAttachment.closed) return;
-    socket.serializeAttachment({ ...receivedAttachment, lastMessageAt: this.now() });
+    const attachment = socket.deserializeAttachment();
+    if (attachment.closed) return;
+    const now = this.now();
+    attachment.lastMessageAt = now;
+    socket.serializeAttachment(attachment);
     try {
       if (typeof raw !== 'string' || raw.length > 12000) throw new MatchError('Message incorrect.');
       const message = JSON.parse(raw);
-      const attachment = socket.deserializeAttachment();
       if (attachment.team === undefined) {
         return this.ctx.blockConcurrencyWhile(async () => {
           try {
@@ -287,6 +291,21 @@ export class Match {
         this.send(socket, { type: 'ack', seq: message.seq });
         if (message.seq <= player.seq) return;
         player.seq = message.seq;
+        // Count credit in milliseconds so partial refills stay exact.
+        const capacity = COMMAND_BURST * COMMAND_REFILL_MS;
+        const elapsed = Math.max(0, now - (attachment.commandRefillAt ?? now));
+        const credit = Math.min(capacity, (attachment.commandCredit ?? capacity) + elapsed);
+        if (credit < COMMAND_REFILL_MS) {
+          if (now - (attachment.commandErrorAt ?? -Infinity) >= COMMAND_ERROR_INTERVAL_MS) {
+            attachment.commandErrorAt = now;
+            socket.serializeAttachment(attachment);
+            this.send(socket, { type: 'error', error: "Trop d'ordres, ralentis." });
+          }
+          return;
+        }
+        attachment.commandCredit = credit - COMMAND_REFILL_MS;
+        attachment.commandRefillAt = now;
+        socket.serializeAttachment(attachment);
         if (!message.cmd || typeof message.cmd !== 'object' || Array.isArray(message.cmd))
           throw new MatchError('Commande incorrecte.');
         if (!['playing', 'disconnected'].includes(this.status()))
