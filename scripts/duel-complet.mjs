@@ -32,20 +32,28 @@ function creerSocket(match, horloge, sockets, joueurs) {
           const joueur = joueurs[equipe];
           // Figer la vue au moment de l’émission, avant les 40 ms de transport.
           let reference = null;
-          if (JSON.parse(data).type === 'snapshot') {
+          let octetsFilesOmises = 0;
+          const message = JSON.parse(data);
+          if (message.type === 'snapshot') {
             const vue = view(match.sim, equipe, { compactUnits: false });
             const champs = Object.fromEntries(CHAMPS_STABLES.map((champ) => [champ, vue[champ]]));
             reference = {
-              ...JSON.parse(JSON.stringify({ units: vue.units, ...champs })),
+              ...JSON.parse(JSON.stringify({ units: vue.units, queues: vue.queues, ...champs })),
               visible: match.sim.visible[equipe].slice(),
               explored: match.sim.explored[equipe].slice(),
             };
+            // Reconstituer la taille du même JSON avec le champ envoyé à chaque snapshot.
+            if (!Object.hasOwn(message.state, 'queues')) {
+              octetsFilesOmises = Buffer.byteLength(`,"queues":${JSON.stringify(reference.queues)}`);
+            }
           }
           const octets = Buffer.byteLength(data);
           horloge.setTimeout(() => {
             if (joueur) {
               joueur.reference = reference;
-              joueur.receptions.push({ temps: horloge.temps, octets, snapshot: reference !== null });
+              joueur.receptions.push({
+                temps: horloge.temps, octets, octetsFilesOmises, snapshot: reference !== null,
+              });
             }
             this.onmessage({ data });
           }, DELAI);
@@ -122,6 +130,16 @@ function verifierSnapshot(joueur, { state, team, status }) {
       ecart(null, premierChamp(reference[champ], state[champ], [champ]));
     }
   }
+  const files = state.queues?.map((file, equipe) => file.map((job, index) => {
+    const attendu = reference.queues[equipe]?.[index];
+    if (Math.abs(job.remaining - attendu?.remaining) <= 1e-6) {
+      return { ...job, remaining: attendu.remaining };
+    }
+    return job;
+  }));
+  if (!isDeepStrictEqual(reference.queues, files)) {
+    ecart(null, premierChamp(reference.queues, files, ['queues']));
+  }
 }
 
 function jouer(joueur, equipe, attaquer, aleatoire) {
@@ -173,6 +191,7 @@ function mesurer(receptions, debut, fin) {
   let gauche = 0;
   let fenetre = 0;
   let octets = 0;
+  let octetsFilesOmises = 0;
   let max = 0;
   let snapshots = 0;
   for (const [droite, reception] of receptions.entries()) {
@@ -183,10 +202,17 @@ function mesurer(receptions, debut, fin) {
     }
     if (reception.temps <= debut) continue;
     octets += reception.octets;
+    octetsFilesOmises += reception.octetsFilesOmises;
     max = Math.max(max, fenetre);
     snapshots += Number(reception.snapshot);
   }
-  return { octets, moyen: Math.round(1000 * octets / (fin - debut)), max, snapshots };
+  return {
+    octets,
+    moyen: Math.round(1000 * octets / (fin - debut)),
+    moyenAvant: Math.round(1000 * (octets + octetsFilesOmises) / (fin - debut)),
+    max,
+    snapshots,
+  };
 }
 
 export async function mesurerDuelComplet(minutes = 10) {

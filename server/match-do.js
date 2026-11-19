@@ -70,6 +70,10 @@ export class Match {
       fields[field] = JSON.stringify(state[field]);
       if (previousFields?.[field] === fields[field]) delete state[field];
     }
+    fields.queues = JSON.stringify(state.queues.map((queue) =>
+      queue.map(({ id, type, producerId, total }) => [id, type, producerId, total]),
+    ));
+    if (previousFields?.queues === fields.queues) delete state.queues;
     const previousUnits = this.snapshotUnits.get(socket);
     const units = new Map();
     state.units = state.units.filter((unit) => {
