@@ -195,6 +195,27 @@ for (const file of await readdir(gameDirectory, { recursive: true, withFileTypes
 
 match.sim = Sim.create();
 const team = observer.player.team;
+for (let index = 0; index < 3; index++) {
+  Sim.spawn(match.sim, 'knight', team);
+}
+const [idleUnit, patrollingUnit, queuedUnit] = match.sim.units.slice(-3);
+idleUnit.queueActive = false;
+idleUnit.patrol = null;
+Sim.patrol(match.sim, [patrollingUnit.id], patrollingUnit.x + 60, patrollingUnit.y);
+Sim.order(match.sim, [queuedUnit.id], queuedUnit.x + 60, queuedUnit.y, null, true, true);
+
+attachSocket(observer);
+const orderSnapshot = snapshot(observer);
+const idleOnWire = orderSnapshot.units.find((unit) => unit.id === idleUnit.id);
+const patrolOnWire = orderSnapshot.units.find((unit) => unit.id === patrollingUnit.id);
+const queueOnWire = orderSnapshot.units.find((unit) => unit.id === queuedUnit.id);
+assert(!Object.hasOwn(idleOnWire, 'queueActive'));
+assert(!Object.hasOwn(idleOnWire, 'patrol'));
+assert.ok(patrolOnWire.patrol);
+assert.deepEqual(patrolOnWire.patrol, patrollingUnit.patrol);
+assert.equal(queueOnWire.queueActive, true);
+
+match.sim = Sim.create();
 const miner = match.sim.units.find((unit) => unit.team === team && unit.type === 'commis');
 assert(Sim.gather(match.sim, team, [miner.id], team));
 for (let tick = 0; tick < 100 && miner.harvest.phase !== 'MINAGE'; tick++) {
