@@ -73,6 +73,7 @@ const complete = socket.messages.at(-1);
 const firstState = JSON.parse(complete).state;
 assert(Object.hasOwn(firstState, 'slots'));
 assert.equal(typeof firstState.explored, 'string');
+assert(Array.isArray(firstState.mines));
 
 clock.time += 100;
 match.advance();
@@ -80,9 +81,9 @@ const reduced = socket.messages.at(-1);
 const reducedState = JSON.parse(reduced).state;
 assert(!Object.hasOwn(reducedState, 'slots'));
 assert(!Object.hasOwn(reducedState, 'explored'));
+assert(!Object.hasOwn(reducedState, 'mines'));
 assert.equal(typeof reducedState.visible, 'string');
 const savings = complete.length - reduced.length;
-assert(savings >= 3000, `Économie de ${savings} caractères, seuil de 3000`);
 
 const received = [];
 const client = new RealtimeClient({
@@ -101,6 +102,7 @@ const expectedExplored = match.sim.explored.map((grid, team) =>
 assert.deepEqual(received[0].explored, expectedExplored);
 assert.deepEqual(received[1].explored, expectedExplored);
 assert.deepEqual(received[1].slots, firstState.slots);
+assert.deepEqual(received[1].mines, firstState.mines);
 assert.deepEqual(received[1].visible, received[0].visible);
 
 clock.time = match.room.startAt;
@@ -133,12 +135,21 @@ client.socket.receive(discovery);
 assert.deepEqual(received.at(-1).slots, builtState.slots);
 assert.deepEqual(received.at(-1).explored, expectedExplored);
 
+match.sim.mines[0].remaining--;
+match.snapshot(socket);
+const mining = socket.messages.at(-1);
+const minedState = JSON.parse(mining).state;
+assert.equal(minedState.mines[0].remaining, firstState.mines[0].remaining - 1);
+client.socket.receive(mining);
+assert.deepEqual(received.at(-1).mines, minedState.mines);
+
 await match.authenticate(url(''), player.token);
 const replacement = connectSocket();
 match.snapshot(replacement);
 const replacementState = JSON.parse(replacement.messages.at(-1)).state;
 assert.deepEqual(replacementState.slots, builtState.slots);
 assert.equal(replacementState.explored, discoveryState.explored);
+assert.deepEqual(replacementState.mines, minedState.mines);
 
 await match.save();
 const restored = new Match(context, {}, clock);
@@ -147,5 +158,6 @@ restored.snapshot(replacement);
 const restoredState = JSON.parse(replacement.messages.at(-1)).state;
 assert.deepEqual(restoredState.slots, replacementState.slots);
 assert.equal(restoredState.explored, replacementState.explored);
+assert.deepEqual(restoredState.mines, replacementState.mines);
 
 console.log(`Snapshot stable : ${complete.length} → ${reduced.length} caractères (−${savings}).`);

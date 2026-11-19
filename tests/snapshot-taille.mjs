@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { view } from '../lib/match.mjs';
 import { createAI } from '../public/game/ai.js';
 import { CendreSim as Sim } from '../public/game/sim.js';
-import { decodeSnapshotFog } from '../public/game/snapshot-fog.js';
+import { decodeSnapshotFog, encodeFogGrid } from '../public/game/snapshot-fog.js';
 import { loadedScenario } from '../scripts/render-scenario.mjs';
 
 const scenarios = [
@@ -11,6 +11,16 @@ const scenarios = [
 ];
 const emptyGrid = new Array(Sim.COLS * Sim.ROWS).fill(0);
 const bitsetLength = 4 * Math.ceil(Math.ceil(emptyGrid.length / 8) / 3);
+
+for (const grid of [
+  emptyGrid,
+  emptyGrid.map(() => 1),
+  emptyGrid.map((_, index) => index % 2),
+]) {
+  const snapshot = { visible: encodeFogGrid(grid) };
+  decodeSnapshotFog(snapshot, 0);
+  assert.deepEqual(snapshot.visible, [grid, emptyGrid]);
+}
 
 for (const { name, state, limit } of scenarios) {
   for (const team of [0, 1]) {
@@ -22,7 +32,7 @@ for (const { name, state, limit } of scenarios) {
     const snapshot = JSON.parse(json);
     for (const field of ['visible', 'explored']) {
       assert.equal(typeof snapshot[field], 'string', `${label}, ${field}`);
-      assert.equal(snapshot[field].length, bitsetLength, `${label}, ${field}`);
+      assert(snapshot[field].length < bitsetLength, `${label}, ${field}`);
     }
     decodeSnapshotFog(snapshot, team);
 
