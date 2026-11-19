@@ -33,8 +33,10 @@ function creerSocket(match, horloge, sockets, joueurs) {
           // Figer la vue au moment de l’émission, avant les 40 ms de transport.
           let reference = null;
           let octetsFilesOmises = 0;
+          let octetsUnites = 0;
           const message = JSON.parse(data);
           if (message.type === 'snapshot') {
+            octetsUnites = Buffer.byteLength(JSON.stringify(message.state.units));
             const vue = view(match.sim, equipe, { compactUnits: false });
             const champs = Object.fromEntries(CHAMPS_STABLES.map((champ) => [champ, vue[champ]]));
             reference = {
@@ -52,7 +54,7 @@ function creerSocket(match, horloge, sockets, joueurs) {
             if (joueur) {
               joueur.reference = reference;
               joueur.receptions.push({
-                temps: horloge.temps, octets, octetsFilesOmises, snapshot: reference !== null,
+                temps: horloge.temps, octets, octetsFilesOmises, octetsUnites, snapshot: reference !== null,
               });
             }
             this.onmessage({ data });
@@ -192,6 +194,7 @@ function mesurer(receptions, debut, fin) {
   let fenetre = 0;
   let octets = 0;
   let octetsFilesOmises = 0;
+  let octetsUnites = 0;
   let max = 0;
   let snapshots = 0;
   for (const [droite, reception] of receptions.entries()) {
@@ -203,6 +206,7 @@ function mesurer(receptions, debut, fin) {
     if (reception.temps <= debut) continue;
     octets += reception.octets;
     octetsFilesOmises += reception.octetsFilesOmises;
+    octetsUnites += reception.octetsUnites;
     max = Math.max(max, fenetre);
     snapshots += Number(reception.snapshot);
   }
@@ -212,6 +216,7 @@ function mesurer(receptions, debut, fin) {
     moyenAvant: Math.round(1000 * (octets + octetsFilesOmises) / (fin - debut)),
     max,
     snapshots,
+    unitesMoyenneOctets: snapshots ? Math.round(octetsUnites / snapshots) : 0,
   };
 }
 

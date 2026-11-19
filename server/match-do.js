@@ -76,12 +76,30 @@ export class Match {
     if (previousFields?.queues === fields.queues) delete state.queues;
     const previousUnits = this.snapshotUnits.get(socket);
     const units = new Map();
-    state.units = state.units.filter((unit) => {
-      const json = JSON.stringify(unit);
-      units.set(unit.id, json);
-      return previousUnits?.get(unit.id) !== json;
-    });
+    const changes = [];
+    for (const unit of state.units) {
+      const previous = previousUnits?.get(unit.id);
+      const current = new Map();
+      const change = { id: unit.id };
+      for (const [field, value] of Object.entries(unit)) {
+        if (field === 'id') continue;
+        const json = JSON.stringify(value);
+        if (json === undefined) continue;
+        current.set(field, json);
+        if (previous?.get(field) !== json) change[field] = value;
+      }
+      units.set(unit.id, current);
+      if (!previous) {
+        changes.push(unit);
+        continue;
+      }
+      const unset = [...previous.keys()].filter((field) => !current.has(field));
+      if (unset.length) change.unset = unset;
+      if (Object.keys(change).length > 1) changes.push(change);
+    }
+    state.units = changes;
     state.unitIds = Array.from(units.keys());
+    if (!previousUnits) state.resetUnits = true;
     const sent = this.send(socket, {
       type: 'snapshot',
       code: this.room.code,
