@@ -175,6 +175,46 @@ restored.webSocketMessage(
   JSON.stringify({ type: 'cmd', seq: 1, cmd: { kind: 'recruit', type: 'commis' } }),
 );
 assert.equal(restored.sim.rubies[0], money, 'sequence survives eviction');
+
+const rateLimitError = { type: 'error', error: "Trop d'ordres, ralentis." };
+function checkMove(socket, team, seq, applied, error) {
+  const unit = restored.sim.units.find((entry) => entry.team === team);
+  const previousPath = unit.path;
+  const messageCount = socket.messages.length;
+  restored.webSocketMessage(socket, JSON.stringify({
+    type: 'cmd',
+    seq,
+    cmd: { kind: 'move', ids: [unit.id], x: unit.x, y: unit.y },
+  }));
+  assert.equal(unit.path !== previousPath, applied, `application du move ${seq}`);
+  const replies = [{ type: 'ack', seq }];
+  if (error) replies.push(rateLimitError);
+  assert.deepEqual(socket.messages.slice(messageCount), replies);
+}
+
+let moveSeq = 0;
+for (let index = 0; index < 20; index++) {
+  checkMove(sb2, b.team, ++moveSeq, true);
+}
+checkMove(sb2, b.team, ++moveSeq, false, true);
+checkMove(sb2, b.team, ++moveSeq, false);
+checkMove(sa, a.team, 4, true);
+await clock.advance(1000);
+for (let index = 0; index < 10; index++) {
+  checkMove(sb2, b.team, ++moveSeq, true);
+}
+checkMove(sb2, b.team, ++moveSeq, false, true);
+
+for (let index = 0; index < 150; index++) {
+  await clock.advance(200);
+  checkMove(sb2, b.team, ++moveSeq, true);
+}
+
+await clock.advance(2000);
+for (let index = 0; index < 20; index++) {
+  checkMove(sb2, b.team, ++moveSeq, true);
+}
+checkMove(sb2, b.team, ++moveSeq, false, true);
 restored.webSocketMessage(sb2, JSON.stringify({ type: 'leave' }));
 assert.equal(restored.sim.winner, 0);
 assert.equal(restored.status(), 'ended');
