@@ -30,9 +30,15 @@ function creerSocket(match, horloge, sockets, joueurs) {
           const equipe = this.serveur.attachment.team;
           const joueur = joueurs[equipe];
           // Figer la vue au moment de l’émission, avant les 40 ms de transport.
-          const reference = JSON.parse(data).type === 'snapshot'
-            ? JSON.parse(JSON.stringify(view(match.sim, equipe, { compactUnits: false }).units))
-            : null;
+          let reference = null;
+          if (JSON.parse(data).type === 'snapshot') {
+            const { units, mines } = view(match.sim, equipe, { compactUnits: false });
+            reference = {
+              ...JSON.parse(JSON.stringify({ units, mines })),
+              visible: match.sim.visible[equipe].slice(),
+              explored: match.sim.explored[equipe].slice(),
+            };
+          }
           const octets = Buffer.byteLength(data);
           horloge.setTimeout(() => {
             if (joueur) {
@@ -77,7 +83,8 @@ function premierChamp(attendu, recu, chemin = []) {
 function verifierSnapshot(joueur, { state, team, status }) {
   joueur.etat = state;
   joueur.statut = status;
-  const attendues = joueur.reference;
+  const reference = joueur.reference;
+  const attendues = reference.units;
   const ecartsAvant = joueur.ecarts;
   const recues = state.units;
   const tick = Math.round(state.time * TICKS_PAR_SECONDE);
@@ -98,6 +105,19 @@ function verifierSnapshot(joueur, { state, team, status }) {
   }
   // Un défaut de reconstruction ne doit pas interrompre le scénario de charge.
   joueur.unitesPourOrdres = joueur.ecarts === ecartsAvant ? recues : attendues;
+  for (const champ of ['visible', 'explored']) {
+    const grille = state[champ]?.[team];
+    const attendue = reference[champ];
+    if (grille?.length !== attendue.length) ecart(null, `${champ}.length`);
+    for (let caseIndex = 0; caseIndex < attendue.length; caseIndex++) {
+      if (grille?.[caseIndex] !== attendue[caseIndex]) {
+        ecart(null, `${champ}.${caseIndex}`);
+      }
+    }
+  }
+  if (!isDeepStrictEqual(reference.mines, state.mines)) {
+    ecart(null, premierChamp(reference.mines, state.mines, ['mines']));
+  }
 }
 
 function jouer(joueur, equipe, attaquer, aleatoire) {
