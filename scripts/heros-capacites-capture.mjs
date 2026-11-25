@@ -40,7 +40,7 @@ window.herosCapture = () => {
   document.querySelector('#toast').textContent = '';
   layout();
   updateUI();
-  return { xp: hero.xp, buffed: state.units.every((unit) => Sim.ragoutActive(state, unit)) };
+  return { buffed: state.units.every((unit) => Sim.ragoutActive(state, unit)) };
 };`;
     }
     response.setHeader('Content-Type', {
@@ -64,7 +64,7 @@ try {
   await page.goto(`http://127.0.0.1:${server.address().port}/game/`);
   await page.waitForFunction(() => window.herosCapture);
   await page.locator('#start').click();
-  assert.deepEqual(await page.evaluate(() => window.herosCapture()), { xp: 40, buffed: true });
+  assert.deepEqual(await page.evaluate(() => window.herosCapture()), { buffed: true });
   await page.waitForTimeout(500);
   await mkdir('docs/issue-130', { recursive: true });
   await page.screenshot({ path: 'docs/issue-130/gouteur.png' });

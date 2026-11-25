@@ -303,7 +303,6 @@ function watchtowersTick(s, dt) {
 function create() {
   let s = {
     matchCounters: [emptyMatchCounters(), emptyMatchCounters()],
-    heroProgress: [{ level: 1, xp: 0 }, { level: 1, xp: 0 }],
     queues: [[], []],
     controlGroups: [[], [], [], []],
     time: 0,
@@ -505,13 +504,6 @@ function spawn(s, type, team, origin = null) {
     cargo: 0,
     harvest: null,
   });
-  if (type === 'hero') {
-    s.heroProgress ??= [{ level: 1, xp: 0 }, { level: 1, xp: 0 }];
-    const hero = s.units.at(-1);
-    Object.assign(hero, s.heroProgress[team]);
-    hero.max = stats(type, team).hp * (1 + 0.15 * (hero.level - 1));
-    hero.hp = hero.max;
-  }
   if (type === 'commis') {
     const mine =
       s.mines
@@ -539,22 +531,6 @@ function matchStats(s) {
     duration: s.time,
   };
 }
-function awardHeroExperience(s, target, recipient = null, bonus = 0) {
-  if (!recipient && !target.type) return;
-  for (const hero of s.units) {
-    if (hero.type !== 'hero' || hero.hp <= 0) continue;
-    if (recipient ? hero !== recipient : hero.team === target.team) continue;
-    if (!recipient && Math.hypot(hero.x - target.x, hero.y - target.y) >= 400) continue;
-    const experience = recipient ? bonus : target.type === 'sanglier' ? 30 : target.type === 'commis' ? 10 : 20;
-    hero.xp += experience;
-    hero.level = hero.xp >= 250 ? 3 : hero.xp >= 100 ? 2 : 1;
-    const maximum = stats('hero', hero.team).hp * (1 + 0.15 * (hero.level - 1));
-    hero.hp += maximum - hero.max;
-    hero.max = maximum;
-    s.heroProgress ??= [{ level: 1, xp: 0 }, { level: 1, xp: 0 }];
-    s.heroProgress[hero.team] = { level: hero.level, xp: hero.xp };
-  }
-}
 function applyDamage(s, target, damage, attackerTeam = null, attackerId = null) {
   if (target.team === NEUTRAL && target.returning && attackerTeam !== null) return;
   const wasAlive = target.hp > 0;
@@ -563,7 +539,6 @@ function applyDamage(s, target, damage, attackerTeam = null, attackerId = null) 
   if (wasAlive && target.hp <= 0 && !target.base && !target.structure && target.type !== 'commis') {
     s.corpses.push({ id: target.id, x: target.x, y: target.y, type: target.type, team: target.team, expiresAt: s.time + 30 });
   }
-  if (wasAlive && target.hp <= 0 && !target.structure) awardHeroExperience(s, target);
   recordDamageEvent(s, target);
   if (target.team === NEUTRAL) {
     if (wasAlive && !target.returning && attackerTeam !== null) {
@@ -615,6 +590,20 @@ function destroyStructure(s, target) {
 
 // Shared migration for saved solo states and persisted server matches.
 function migrateState(s) {
+  // Ancienne clé de sauvegarde, retirée du schéma courant.
+  const legacyProgressKey = 'hero' + 'Progress';
+  const hadHeroProgress = Object.hasOwn(s, legacyProgressKey);
+  delete s[legacyProgressKey];
+  for (const unit of s.units ?? []) {
+    const hadProgress = Object.hasOwn(unit, 'level') || Object.hasOwn(unit, 'xp');
+    if (!hadProgress && !hadHeroProgress) continue;
+    delete unit['level'];
+    delete unit['xp'];
+    if (unit.type === 'hero') {
+      unit.max = stats('hero', unit.team).hp;
+      unit.hp = Math.min(unit.hp, unit.max);
+    }
+  }
   for (const base of s.bases) base.niveau ??= 1;
   s.watchtowers ??= createWatchtowers();
   s.braises ??= createBraises();
@@ -713,7 +702,6 @@ function ragoutTick(s) {
   for (const unit of s.units) {
     if (unit.team === 0 && unit.type !== 'commis' && unit.hp > 0) {
       unit.ragoutUntil = s.ragout.expiresAt;
-      if (unit.type === 'hero') awardHeroExperience(s, null, unit, 40);
     }
   }
 }
@@ -1163,7 +1151,6 @@ function devourTick(s, unit, dt) {
   if (s.time - unit.devour.startedAt + 1e-9 < duration) return;
   const amount = corpse.type === 'sanglier' ? 10 : 6;
   s.ingredients[unit.team].viande += amount;
-  if (unit.type === 'hero') awardHeroExperience(s, null, unit, 40);
   unit.hp = Math.min(unit.max, unit.hp + unit.max * 0.3);
   s.devourEvents.push({ x: unit.x, y: unit.y, team: unit.team, amount, time: s.time });
   s.corpses = s.corpses.filter((item) => item.id !== corpse.id);
@@ -1467,8 +1454,7 @@ function tick(s, dt) {
         u.cool = cfg.rate;
         u.lastAttackTargetId = target.id ?? null;
         u.lastAttackAt = s.time;
-        const levelMultiplier = u.type === 'hero' ? 1 + 0.15 * (u.level - 1) : 1;
-        const damage = cfg.damage * levelMultiplier * ragoutDamageMultiplier(s, u);
+        const damage = cfg.damage * ragoutDamageMultiplier(s, u);
         applyDamage(s, target, damage, u.team, u.id);
         if (cfg.splash) {
           for (const v of [...s.units, ...s.monsters])
@@ -1941,7 +1927,7 @@ function restore(texte) {
     const state = objects[0];
     const collections = [
       'units', 'monsters', 'bases', 'mines', 'slots', 'camps', 'corpses', 'watchtowers',
-      'braises', 'queues', 'shots', 'damageEvents', 'devourEvents', 'heroProgress',
+      'braises', 'queues', 'shots', 'damageEvents', 'devourEvents',
       'matchCounters', 'controlGroups', 'rubies', 'ingredients', 'incomeMultiplier',
     ];
     if (nodes[0][0] !== 'object' || !collections.every((key) => Array.isArray(state[key]))) return null;

@@ -136,7 +136,7 @@ assert(draws > beforeLoad);
 
 const loaded = loadedScenario(Sim);
 assert.equal(loaded.units.length, 93);
-assert.equal(loaded.units.filter((unit) => unit.type === 'hero' && unit.level === 3).length, 2);
+assert.equal(loaded.units.filter((unit) => unit.type === 'hero').length, 2);
 assert.equal(loaded.corpses.length, 12);
 assert.equal(loaded.monsters.filter((monster) => monster.type === 'sanglier' && monster.hp > 0).length, 4);
 assert.equal(loaded.braises.length, 2);

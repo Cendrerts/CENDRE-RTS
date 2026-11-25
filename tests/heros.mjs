@@ -57,8 +57,6 @@ for (const team of [0, 1]) {
   assert.equal(hero.type, 'hero');
   assert.equal(hero.hp, team === 0 ? 420 : 360);
   assert.equal(Sim.stats('hero', team).speed, team === 0 ? 90 : 101);
-  assert.equal(hero.level, 1);
-  assert.equal(hero.xp, 0);
   assert.equal(Sim.populationUsed(state, team), 3);
   assert.equal(Sim.recruitBlockReason(state, team, 'hero'), 'heroAlive');
   assert.equal(Sim.recruit(state, 'hero', team), false);
@@ -67,20 +65,14 @@ for (const team of [0, 1]) {
   hero.y = 1950;
   hero.hold = true;
   killNear(state, hero, 350);
-  assert.equal(hero.xp, 20);
   killNear(state, hero, 450);
-  assert.equal(hero.xp, 20);
   killNear(state, hero, 350, 'sanglier');
-  assert.equal(hero.xp, 50);
   killNear(state, hero, 350, 'commis');
-  assert.equal(hero.xp, 60);
   killNear(state, hero, 350);
   const previousHp = hero.hp;
   killNear(state, hero, 350);
-  assert.equal(hero.xp, 100);
-  assert.equal(hero.level, 2);
-  assert.equal(hero.max, Sim.stats('hero', team).hp * 1.15);
-  assert(Math.abs(hero.hp - previousHp - Sim.stats('hero', team).hp * 0.15) < 1e-8);
+  assert.equal(hero.max, Sim.stats('hero', team).hp);
+  assert.equal(hero.hp, previousHp);
 
   const target = state.bases[1 - team];
   hero.x = target.x - 20;
@@ -90,22 +82,18 @@ for (const team of [0, 1]) {
   const previousBaseHp = target.hp;
   state.visible[team].fill(1);
   Sim.tick(state, 0.01);
-  assert(Math.abs(previousBaseHp - target.hp - Sim.stats('hero', team).damage * 1.15) < 1e-8);
+  assert(Math.abs(previousBaseHp - target.hp - Sim.stats('hero', team).damage) < 1e-8);
   hero.target = null;
   hero.x = 450;
   hero.y = 1950;
   for (let index = 0; index < 10; index++) killNear(state, hero, 350);
-  assert.equal(hero.level, 3);
-  assert.equal(hero.max, Sim.stats('hero', team).hp * 1.3);
-  const savedXp = hero.xp;
+  assert.equal(hero.max, Sim.stats('hero', team).hp);
   state.visible[1 - team].fill(1);
   const enemySnapshot = view(state, 1 - team).units.find((unit) => unit.id === hero.id);
-  assert.equal(enemySnapshot.level, 3);
-  assert.equal(enemySnapshot.xp, savedXp);
+  assert.equal(enemySnapshot.max, hero.max);
   const snapshot = view(state, team).units.find((unit) => unit.id === hero.id);
-  assert.equal(snapshot.level, 3);
-  assert.equal(snapshot.xp, savedXp);
-  assert.equal(unpack(pack(state)).heroProgress[team].xp, savedXp);
+  assert.equal(snapshot.max, hero.max);
+  assert.equal(unpack(pack(state)).units.find((unit) => unit.id === hero.id).max, hero.max);
 
   Sim.spawn(state, 'knight', 1 - team);
   const killer = state.units.at(-1);
@@ -125,8 +113,7 @@ for (const team of [0, 1]) {
   assert.equal(state.queues[team][0].remaining, 35);
   Sim.tick(state, 35);
   const returned = state.units[0];
-  assert.equal(returned.level, 3);
-  assert.equal(returned.xp, savedXp);
+  assert.equal(returned.max, Sim.stats('hero', team).hp);
   assert.equal(returned.hp, returned.max);
 
   state.units = [];
@@ -145,4 +132,4 @@ for (const team of [0, 1]) {
   assert.equal(Sim.recruitBlockReason(state, team, 'hero'), 'rubies');
   assert.equal(Sim.canRecruit(state, team, 'hero', 'invalid'), false);
 }
-console.log('PASS : héros des deux factions, production unique, population, XP, niveaux, dégâts, résurrection et view.');
+console.log('PASS : héros des deux factions, production unique, population, dégâts, reproduction et vues.');

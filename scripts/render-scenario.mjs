@@ -49,7 +49,6 @@ export function hordeScenario(sim) {
 export function loadedScenario(sim) {
   const state = hordeScenario(sim);
   for (let team = 0; team < 2; team++) {
-    state.heroProgress[team] = { level: 3, xp: 250 };
     sim.spawn(state, 'hero', team);
     const hero = state.units.at(-1);
     hero.x = sim.W / 2 - 20 + team * 40;

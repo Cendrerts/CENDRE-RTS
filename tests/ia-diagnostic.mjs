@@ -29,7 +29,6 @@ for (const team of [0, 1]) {
   assert.equal(report.military, 0);
   assert.equal(report.ingredients, 0);
   assert.equal(report.heroAlive, false);
-  assert.equal(report.heroLevel, 1);
   assert.equal(report.militaryNearEnemyBase, 0);
 }
 
@@ -38,7 +37,6 @@ Sim.gather(state, 0, [worker.id], 0);
 assert.equal(snapshot(state, 0, controller).exploitedMines, 1);
 Sim.spawn(state, 'hero', 0);
 const hero = state.units.at(-1);
-hero.level = 2;
 hero.x = state.bases[1].x + 599;
 hero.y = state.bases[1].y;
 controller.metrics.waves = 3;
@@ -46,7 +44,6 @@ let report = snapshot(state, 0, controller);
 assert.equal(report.population, 4);
 assert.equal(report.military, 1);
 assert.equal(report.heroAlive, true);
-assert.equal(report.heroLevel, 2);
 assert.equal(report.waves, 3);
 assert.equal(report.militaryNearEnemyBase, 1);
 hero.x = state.bases[1].x + 600;
