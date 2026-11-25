@@ -111,6 +111,25 @@ export class RealtimeClient {
             state.mines = snapshotMines;
           }
           delete state.minesChanged;
+          if (state.exploredAdded && snapshotFields.explored && !Object.hasOwn(state, 'explored')) {
+            state.explored = snapshotFields.explored.slice();
+            const grid = state.explored[data.team].slice();
+            state.explored[data.team] = grid;
+            if (typeof state.exploredAdded === 'string') {
+              const runs = state.exploredAdded.split(',');
+              let end = 0;
+              for (let index = 1; index < runs.length; index += 2) {
+                const start = end + parseInt(runs[index - 1], 36);
+                end = start + parseInt(runs[index], 36);
+                grid.fill(1, start, end);
+              }
+            } else {
+              for (const [start, length] of state.exploredAdded) {
+                grid.fill(1, start, start + length);
+              }
+            }
+          }
+          delete state.exploredAdded;
           for (const field of ['slots', 'visible', 'explored', 'camps', 'watchtowers', 'braises', 'bases', 'corpses', 'ragout', 'festin']) {
             if (Object.hasOwn(state, field)) {
               snapshotFields[field] = state[field];

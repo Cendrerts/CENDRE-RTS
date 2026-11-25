@@ -7,6 +7,28 @@ const COMMAND_REFILL_MS = 100;
 const COMMAND_BURST = 20;
 const COMMAND_ERROR_INTERVAL_MS = 1000;
 
+function exploredAdditions(previous, current) {
+  const ranges = [];
+  const runs = [];
+  let previousEnd = 0;
+  let start = -1;
+  for (let cell = 0; cell <= current.length; cell++) {
+    if (previous[cell] === 1 && current[cell] === 0) return null;
+    if (current[cell] === 1 && previous[cell] === 0) {
+      if (start === -1) start = cell;
+    } else if (start !== -1) {
+      const length = cell - start;
+      ranges.push([start, length]);
+      runs.push((start - previousEnd).toString(36), length.toString(36));
+      previousEnd = cell;
+      start = -1;
+    }
+  }
+  if (previousEnd < current.length) runs.push((current.length - previousEnd).toString(36));
+  const encoded = runs.join(',');
+  return encoded.length + 2 < JSON.stringify(ranges).length ? encoded : ranges;
+}
+
 export class Match {
   constructor(state, env, clock = globalThis) {
     this.ctx = state;
@@ -66,9 +88,23 @@ export class Match {
     const state = view(this.sim, team, { compactShots: true });
     const previousFields = this.snapshotFields.get(socket);
     const fields = { time: state.time };
-    for (const field of ['slots', 'visible', 'explored', 'camps', 'watchtowers', 'braises', 'bases', 'corpses', 'ragout', 'festin']) {
+    for (const field of ['slots', 'visible', 'camps', 'watchtowers', 'braises', 'bases', 'corpses', 'ragout', 'festin']) {
       fields[field] = JSON.stringify(state[field]);
       if (previousFields?.[field] === fields[field]) delete state[field];
+    }
+    fields.explored = state.explored;
+    if (previousFields?.explored === fields.explored) {
+      fields.exploredGrid = previousFields.exploredGrid;
+      delete state.explored;
+    } else {
+      fields.exploredGrid = this.sim.explored[team].slice();
+      if (previousFields) {
+        const added = exploredAdditions(previousFields.exploredGrid, fields.exploredGrid);
+        if (added !== null) {
+          state.exploredAdded = added;
+          delete state.explored;
+        }
+      }
     }
     fields.mines = state.mines.map((mine) => JSON.stringify(mine));
     if (previousFields?.mines.length === fields.mines.length) {
