@@ -4,7 +4,7 @@ import { Match } from '../server/match-do.js';
 import { RealtimeClient } from '../public/game/realtime.js';
 import { CendreSim as Sim } from '../public/game/sim.js';
 
-const stableFields = ['camps', 'watchtowers', 'braises', 'bases', 'corpses', 'ragout', 'festin', 'pantries'];
+const stableFields = ['camps', 'watchtowers', 'braises', 'bases', 'corpses', 'ragout', 'festin', 'fumets', 'pantries'];
 
 class Socket {
   messages = [];
@@ -292,7 +292,7 @@ function checkDishes(serverSocket, realtimeClient, team, latestState, sentFields
   const wireState = JSON.parse(snapshot).state;
   const serverView = view(match.sim, team);
   realtimeClient.socket.receive(snapshot);
-  for (const field of ['ragout', 'festin']) {
+  for (const field of ['ragout', 'festin', 'fumets']) {
     assert.equal(Object.hasOwn(wireState, field), sentFields.includes(field), field);
     if (sentFields.includes(field)) {
       assert.deepEqual(wireState[field], serverView[field], field);
@@ -307,15 +307,15 @@ const checkPlayer = (sentFields) => checkDishes(
 const checkOpponent = (sentFields) => checkDishes(
   opponentSocket, opponentClient, opponent.team, () => opponentState, sentFields,
 );
-checkOpponent(['ragout', 'festin']);
+checkOpponent(['ragout', 'festin', 'fumets']);
 await opponentConnected;
 
 match.sim.ingredients[0].viande = 80;
 match.sim.ingredients[1].viande = 80;
 command(match.sim, player.team, { kind: 'cookDish', dish: 'ragout' });
 command(match.sim, opponent.team, { kind: 'cookDish', dish: 'festin' });
-checkPlayer(['ragout']);
-checkOpponent(['festin']);
+checkPlayer(['ragout', 'fumets']);
+checkOpponent(['festin', 'fumets']);
 assert.notEqual(received.at(-1).ragout.readyAt, null);
 assert.notEqual(opponentState.festin.readyAt, null);
 assert.deepEqual(opponentState.ragout, { readyAt: null, expiresAt: 0 });
@@ -324,8 +324,8 @@ checkPlayer([]);
 checkOpponent([]);
 
 Sim.tick(match.sim, 20);
-checkPlayer(['ragout']);
-checkOpponent(['festin']);
+checkPlayer(['ragout', 'fumets']);
+checkOpponent(['festin', 'fumets']);
 assert.equal(received.at(-1).ragout.readyAt, null);
 assert(received.at(-1).ragout.expiresAt > match.sim.time);
 assert.equal(opponentState.festin.readyAt, null);

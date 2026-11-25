@@ -64,6 +64,21 @@ const fog = document.createElement('canvas');
 fog.width = COLS;
 fog.height = ROWS;
 const fc = fog.getContext('2d');
+const smokePuff = document.createElement('canvas');
+smokePuff.width = 48;
+smokePuff.height = 48;
+const smokeCtx = smokePuff.getContext('2d');
+const smokeGradient = smokeCtx.createRadialGradient(24, 24, 0, 24, 24, 24);
+smokeGradient.addColorStop(0, '#c8c8c8');
+smokeGradient.addColorStop(0.5, '#a3a3a3c9');
+smokeGradient.addColorStop(1, '#88888800');
+smokeCtx.fillStyle = smokeGradient;
+smokeCtx.fillRect(0, 0, 48, 48);
+const noFumets = [];
+let soloFumets = noFumets;
+let fumetState;
+let ragoutCooking;
+let festinCooking;
 let state = Sim.create(),
   selected = new Set(),
   player = 0,
@@ -1110,7 +1125,35 @@ function drawFog() {
   ctx.imageSmoothingEnabled = true;
   ctx.drawImage(fog, 0, 0, W, H);
 }
-function drawMini() {
+function activeFumets() {
+  if (net) return state.fumets ?? noFumets;
+  const hasRagout = state.ragout?.readyAt != null;
+  const hasFestin = state.festin?.readyAt != null;
+  if (fumetState !== state || ragoutCooking !== hasRagout || festinCooking !== hasFestin) {
+    fumetState = state;
+    ragoutCooking = hasRagout;
+    festinCooking = hasFestin;
+    soloFumets = Sim.fumets(state);
+  }
+  return soloFumets;
+}
+function drawFumets(fumets, now) {
+  if (!fumets.length) return;
+  ctx.save();
+  for (let index = 0; index < fumets.length; index++) {
+    const { x, y } = fumets[index];
+    for (let puff = 0; puff < 4; puff++) {
+      const phase = (now / 2200 + puff / 4) % 1;
+      const width = (16 + phase * 22) / scale;
+      const height = width * 0.7;
+      const drift = Math.sin(phase * 7) * phase * 15 / scale;
+      ctx.globalAlpha = Math.min(phase * 12, 1) * (1 - phase);
+      ctx.drawImage(smokePuff, x + drift - width / 2, y - 70 - phase * 52 / scale - height / 2, width, height);
+    }
+  }
+  ctx.restore();
+}
+function drawMini(fumets) {
   drawMinimap(mc, {
     terrain,
     fog,
@@ -1129,6 +1172,13 @@ function drawMini() {
     worldWidth: W,
     worldHeight: H,
   });
+  mc.fillStyle = '#b0b0b0';
+  for (let index = 0; index < fumets.length; index++) {
+    const { x, y } = fumets[index];
+    mc.beginPath();
+    mc.arc(x / W * mini.width, y / H * mini.height, 3, 0, Math.PI * 2);
+    mc.fill();
+  }
   if (marker?.minimap) {
     mc.save();
     mc.strokeStyle = marker.color;
@@ -1284,6 +1334,8 @@ function draw() {
     if (Sim.visibleAt(state, player, s.x, s.y) && Sim.visibleAt(state, player, s.tx, s.ty))
       line(s.x, s.y, s.tx, s.ty, s.team ? '#8ef1ce' : '#ffd388', 2);
   drawFog();
+  const fumets = activeFumets();
+  drawFumets(fumets, performance.now());
   drawConstructionBars();
   drawBuildingHealthBars();
   drawOrderQueues();
@@ -1317,7 +1369,7 @@ function draw() {
     }
   }
   drawBuildGhost();
-  drawMini();
+  drawMini(fumets);
   if (holdIndicator) {
     ctx.save();
     ctx.setTransform(canvas.width / viewWidth, 0, 0, canvas.height / viewHeight, 0, 0);

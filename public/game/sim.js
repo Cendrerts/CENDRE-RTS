@@ -739,6 +739,18 @@ function cookDish(s, team, dish = 'ragout') {
   else s.ragout.readyAt = s.time + 20;
   return { ok: true, reason: null };
 }
+function fumets(s) {
+  const active = [];
+  if (s.ragout?.readyAt != null) {
+    const { x, y } = s.bases[0];
+    active.push({ team: 0, x, y });
+  }
+  if (s.festin?.readyAt != null) {
+    const { x, y } = s.bases[1];
+    active.push({ team: 1, x, y });
+  }
+  return active;
+}
 function festinTick(s) {
   if (s.festin.readyAt === null || s.time + 1e-9 < s.festin.readyAt) return;
   s.festin.readyAt = null;
@@ -2021,6 +2033,7 @@ export const CendreSim = {
   cancelDevour,
   hold,
   cookDish,
+  fumets,
   cookDishBlockReason,
   ragoutActive,
   idleWorkers,
