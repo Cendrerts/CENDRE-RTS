@@ -1684,10 +1684,6 @@ function drawCook(u) {
     ctx.beginPath();
     ctx.ellipse(x, y - size / 2, size * 0.52, size * 0.64, 0, 0, Math.PI * 2);
     ctx.stroke();
-    ctx.font = 'bold ' + Math.max(9 / scale, 14) + 'px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillStyle = '#ffd365';
-    ctx.fillText(String(u.level), x, headY - 18 / scale);
     ctx.restore();
   }
   if (u.devour?.startedAt != null) bar(x, headY - 16, state.time - u.devour.startedAt, u.type === 'hero' ? 3 : 4, 44);

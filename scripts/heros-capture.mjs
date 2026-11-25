@@ -47,7 +47,7 @@ window.herosCapture = () => {
   toastTime = 0;
   layout();
   updateUI();
-  return { level: hero.level, xp: hero.xp };
+  return { max: hero.max };
 };`;
     }
     response.setHeader('Content-Type', {
@@ -71,7 +71,7 @@ try {
   await page.goto(`http://127.0.0.1:${server.address().port}/game/`);
   await page.waitForFunction(() => window.herosCapture);
   await page.locator('#start').click();
-  assert.deepEqual(await page.evaluate(() => window.herosCapture()), { level: 2, xp: 100 });
+  assert.deepEqual(await page.evaluate(() => window.herosCapture()), { max: 420 });
   await page.waitForTimeout(500);
   const button = page.locator('#heroAction');
   assert.equal(await button.textContent(), 'Grand Chef · 150');
@@ -83,7 +83,7 @@ try {
   await mkdir('docs/issue-129', { recursive: true });
   await page.screenshot({ path: 'docs/issue-129/heros.png' });
   assert.deepEqual(errors, []);
-  console.log('PASS : capture héros niveau 2, bouton 44 px et refus expliqué en 844×390.');
+  console.log('PASS : capture du Grand Chef, bouton 44 px et refus expliqué en 844×390.');
 } finally {
   await browser.close();
   await new Promise((resolve) => server.close(resolve));

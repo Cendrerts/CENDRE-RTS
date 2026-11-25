@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { CendreSim as Sim } from '../public/game/sim.js';
-import { command, pack, unpack } from '../lib/match.mjs';
+import { command } from '../lib/match.mjs';
 import { resolveTap } from '../public/game/tap.js';
 
 function fresh() {
@@ -55,12 +55,11 @@ for (const alive of [true, false]) {
   for (let meal = 0; meal < 3; meal++) {
     assert.equal(Sim.cookDish(state, 0).ok, true);
     advance(state, 19.9);
-    assert.equal(state.heroProgress[0].xp, alive ? meal * 40 : 0);
+    assert.notEqual(state.ragout.readyAt, null);
     advance(state, 0.1);
-    assert.equal(state.heroProgress[0].xp, alive ? (meal + 1) * 40 : 0);
+    assert.equal(state.ragout.readyAt, null);
+    assert.equal(Sim.ragoutActive(state, chef), alive);
   }
-  assert.equal(state.heroProgress[0].level, alive ? 2 : 1);
-  assert.deepEqual(unpack(pack(state)).heroProgress, state.heroProgress);
 }
 for (const corpseType of ['knight', 'sanglier']) {
   const state = fresh();
@@ -81,12 +80,9 @@ for (const corpseType of ['knight', 'sanglier']) {
   Sim.tick(state, 0.05);
   assert(king.devour?.startedAt != null);
   advance(state, 2.9);
-  assert.equal(king.xp, 0);
   assert.equal(state.ingredients[1].viande, 0);
   assert.equal(state.corpses.length, 1);
   advance(state, 0.1);
-  assert.equal(king.xp, 40);
-  assert.equal(state.heroProgress[1].xp, 40);
   assert.equal(state.ingredients[1].viande, corpseType === 'sanglier' ? 10 : 6);
   assert.equal(king.hp, health + king.max * 0.3);
   assert.equal(state.corpses.length, 0);
@@ -101,7 +97,6 @@ for (const corpseType of ['knight', 'sanglier']) {
   assert.equal(king.devour, null);
   state.units = state.units.filter((unit) => unit !== enemy);
   advance(state, 4);
-  assert.equal(king.xp, 40);
   assert.equal(state.corpses.length, 1);
 }
-console.log('PASS : Goûteur, XP des plats, Glouton en 3 s, gains, interruption et tap du Roi-Rat.');
+console.log('PASS : Goûteur, cuisson du Ragoût, Glouton en 3 s, gains, interruption et tap du Roi-Rat.');

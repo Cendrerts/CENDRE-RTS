@@ -24,11 +24,15 @@ try {
   }
   await writeFile(join(directory, 'package.json'), '{"type":"module"}');
   const { CendreSim: Reference } = await import(pathToFileURL(join(directory, 'sim.js')));
+  const probe = Reference.create();
+  const referenceHasSimpleHeroes = !Object.hasOwn(probe, 'heroProgress');
+  // La progression des héros change les statistiques et le déroulement des combats.
+  const loadedReferenceSim = referenceHasSimpleHeroes ? Reference : Sim;
   // Les rangs sont débloqués pour comparer le scénario chargé avec une référence antérieure à D67.
   const unlockAllRanks = (state) => {
     for (const base of state.bases) base.niveau = 3;
   };
-  const referenceLoaded = loadedScenario(Reference);
+  const referenceLoaded = loadedScenario(loadedReferenceSim);
   const loaded = loadedScenario(Sim);
   unlockAllRanks(referenceLoaded);
   unlockAllRanks(loaded);
@@ -43,7 +47,7 @@ try {
   identical(loaded, referenceLoaded, 'loadedScenario initial');
   for (let tick = 1; tick <= 1200; tick++) {
     Sim.tick(loaded, 1 / 60);
-    Reference.tick(referenceLoaded, 1 / 60);
+    loadedReferenceSim.tick(referenceLoaded, 1 / 60);
     if (tick % 60 === 0) {
       identical(loaded, referenceLoaded, `loadedScenario tick ${tick}`);
     }
@@ -55,17 +59,16 @@ try {
     base.hp = 1000000;
     base.max = base.hp;
   }
-  const probe = Reference.create();
   const slot = probe.slots[0][0];
   const building = Reference.BUILDINGS[0][0];
   probe.rubies[0] = building.cost;
   assert(Reference.construct(probe, 0, building.id, slot.baseId, slot.id));
   // Tant qu’origin/main n’a pas D70, les dégâts aux bâtiments changent le duel.
   // D68 change aussi les gains de ressources, donc le déroulement d'un duel.
-  // Comparer deux parties de la branche tant que main n'a pas les deux règles.
+  // Comparer deux parties de la branche tant que main n'a pas les mêmes règles.
   const referenceHasD70 = Number.isFinite(slot.batiment.hp);
   const referenceHasD68 = typeof probe.ingredients[0]?.viande === 'number';
-  const sameRules = referenceHasD70 && referenceHasD68;
+  const sameRules = referenceHasD70 && referenceHasD68 && referenceHasSimpleHeroes;
   const secondSim = sameRules ? Reference : Sim;
   const secondAI = sameRules
     ? (await import(pathToFileURL(join(directory, 'ai.js')))).createAI
@@ -90,7 +93,7 @@ try {
     }
   }
   assert.ok(state.time >= 300 - 1e-8, 'La partie doit couvrir cinq minutes');
-  const comparison = sameRules ? 'avec origin/main' : 'entre deux parties de la branche (main antérieur à D68 ou D70)';
+  const comparison = sameRules ? 'avec origin/main' : 'entre deux parties de la branche (règles différentes sur origin/main)';
   console.log(`sim-identique : 1 200 ticks chargés et Brutal/Brutal graine 18, cinq minutes identiques ${comparison}`);
 } finally {
   await rm(directory, { recursive: true, force: true });

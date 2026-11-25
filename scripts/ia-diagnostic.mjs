@@ -30,7 +30,6 @@ export function snapshot(state, team, controller) {
     waves: controller.metrics.waves,
     exploitedMines: exploitedMines.size,
     heroAlive: Boolean(hero),
-    heroLevel: hero?.level ?? state.heroProgress[team].level,
     militaryNearEnemyBase: military.filter((unit) => Math.hypot(unit.x - enemyBase.x, unit.y - enemyBase.y) < 600).length,
   };
 }
