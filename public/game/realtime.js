@@ -19,12 +19,24 @@ const displaySpeedLimit = 1.5 * maxUnitSpeed / 1000;
 // A session survives socket replacement; sequence numbers make retries idempotent.
 export class RealtimeClient {
   constructor({ url = '/api/ws', Socket = globalThis.WebSocket, clock = globalThis,
-    now = () => performance.now(), onSnapshot = () => {}, onStatus = () => {}, onRtt = () => {} } = {}) {
-    Object.assign(this, { url, Socket, clock, now, onSnapshot, onStatus, onRtt });
+    now = () => performance.now(), debug = false,
+    onSnapshot = () => {}, onStatus = () => {}, onRtt = () => {} } = {}) {
+    Object.assign(this, { url, Socket, clock, now, debug, onSnapshot, onStatus, onRtt });
     this.pending = new Map();
     this.backoff = 500;
   }
   connect(parameters) {
+    this.performanceStats = this.debug ? {
+      pingMs: null,
+      pingMaxMs: 0,
+      tickLagMax: 0,
+      cmdMaxMs: 0,
+      snapshotGapMaxMs: 0,
+      snapshotProcessingMaxMs: 0,
+    } : null;
+    this.lastSnapshotAt = null;
+    this.performanceEnded = false;
+    this.finalPongPending = false;
     this.parameters = { ...parameters };
     this.closed = false;
     return new Promise((resolve, reject) => {
@@ -61,6 +73,8 @@ export class RealtimeClient {
     this.timeout = this.clock.setTimeout(() => socket.close(), 4000);
     socket.onmessage = (event) => {
       if (socket !== this.socket || this.closed) return;
+      const stats = this.performanceStats;
+      const receivedAt = stats && !this.performanceEnded ? this.now() : null;
       let data;
       try {
         data = JSON.parse(event.data);
@@ -151,6 +165,18 @@ export class RealtimeClient {
             });
           }
         }
+        if (receivedAt !== null &&
+            (this.lastSnapshotAt !== null || data.status === 'playing' || data.status === 'disconnected')) {
+          stats.snapshotProcessingMaxMs = Math.max(stats.snapshotProcessingMaxMs, this.now() - receivedAt);
+          if (this.lastSnapshotAt !== null) {
+            stats.snapshotGapMaxMs = Math.max(stats.snapshotGapMaxMs, receivedAt - this.lastSnapshotAt);
+          }
+          this.lastSnapshotAt = receivedAt;
+          if (data.status === 'ended' || data.status === 'closed') {
+            this.performanceEnded = true;
+            this.finalPongPending = true;
+          }
+        }
         if (!this.connected) {
           this.connected = true;
           this.clock.clearTimeout(this.graceTimer);
@@ -166,7 +192,17 @@ export class RealtimeClient {
         this.ack(data.seq);
       } else if (data.type === 'pong') {
         this.awaitingPong = false;
-        this.onRtt(this.now() - this.pingAt);
+        const rtt = this.now() - this.pingAt;
+        if (stats && this.lastSnapshotAt !== null && (!this.performanceEnded || this.finalPongPending)) {
+          if (!this.performanceEnded) {
+            stats.pingMs = rtt;
+            stats.pingMaxMs = Math.max(stats.pingMaxMs, rtt);
+          }
+          if (Number.isFinite(data.tickLagMax)) stats.tickLagMax = Math.max(stats.tickLagMax, data.tickLagMax);
+          if (Number.isFinite(data.cmdMaxMs)) stats.cmdMaxMs = Math.max(stats.cmdMaxMs, data.cmdMaxMs);
+          this.finalPongPending = false;
+        }
+        this.onRtt(rtt);
         this.clock.clearTimeout(this.timeout);
       } else if (data.type === 'error') {
         this.onStatus(data.error || 'Ordre refusé');

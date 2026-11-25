@@ -72,3 +72,22 @@ footer{border-top:3px ridge #626963;background:linear-gradient(#202a2a,#0c1319);
 #veil:not(.invitation, .match-ended) .intro:has(#resumeSolo:not([hidden])):has(#start:enabled) #modalText {
   display: none;
 }
+
+#debugDisplay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 9999;
+  background: #080e14;
+  color: white;
+  font: 12px monospace;
+  padding: 4px;
+  pointer-events: none;
+}
+
+#debugDisplay[data-duel] {
+  top: max(168px, calc(env(safe-area-inset-top) + 56px));
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: pre;
+}

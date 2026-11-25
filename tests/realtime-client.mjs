@@ -29,6 +29,8 @@ const sent = [];
 const sockets = [];
 class Socket {
   readyState = 1;
+  pongDelay = 150;
+  pongStats = {};
   constructor(url) {
     this.url = url;
     sockets.push(this);
@@ -47,7 +49,9 @@ class Socket {
   send(raw) {
     const message = JSON.parse(raw);
     sent.push(message);
-    if (message.type === 'ping') clock.setTimeout(() => this.message({ type: 'pong' }), 150);
+    if (message.type === 'ping') {
+      clock.setTimeout(() => this.message({ type: 'pong', ...this.pongStats }), this.pongDelay);
+    }
   }
   close() {
     this.readyState = 3;
@@ -92,6 +96,56 @@ sockets.at(-1).message({ type: 'ack', seq: 1 });
 assert.equal(client.pending.size, 0);
 assert.equal(client.session.code, 'ABCDEFG');
 client.close();
+assert.equal(client.performanceStats, null, 'debug is opt-in');
+
+const debugClient = new RealtimeClient({ Socket, clock, debug: true, now: () => clock.time });
+const debugStart = clock.time;
+const debugConnection = debugClient.connect({ action: 'create' });
+clock.advance(debugStart + 1);
+await debugConnection;
+const debugSocket = sockets.at(-1);
+const deliverSnapshot = (elapsed, status = 'playing') => {
+  debugSocket.onmessage({
+    get data() {
+      clock.time += elapsed;
+      return JSON.stringify({ type: 'snapshot', status, state: { time: 0 } });
+    },
+  });
+};
+clock.advance(debugStart + 100);
+deliverSnapshot(8);
+clock.advance(debugStart + 151);
+clock.advance(debugStart + 400);
+deliverSnapshot(3);
+debugSocket.pongDelay = 180;
+debugSocket.pongStats = { tickLagMax: 76, cmdMaxMs: 8 };
+clock.advance(debugStart + 2181);
+debugSocket.pongDelay = 70;
+debugSocket.pongStats = { tickLagMax: 15, cmdMaxMs: 2 };
+clock.advance(debugStart + 4071);
+assert.deepEqual(debugClient.performanceStats, {
+  pingMs: 70,
+  pingMaxMs: 180,
+  tickLagMax: 76,
+  cmdMaxMs: 8,
+  snapshotGapMaxMs: 300,
+  snapshotProcessingMaxMs: 8,
+});
+deliverSnapshot(1, 'ended');
+debugSocket.pongStats = { tickLagMax: 90, cmdMaxMs: 9 };
+clock.advance(debugStart + 6071);
+const finalStats = {
+  pingMs: 70,
+  pingMaxMs: 180,
+  tickLagMax: 90,
+  cmdMaxMs: 9,
+  snapshotGapMaxMs: 3671,
+  snapshotProcessingMaxMs: 8,
+};
+debugSocket.pongStats = { tickLagMax: 100, cmdMaxMs: 10 };
+clock.advance(debugStart + 8071);
+assert.deepEqual(debugClient.performanceStats, finalStats);
+debugClient.close();
 
 const match = new Match({
   storage: { get: async () => null },
