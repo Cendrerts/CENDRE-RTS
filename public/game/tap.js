@@ -36,17 +36,33 @@ export function resolveTap(state, player, selection, point, scale = 1, onTarget 
     ? ['mine', 'unit', 'enemy', 'building', 'slot']
     : combat ? ['enemy', 'unit', 'building', 'mine', 'slot'] : ['unit', 'enemy', 'building', 'slot', 'mine'];
   if (ratMilitary) priorities.splice(priorities.indexOf('enemy') + 1, 0, 'corpse');
+  priorities.push('pantry');
+  const pantry = state.pantries?.[1 - player];
+  let pantryHit = false;
+  if (pantry && Sim.visibleAt(state, player, pantry.x, pantry.y)) {
+    const action = selected.length
+      ? { kind: 'attackMove', x: pantry.x, y: pantry.y }
+      : { kind: 'enemyPantry' };
+    const width = Math.max(76, 44 / scale);
+    const bounds = { x: pantry.x - width / 2, y: pantry.y - 42, width, height: 53 };
+    add(pantry, 'pantry', 22, action, bounds);
+    pantryHit = candidates.length > 0;
+  }
   function add(target, category, radius, action, bounds = null, sprite = false) {
     const center = sprite
       ? { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 }
       : target;
-    const distance = Math.hypot(point.x - center.x, point.y - center.y) * scale;
+    let distance = Math.hypot(point.x - center.x, point.y - center.y) * scale;
+    if (pantryHit && action.kind === 'attack' && sprite && target.type && !target.structure) {
+      const groundDistance = Math.hypot(point.x - target.x, point.y - target.y) * scale;
+      if (groundDistance <= 6) distance = Math.min(distance, groundDistance);
+    }
     const margin = sprite ? 0 : 10 / scale;
     const insideBounds = bounds
       ? point.x >= bounds.x - margin && point.x <= bounds.x + bounds.width + margin &&
         point.y >= bounds.y - margin && point.y <= bounds.y + bounds.height + margin
       : distance <= radius;
-    const hit = insideBounds || (sprite && distance <= radius);
+    const hit = insideBounds || ((sprite || category === 'pantry') && distance <= radius);
     if (hit) candidates.push({ target, category, distance, action, bounds, radius, center, sprite });
   }
   for (const unit of [...state.units, ...(state.monsters || [])]) {

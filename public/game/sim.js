@@ -300,6 +300,62 @@ function watchtowersTick(s, dt) {
     }
   }
 }
+const PANTRY_CAPACITY = 40;
+const PANTRY_REFILL_PERIOD = 6;
+
+function createPantries() {
+  const x = 650;
+  const y = 1750;
+  return [{ x, y, stock: 0 }, { x: W - x, y: H - y, stock: 0 }];
+}
+function createPantryTimers(time) {
+  return [0, 1].map(() => ({
+    refillAt: time + PANTRY_REFILL_PERIOD,
+    lastAlertAt: null,
+    raidTime: {},
+  }));
+}
+function pantriesTick(s, dt, aiTeam) {
+  for (const [owner, pantry] of s.pantries.entries()) {
+    const timers = s.pantryTimers[owner];
+    while (s.time + 1e-9 >= timers.refillAt) {
+      pantry.stock = Math.min(PANTRY_CAPACITY, pantry.stock + 1);
+      timers.refillAt += PANTRY_REFILL_PERIOD;
+    }
+
+    const raiders = [];
+    let guarded = false;
+    for (const unit of s.units) {
+      if (unit.hp <= 0 || unit.type === 'commis' || unit.type === 'sanglier') continue;
+      const distance = Math.hypot(unit.x - pantry.x, unit.y - pantry.y);
+      if (unit.team === owner && distance < 120) {
+        guarded = true;
+        break;
+      }
+      if (unit.team === 1 - owner && unit.team !== aiTeam && distance < 70 && raiders.length < 3) {
+        raiders.push(unit);
+      }
+    }
+    const previousRaidTime = timers.raidTime;
+    timers.raidTime = {};
+    if (guarded || !pantry.stock) continue;
+
+    let stolen = 0;
+    for (const unit of raiders) {
+      const elapsed = (previousRaidTime[unit.id] || 0) + dt;
+      const seconds = Math.floor(elapsed + 1e-9);
+      timers.raidTime[unit.id] = elapsed - seconds;
+      const amount = Math.min(pantry.stock, seconds * (unit.team === 1 ? 2 : 1));
+      pantry.stock -= amount;
+      s.ingredients[unit.team].conserves += amount;
+      stolen += amount;
+    }
+    if (stolen > 0 && s.time - (timers.lastAlertAt ?? -Infinity) + 1e-9 >= 10) {
+      timers.lastAlertAt = s.time;
+      pushDamageEvent(s, { x: pantry.x, y: pantry.y, team: owner, time: s.time, kind: 'pantryRaid' });
+    }
+  }
+}
 function create() {
   let s = {
     matchCounters: [emptyMatchCounters(), emptyMatchCounters()],
@@ -309,6 +365,8 @@ function create() {
     id: 0,
     rubies: [100, 100],
     ingredients: [ingredientStock(), ingredientStock()],
+    pantries: createPantries(),
+    pantryTimers: createPantryTimers(0),
     ragout: { readyAt: null, expiresAt: 0 },
     festin: { readyAt: null },
     monsterId: 0,
@@ -614,6 +672,11 @@ function migrateState(s) {
     const stock = s.ingredients[team];
     if (typeof stock === 'number') s.ingredients[team] = ingredientStock(stock);
   }
+  if (!s.pantries) {
+    s.pantries = createPantries();
+    s.pantryTimers = createPantryTimers(s.time);
+  }
+  s.pantryTimers ??= createPantryTimers(s.time);
   s.ragout ??= { readyAt: null, expiresAt: 0 };
   s.festin ??= { readyAt: null };
   s.monsterId ??= 0;
@@ -1220,6 +1283,8 @@ function visibility(s) {
         .map((u) => ({ x: u.x, y: u.y, vision: stats(u.type, u.team).vision })),
       ...s.mines.filter((m) => m.owner === t).map((m) => ({ ...m, vision: 105 })),
       ...s.watchtowers.filter((tower) => tower.owner === t).map((tower) => ({ ...tower, vision: RULES.towerVision })),
+      // Keep the owner’s pantry and its immediate raiding perimeter visible.
+      { ...s.pantries[t], vision: 80 },
     ];
     // Visit only cells inside each source's bounds instead of testing every
     // cell against every source. The strict radius test matches the old rule.
@@ -1248,7 +1313,10 @@ function recordDamageEvent(s, entity) {
   if (s.time - (entity.lastDamageEventAt ?? -Infinity) < 1) return;
   // Persist the cooldown because server requests reload entities from storage.
   entity.lastDamageEventAt = s.time;
-  s.damageEvents.push({ x: entity.x, y: entity.y, team: entity.team, time: s.time });
+  pushDamageEvent(s, { x: entity.x, y: entity.y, team: entity.team, time: s.time });
+}
+function pushDamageEvent(s, event) {
+  s.damageEvents.push(event);
   if (s.damageEvents.length > 24) {
     s.damageEvents.splice(0, s.damageEvents.length - 24);
   }
@@ -1299,7 +1367,7 @@ function automaticTarget(s, unit, range, structures, retaliating = false) {
   }
   return selected;
 }
-function tick(s, dt) {
+function tick(s, dt, { aiTeam = null } = {}) {
   migrateState(s);
   if (s.winner !== null) return;
   productionTick(s, dt);
@@ -1539,6 +1607,7 @@ function tick(s, dt) {
   }
   if (structures.flat().some((structure) => structure.structure === 'depot' && structure.hp <= 0)) ensureSlots(s);
   s.units = s.units.filter((u) => u.hp > 0);
+  pantriesTick(s, dt, aiTeam);
   s.shots = s.shots.filter((p) => (p.life -= dt) > 0);
 }
 
@@ -1945,6 +2014,7 @@ function restore(texte) {
 }
 
 export const CendreSim = {
+  PANTRY_CAPACITY,
   targetReference,
   resolveTarget,
   devour,

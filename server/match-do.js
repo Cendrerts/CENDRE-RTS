@@ -93,7 +93,7 @@ export class Match {
     const state = view(this.sim, team, { compactShots: true });
     const previousFields = this.snapshotFields.get(socket);
     const fields = { time: state.time };
-    for (const field of ['slots', 'visible', 'camps', 'watchtowers', 'braises', 'bases', 'corpses', 'ragout', 'festin']) {
+    for (const field of ['slots', 'visible', 'camps', 'watchtowers', 'braises', 'bases', 'corpses', 'ragout', 'festin', 'pantries']) {
       fields[field] = JSON.stringify(state[field]);
       if (previousFields?.[field] === fields[field]) delete state[field];
     }

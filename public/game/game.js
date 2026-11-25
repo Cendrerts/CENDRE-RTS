@@ -729,7 +729,7 @@ function handleFieldTap(e, duration) {
   const action =
     (attackMoveArmed || patrolArmed) &&
     selected.size &&
-    !['select', 'radial', 'production', 'enemyBase'].includes(resolved.kind)
+    !['select', 'radial', 'production', 'enemyBase', 'attackMove'].includes(resolved.kind)
       ? { kind: 'move' }
       : resolved;
   if (!['select', 'production'].includes(action.kind)) fieldDoubleTap.reset();
@@ -739,6 +739,10 @@ function handleFieldTap(e, duration) {
     panelContext = { ...action.context, bases: !action.context.baseId };
     panelVisibilityState = panelVisibility(panelVisibilityState, 'building');
     updateUI();
+    return;
+  }
+  if (action.kind === 'enemyPantry') {
+    notify('Garde-manger adverse');
     return;
   }
   if (action.kind === 'enemyBase') {
@@ -896,6 +900,7 @@ function updateAttackAlerts() {
   if (running && !paused) {
     for (const event of state.damageEvents || []) {
       if (event.team !== player || event.time <= lastDamageTime) continue;
+      if (event.kind === 'pantryRaid') notify('Garde-manger pillé !');
       if (attackDirection(event, camera, viewWidth, viewHeight, scale)) {
         attackAlerts = groupAttackAlerts(attackAlerts, event, event.time);
       }
@@ -1110,6 +1115,11 @@ function drawMini() {
     terrain,
     fog,
     watchtowers: state.watchtowers,
+    pantries: (state.pantries || []).flatMap(({ x, y }, team) =>
+      team === player || state.explored[player][Math.floor(y / CELL) * COLS + Math.floor(x / CELL)]
+        ? [{ x, y, team }]
+        : [],
+    ),
     braises: visibleBraises(),
     units: preparedUnits,
     mines: state.mines.filter((mine) => state.explored[player][Math.floor(mine.y / CELL) * COLS + Math.floor(mine.x / CELL)]),
@@ -1190,6 +1200,19 @@ function draw() {
       ctx.beginPath();
       ctx.arc(tower.x, tower.y, 43, -Math.PI / 2, -Math.PI / 2 + tower.progress / Sim.RULES.towerCapture * Math.PI * 2);
       ctx.stroke();
+    }
+  }
+  for (const [team, { x, y, stock }] of (state.pantries || []).entries()) {
+    if (team !== player && !Sim.visibleAt(state, player, x, y)) continue;
+    ellipse(x, y + 4, 42, 15, '#11171988');
+    poly([[x - 38, y - 42], [x + 21, y - 42], [x + 38, y - 26], [x - 21, y - 26]], '#bd8754', '#38251b');
+    poly([[x + 38, y - 26], [x + 21, y - 42], [x + 21, y - 5], [x + 38, y + 11]], '#674126', '#38251b');
+    poly([[x - 21, y - 26], [x + 38, y - 26], [x + 38, y + 11], [x - 21, y + 11]], '#96603b', '#38251b');
+    line(x - 19, y - 14, x + 36, y - 14, TEAM_COLORS[team], 11);
+    line(x - 15, y - 5, x + 32, y - 5, '#d39b66', 2);
+    line(x - 15, y + 3, x + 32, y + 3, '#d39b66', 2);
+    if (team === player && stock != null) {
+      bar(x, y - 53, stock, Sim.PANTRY_CAPACITY, 70);
     }
   }
   drawSlots();
@@ -1324,7 +1347,7 @@ function frame(t) {
   if (running && !paused) {
     if (!net) {
       soloAI.update(state);
-      Sim.tick(state, dt);
+      Sim.tick(state, dt, { aiTeam: 1 - player });
       if (state.time >= nextSoloSaveAt) {
         saveActiveSolo();
         nextSoloSaveAt += soloSaveInterval;

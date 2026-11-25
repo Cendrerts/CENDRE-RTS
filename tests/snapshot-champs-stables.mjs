@@ -4,7 +4,7 @@ import { Match } from '../server/match-do.js';
 import { RealtimeClient } from '../public/game/realtime.js';
 import { CendreSim as Sim } from '../public/game/sim.js';
 
-const stableFields = ['camps', 'watchtowers', 'braises', 'bases', 'corpses', 'ragout', 'festin'];
+const stableFields = ['camps', 'watchtowers', 'braises', 'bases', 'corpses', 'ragout', 'festin', 'pantries'];
 
 class Socket {
   messages = [];
@@ -333,6 +333,18 @@ assert.deepEqual(opponentState.ragout, { readyAt: null, expiresAt: 0 });
 assert.deepEqual(received.at(-1).festin, { readyAt: null });
 checkPlayer([]);
 checkOpponent([]);
+
+match.sim.pantries[player.team].stock++;
+match.snapshot(replacement);
+match.snapshot(opponentSocket);
+const pantrySnapshot = replacement.messages.at(-1);
+const opponentPantrySnapshot = opponentSocket.messages.at(-1);
+assert.deepEqual(JSON.parse(pantrySnapshot).state.pantries, view(match.sim, player.team).pantries);
+assert(!Object.hasOwn(JSON.parse(opponentPantrySnapshot).state, 'pantries'));
+client.socket.receive(pantrySnapshot);
+opponentClient.socket.receive(opponentPantrySnapshot);
+assert.equal(received.at(-1).pantries[player.team].stock, match.sim.pantries[player.team].stock);
+assert.equal(opponentState.pantries[player.team].stock, null);
 
 const shot = { x: 100.456, y: 200.789, tx: 300.12, ty: 400.98, team: player.team, life: 0.15 };
 match.sim.visible[player.team].fill(1);

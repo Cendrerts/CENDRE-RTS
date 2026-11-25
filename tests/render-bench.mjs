@@ -58,7 +58,7 @@ assert(state.units.reduce((sum, unit) => sum + unit.hp, 0) < health, 'Both armie
 console.log(`render-bench: sim + draw list ${((performance.now() - start) / 600).toFixed(3)} ms/frame (Node, no CPU throttling)`);
 
 // Compare every cell with the previous exhaustive visibility rule, including
-// watchtower radii, both teams, fractional positions and explored memory.
+// watchtower and pantry radii, both teams, fractional positions and explored memory.
 for (let sample = 0; sample < 8; sample++) {
   const scenario = combatScenario(Sim);
   scenario.watchtowers[sample % 2].owner = sample % 3 - 1;
@@ -74,6 +74,7 @@ for (let sample = 0; sample < 8; sample++) {
       ...scenario.units.filter((unit) => unit.team === team).map((unit) => ({ ...unit, vision: Sim.stats(unit.type, team).vision })),
       ...scenario.mines.filter((mine) => mine.owner === team).map((mine) => ({ ...mine, vision: 105 })),
       ...scenario.watchtowers.filter((tower) => tower.owner === team).map((tower) => ({ ...tower, vision: 420 })),
+      { ...scenario.pantries[team], vision: 80 },
     ];
     for (let index = 0; index < expected[team].length; index++) {
       const x = index % Sim.COLS * Sim.CELL + 10;
