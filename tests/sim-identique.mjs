@@ -35,7 +35,10 @@ try {
   const identical = (actual, expected, label) => {
     // Compare the entire serializable state, including visibility, events,
     // target references, positions, resources and winner, without rounding.
-    assert.equal(pack(actual), pack(expected), label);
+    // Aligner la représentation des stocks quand origin/main précède D68.
+    const ingredients = expected.ingredients.map((stock) =>
+      typeof stock === 'number' ? { viande: stock, epices: 0, conserves: 0 } : stock);
+    assert.equal(pack(actual), pack({ ...expected, ingredients }), label);
   };
   identical(loaded, referenceLoaded, 'loadedScenario initial');
   for (let tick = 1; tick <= 1200; tick++) {
@@ -58,10 +61,13 @@ try {
   probe.rubies[0] = building.cost;
   assert(Reference.construct(probe, 0, building.id, slot.baseId, slot.id));
   // Tant qu’origin/main n’a pas D70, les dégâts aux bâtiments changent le duel.
-  // Le duel vérifie alors le déterminisme de la branche et revient à main dès que D70 y figure.
+  // D68 change aussi les gains de ressources, donc le déroulement d'un duel.
+  // Comparer deux parties de la branche tant que main n'a pas les deux règles.
   const referenceHasD70 = Number.isFinite(slot.batiment.hp);
-  const secondSim = referenceHasD70 ? Reference : Sim;
-  const secondAI = referenceHasD70
+  const referenceHasD68 = typeof probe.ingredients[0]?.viande === 'number';
+  const sameRules = referenceHasD70 && referenceHasD68;
+  const secondSim = sameRules ? Reference : Sim;
+  const secondAI = sameRules
     ? (await import(pathToFileURL(join(directory, 'ai.js')))).createAI
     : createAI;
   const secondState = structuredClone(state);
@@ -84,7 +90,7 @@ try {
     }
   }
   assert.ok(state.time >= 300 - 1e-8, 'La partie doit couvrir cinq minutes');
-  const comparison = referenceHasD70 ? 'avec origin/main' : 'entre deux parties de la branche (main sans D70)';
+  const comparison = sameRules ? 'avec origin/main' : 'entre deux parties de la branche (main antérieur à D68 ou D70)';
   console.log(`sim-identique : 1 200 ticks chargés et Brutal/Brutal graine 18, cinq minutes identiques ${comparison}`);
 } finally {
   await rm(directory, { recursive: true, force: true });

@@ -46,7 +46,7 @@ try {
   await page.locator('#start').click();
   await page.evaluate(() => window.campCapture());
   await page.waitForTimeout(500);
-  const size = await page.locator('#ingredients').evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize));
+  const size = await page.locator('#viande').evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize));
   assert(size >= 9);
   await mkdir('docs/issue-105', { recursive: true });
   await page.screenshot({ path: 'docs/issue-105/camp-844x390.png' });

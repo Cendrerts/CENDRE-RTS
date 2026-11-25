@@ -213,6 +213,9 @@ function createBraises() {
     nextTickAt: null,
   }));
 }
+function ingredientStock(viande = 0) {
+  return { viande, epices: 0, conserves: 0 };
+}
 function braisesTick(s, dt) {
   let cursor = s.time - dt;
   while (cursor < s.time - 1e-9) {
@@ -241,7 +244,7 @@ function braisesTick(s, dt) {
       const survival = military.filter((unit) => unit.team === holder)
         .reduce((longest, unit) => Math.max(longest, unit.team === 0 ? Infinity : unit.hp / 2), 0);
       while (foyer.nextTickAt !== null && foyer.nextTickAt <= Math.min(end, cursor + survival) + 1e-9) {
-        s.ingredients[holder] += holder === 0 ? 3 : 6;
+        s.ingredients[holder].epices += holder === 0 ? 3 : 6;
         foyer.nextTickAt += 5;
       }
       for (const unit of nearby) {
@@ -306,7 +309,7 @@ function create() {
     time: 0,
     id: 0,
     rubies: [100, 100],
-    ingredients: [0, 0],
+    ingredients: [ingredientStock(), ingredientStock()],
     ragout: { readyAt: null, expiresAt: 0 },
     festin: { readyAt: null },
     monsterId: 0,
@@ -566,7 +569,9 @@ function applyDamage(s, target, damage, attackerTeam = null, attackerId = null) 
     if (wasAlive && !target.returning && attackerTeam !== null) {
       target.targetId = attackerId;
     }
-    if (wasAlive && target.hp <= 0 && (attackerTeam === 0 || attackerTeam === 1)) s.ingredients[attackerTeam] += 15;
+    if (wasAlive && target.hp <= 0 && target.type === 'sanglier' && (attackerTeam === 0 || attackerTeam === 1)) {
+      s.ingredients[attackerTeam].viande += 15;
+    }
     return;
   }
   if (!wasAlive || target.hp > 0) return;
@@ -615,7 +620,11 @@ function migrateState(s) {
   s.braises ??= createBraises();
   s.braisesNextAt ??= 240;
   delete s.tower;
-  s.ingredients ??= [0, 0];
+  s.ingredients ??= [ingredientStock(), ingredientStock()];
+  for (const team of [0, 1]) {
+    const stock = s.ingredients[team];
+    if (typeof stock === 'number') s.ingredients[team] = ingredientStock(stock);
+  }
   s.ragout ??= { readyAt: null, expiresAt: 0 };
   s.festin ??= { readyAt: null };
   s.monsterId ??= 0;
@@ -645,7 +654,7 @@ const RAGOUT_REASONS = {
   faction: 'Seuls les Cuistots peuvent préparer le Ragoût.',
   tower: 'Tour principale indisponible.',
   cooking: 'Ragoût déjà en cuisson.',
-  ingredients: 'Ingrédients insuffisants : 40 nécessaires.',
+  ingredients: 'Viande insuffisante : 40 nécessaires.',
   ended: 'La partie est terminée.',
 };
 function festinFreePlaces(s) {
@@ -658,7 +667,7 @@ function cookDishBlockReason(s, team, dish = 'ragout') {
     if (!(s.bases[1]?.hp > 0)) return 'Grande Décharge indisponible.';
     if (festinFreePlaces(s) < 4) return 'Population insuffisante : 4 places libres nécessaires.';
     if (s.festin?.readyAt != null) return 'Festin déjà en préparation.';
-    if ((s.ingredients?.[team] || 0) < 40) return RAGOUT_REASONS.ingredients;
+    if ((s.ingredients?.[team]?.viande || 0) < 40) return RAGOUT_REASONS.ingredients;
     return null;
   }
   if (dish !== 'ragout') return 'Plat inconnu.';
@@ -666,14 +675,14 @@ function cookDishBlockReason(s, team, dish = 'ragout') {
   if (s.winner !== null) return RAGOUT_REASONS.ended;
   if (!(s.bases[team]?.hp > 0)) return RAGOUT_REASONS.tower;
   if (s.ragout?.readyAt != null) return RAGOUT_REASONS.cooking;
-  if ((s.ingredients?.[team] || 0) < 40) return RAGOUT_REASONS.ingredients;
+  if ((s.ingredients?.[team]?.viande || 0) < 40) return RAGOUT_REASONS.ingredients;
   return null;
 }
 function cookDish(s, team, dish = 'ragout') {
   const reason = cookDishBlockReason(s, team, dish);
   if (reason) return { ok: false, reason };
   migrateState(s);
-  s.ingredients[team] -= 40;
+  s.ingredients[team].viande -= 40;
   if (dish === 'festin') s.festin.readyAt = s.time + 15;
   else s.ragout.readyAt = s.time + 20;
   return { ok: true, reason: null };
@@ -1153,7 +1162,7 @@ function devourTick(s, unit, dt) {
   const duration = unit.type === 'hero' ? 3 : 4;
   if (s.time - unit.devour.startedAt + 1e-9 < duration) return;
   const amount = corpse.type === 'sanglier' ? 10 : 6;
-  s.ingredients[unit.team] += amount;
+  s.ingredients[unit.team].viande += amount;
   if (unit.type === 'hero') awardHeroExperience(s, null, unit, 40);
   unit.hp = Math.min(unit.max, unit.hp + unit.max * 0.3);
   s.devourEvents.push({ x: unit.x, y: unit.y, team: unit.team, amount, time: s.time });

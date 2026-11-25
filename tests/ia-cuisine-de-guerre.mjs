@@ -8,7 +8,7 @@ for (const difficulty of ['facile', 'normal', 'difficile', 'brutal', 'impitoyabl
   // Isoler les décisions de chasse et de cuisine des missions de capture.
   state.watchtowers = [];
   state.rubies = [0, 0];
-  state.ingredients[0] = 80;
+  state.ingredients[0].viande = 80;
   for (let index = 0; index < 6; index++) {
     Sim.spawn(state, 'knight', 0);
   }
@@ -35,7 +35,7 @@ for (const difficulty of ['facile', 'normal', 'difficile', 'brutal', 'impitoyabl
   invader.y = state.mines[0].y;
   controller.update(state);
   assert(army.every((unit) => unit.target?.type !== 'sanglier'), 'La défense annule la chasse');
-  assert.equal(state.ingredients[0], 40, 'Aucune cuisson pendant le bonus actif');
+  assert.equal(state.ingredients[0].viande, 40, 'Aucune cuisson pendant le bonus actif');
 }
 
 // D28 : les camps ne doivent jamais détourner une vague d'urgence.
@@ -226,7 +226,7 @@ for (let game = 0; game < 3; game++) {
       if (readyAt === null && state.ragout.readyAt !== null) cooked++;
     }
     const monsters = state.monsters.filter((monster) => monster.hp > 0);
-    const ingredients = [...state.ingredients];
+    const ingredients = state.ingredients.map((stock) => stock.viande);
     const previousEvents = new Set(state.devourEvents);
     Sim.tick(state, 0.1);
     eaten += state.devourEvents.filter((event) =>
@@ -234,7 +234,7 @@ for (let game = 0; game < 3; game++) {
     const dead = monsters.filter((monster) => monster.hp <= 0).length;
     if (dead) {
       for (const team of [0, 1]) {
-        const gain = state.ingredients[team] - ingredients[team];
+        const gain = state.ingredients[team].viande - ingredients[team];
         const meals = state.devourEvents.filter((event) =>
           !previousEvents.has(event) && event.team === team)
           .reduce((sum, event) => sum + event.amount, 0);

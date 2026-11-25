@@ -3,7 +3,8 @@ import { CendreSim as Sim } from '../public/game/sim.js';
 import { command, view } from '../lib/match.mjs';
 
 const state = Sim.create();
-state.ingredients = [80, 80];
+state.ingredients[0].viande = 80;
+state.ingredients[1].viande = 80;
 command(state, 0, { kind: 'cookDish' });
 command(state, 1, { kind: 'cookDish', dish: 'festin' });
 assert.notEqual(state.ragout.readyAt, null);

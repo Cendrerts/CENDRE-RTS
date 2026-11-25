@@ -52,20 +52,20 @@ for (const type of ['knight', 'sanglier']) {
     command(state, 1, { kind: 'move', ids: [rat.id], x: monster.x, y: monster.y, target: { id: monster.id } });
     S.tick(state, 0.05);
     assert.equal(state.corpses[0].type, 'sanglier');
-    state.ingredients[1] = 0;
+    state.ingredients[1].viande = 0;
   }
   const health = rat.hp;
   eat(state, rat, state.corpses[0]);
   advance(state, 3.95);
-  assert.equal(state.ingredients[1], 0);
+  assert.equal(state.ingredients[1].viande, 0);
   const restored = unpack(pack(state));
   advance(state, 0.05);
   advance(restored, 0.05);
   assert.deepEqual(state, restored);
-  assert.equal(state.ingredients[1], type === 'sanglier' ? 10 : 6);
+  assert.equal(state.ingredients[1].viande, type === 'sanglier' ? 10 : 6);
   assert.equal(rat.hp, Math.min(rat.max, health + rat.max * 0.3));
   assert.equal(state.corpses.length, 0);
-  assert.equal(view(state, 1).devourEvents[0].amount, state.ingredients[1]);
+  assert.equal(view(state, 1).devourEvents[0].amount, state.ingredients[1].viande);
 }
 for (const interruption of ['move', 'hold', 'steer', 'retreat', 'patrol', 'queue', 'damage']) {
   const { state, rat, corpse } = fixture();
@@ -81,7 +81,7 @@ for (const interruption of ['move', 'hold', 'steer', 'retreat', 'patrol', 'queue
   }
   assert.equal(rat.devour, null, interruption);
   advance(state, 4.1);
-  assert.equal(state.ingredients[1], 0, interruption);
+  assert.equal(state.ingredients[1].viande, 0, interruption);
   assert.equal(state.corpses.length, 1);
 }
 {
@@ -90,7 +90,7 @@ for (const interruption of ['move', 'hold', 'steer', 'retreat', 'patrol', 'queue
   eat(state, rat, corpse);
   eat(state, second, corpse);
   advance(state, 4.1);
-  assert.equal(state.ingredients[1], 6);
+  assert.equal(state.ingredients[1].viande, 6);
   assert.equal(second.devour, null);
   assert.equal(second.path.length, 0);
   const cook = unit(state, 0);
@@ -158,7 +158,7 @@ for (const interruption of ['move', 'hold', 'steer', 'retreat', 'patrol', 'queue
   advance(state, 1);
   assert.deepEqual({ x: rat.x, y: rat.y }, position, 'Repas immobile');
   advance(state, 4);
-  assert.equal(state.ingredients[1], 6);
+  assert.equal(state.ingredients[1].viande, 6);
   assert.equal(rat.hp, rat.max, 'Soin plafonné aux PV max');
 }
 {
