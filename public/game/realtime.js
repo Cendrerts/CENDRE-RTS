@@ -111,7 +111,7 @@ export class RealtimeClient {
             state.mines = snapshotMines;
           }
           delete state.minesChanged;
-          for (const field of ['slots', 'explored', 'camps', 'watchtowers', 'braises', 'bases', 'corpses']) {
+          for (const field of ['slots', 'visible', 'explored', 'camps', 'watchtowers', 'braises', 'bases', 'corpses']) {
             if (Object.hasOwn(state, field)) {
               snapshotFields[field] = state[field];
             } else if (Object.hasOwn(snapshotFields, field)) {

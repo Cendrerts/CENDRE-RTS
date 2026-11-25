@@ -79,6 +79,8 @@ assert(Object.hasOwn(firstState, 'slots'));
 assert.equal(typeof firstState.explored, 'string');
 assert(Array.isArray(firstState.mines));
 const firstView = view(match.sim, player.team, { compactUnits: false });
+assert.equal(typeof firstState.visible, 'string');
+assert.equal(firstState.visible, firstView.visible);
 assert.deepEqual(firstState.mines, firstView.mines);
 assert(!Object.hasOwn(firstState, 'minesChanged'));
 for (const field of stableFields) {
@@ -97,7 +99,7 @@ assert(!Object.hasOwn(reducedState, 'minesChanged'));
 for (const field of stableFields) {
   assert(!Object.hasOwn(reducedState, field), field);
 }
-assert.equal(typeof reducedState.visible, 'string');
+assert(!Object.hasOwn(reducedState, 'visible'));
 const savings = complete.length - reduced.length;
 
 const received = [];
@@ -122,6 +124,10 @@ assert.deepEqual(received[1].mines, firstState.mines);
 for (const field of stableFields) {
   assert.deepEqual(received[1][field], firstState[field], field);
 }
+const visibleForPlayer = () => match.sim.visible.map((grid, team) =>
+  Array.from(grid, (cell) => team === player.team ? cell : 0),
+);
+assert.deepEqual(received[0].visible, visibleForPlayer());
 assert.deepEqual(received[1].visible, received[0].visible);
 
 clock.time = match.room.startAt;
@@ -194,13 +200,41 @@ assert.deepEqual(casualtyState.corpses, visibleCorpses);
 client.socket.receive(casualty);
 assert.deepEqual(received.at(-1).corpses, visibleCorpses);
 
+const exploredBeforeMove = explored.slice();
+const startX = attacker.x;
+const startY = attacker.y;
+command(match.sim, player.team, {
+  kind: 'move',
+  ids: [attacker.id],
+  x: 1100,
+  y: 1550,
+});
+let discoveredCell = -1;
+for (let tick = 0; tick < 200 && discoveredCell === -1; tick++) {
+  Sim.tick(match.sim, 0.05);
+  discoveredCell = match.sim.visible[player.team].findIndex((cell, index) =>
+    cell === 1 && exploredBeforeMove[index] === 0,
+  );
+}
+assert(attacker.x !== startX || attacker.y !== startY);
+assert(discoveredCell >= 0);
+match.snapshot(socket);
+const movement = socket.messages.at(-1);
+const movementState = JSON.parse(movement).state;
+assert.equal(typeof movementState.visible, 'string');
+assert.equal(movementState.visible, view(match.sim, player.team).visible);
+client.socket.receive(movement);
+assert.equal(received.at(-1).visible[player.team][discoveredCell], 1);
+assert.deepEqual(received.at(-1).visible, visibleForPlayer());
+
 await match.authenticate(url(''), player.token);
 const replacement = connectSocket();
 match.snapshot(replacement);
 const replacementSnapshot = replacement.messages.at(-1);
 const replacementState = JSON.parse(replacementSnapshot).state;
 assert.deepEqual(replacementState.slots, builtState.slots);
-assert.equal(replacementState.explored, casualtyState.explored ?? discoveryState.explored);
+assert.equal(replacementState.explored, movementState.explored);
+assert.equal(replacementState.visible, movementState.visible);
 assert(!Object.hasOwn(replacementState, 'minesChanged'));
 const disconnectedSocket = client.socket;
 disconnectedSocket.onclose();
@@ -209,6 +243,7 @@ assert.notEqual(client.socket, disconnectedSocket);
 client.socket.receive(JSON.stringify({ type: 'session', code: player.code, token: player.token }));
 client.socket.receive(replacementSnapshot);
 const replacementView = view(match.sim, player.team, { compactUnits: false });
+assert.deepEqual(received.at(-1).visible, visibleForPlayer());
 assert.deepEqual(replacementState.mines, replacementView.mines);
 assert.deepEqual(received.at(-1).mines, replacementView.mines);
 for (const field of stableFields) {
@@ -220,6 +255,8 @@ match.snapshot(replacement);
 const replacementDelta = replacement.messages.at(-1);
 client.socket.receive(replacementDelta);
 const replacementDeltaState = JSON.parse(replacementDelta).state;
+assert(!Object.hasOwn(replacementDeltaState, 'visible'));
+assert.deepEqual(received.at(-1).visible, visibleForPlayer());
 for (const field of stableFields) {
   assert(!Object.hasOwn(replacementDeltaState, field), field);
   assert.deepEqual(received.at(-1)[field], replacementView[field], field);
@@ -232,6 +269,7 @@ restored.snapshot(replacement);
 const restoredState = JSON.parse(replacement.messages.at(-1)).state;
 assert.deepEqual(restoredState.slots, replacementState.slots);
 assert.equal(restoredState.explored, replacementState.explored);
+assert.equal(restoredState.visible, replacementState.visible);
 assert.deepEqual(restoredState.mines, replacementState.mines);
 
 console.log(`Snapshot stable : ${complete.length} → ${reduced.length} caractères (−${savings}).`);
