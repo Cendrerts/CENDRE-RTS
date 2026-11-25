@@ -15,7 +15,7 @@ import { UnitVoices, selectionVoice } from './unit-voices.js';
 import { createRadialMenu } from './radial.js';
 import { unitLabel, buildingSelectionVisuals, buildingsOfType, selectedProducers, selectedRecruitCommand, selectedRallyCommands, armyUnits, armyToastText, groupToastText, filterSelection, cameraBounds, unitsOfType, createFieldDoubleTap, createPortraitTap, unitsInBox, boxSelection } from './selection.js';
 import { createGestures } from './gestures.js';
-import { constructionBarBounds, resolveTap, isEmptyTap } from './tap.js';
+import { buildingBounds, constructionBarBounds, resolveTap, isEmptyTap } from './tap.js';
 import { installMobileDisplay } from './mobile-display.js';
 import { initTouchUI } from './mobile.js';
 import { createControlGroups, groupUnits, assignGroup, initControlGroups } from './control-groups.js';
@@ -798,18 +798,19 @@ function handleFieldTap(e, duration) {
       ...action,
       kind: patrolArmed ? 'patrol' : attackMove ? 'attackMove' : action.kind,
     };
-    showOrderFeedback(feedbackAction, target || p, [...selected]);
+    const destination = action.kind === 'attackMove' ? action : p;
+    showOrderFeedback(feedbackAction, target || destination, [...selected]);
     if (net) {
       sendCommand({
-        kind: patrolArmed ? 'patrol' : attackMove ? 'attackMove' : 'move',
+        kind: target?.structure ? 'attack' : patrolArmed ? 'patrol' : attackMove ? 'attackMove' : 'move',
         ids: [...selected],
-        x: p.x,
-        y: p.y,
+        x: destination.x,
+        y: destination.y,
         queue: queueArmed && !patrolArmed,
-        target: target ? (target.base ? { base: true } : { id: target.id }) : null,
+        target: Sim.targetReference(target),
       });
     } else if (patrolArmed) Sim.patrol(state, [...selected], p.x, p.y);
-    else Sim.order(state, [...selected], p.x, p.y, target, !target && !attackMove, queueArmed);
+    else Sim.order(state, [...selected], destination.x, destination.y, target, !target && !attackMove, queueArmed);
     patrolArmed = false;
     attackMoveArmed = false;
     $('#attackAction').setAttribute('aria-pressed', 'false');
@@ -1159,7 +1160,7 @@ function draw() {
   }
   for (let m of state.mines) {
     if (state.mines[selectedMine] !== m || !Sim.visibleAt(state, player, m.x, m.y)) continue;
-    ctx.strokeStyle = m.owner === player ? '#aac9f5' : m.owner === -1 ? '#d6b579' : '#6ee2ba';
+    ctx.strokeStyle = m.owner === player ? '#aac9f5' : (m.owner === -1 || m.owner === null) ? '#d6b579' : '#6ee2ba';
     ctx.lineWidth = 1 / scale;
     ctx.beginPath();
     ctx.ellipse(m.x, m.y, 42, 22, 0, 0, 7);
@@ -1232,7 +1233,7 @@ function draw() {
   }
   for (let b of state.bases)
     if (Sim.canSee(state, player, b)) {
-      bar(b.x, b.y - 80, b.hp, b.max, 85);
+      if (b.hp >= b.max) bar(b.x, b.y - 80, b.hp, b.max, 85);
       if (b.team === 1 && state.festin?.readyAt != null) {
         bar(b.x, b.y - 94, 15 - (state.festin.readyAt - state.time), 15, 85);
       }
@@ -1245,6 +1246,7 @@ function draw() {
       line(s.x, s.y, s.tx, s.ty, s.team ? '#8ef1ce' : '#ffd388', 2);
   drawFog();
   drawConstructionBars();
+  drawBuildingHealthBars();
   drawOrderQueues();
   if (marker) {
     const elapsed = (performance.now() - marker.started) / 1000;
@@ -1801,6 +1803,26 @@ function drawConstructionBars() {
   }
 }
 
+function drawBuildingHealthBars() {
+  for (const base of state.bases) {
+    if (!Sim.canSee(state, player, base)) continue;
+    drawHealthBar(ctx, base, base.x, base.y - 150, scale, player, false, 44);
+  }
+  for (const slot of state.slots.flat()) {
+    if (!slot.occupe || (slot.team !== player && !Sim.visibleAt(state, player, slot.x, slot.y))) continue;
+    const kind = Sim.BUILDINGS[slot.team].findIndex((building) => building.id === slot.batiment.type);
+    const head = Sim.isUnderConstruction(state, slot)
+      ? constructionBarBounds(slot, kind, scale).y
+      : buildingBounds(slot, 0.65, false, slot.team, kind).y;
+    drawHealthBar(ctx, slot.batiment, slot.x, head, scale, player, false, 44);
+  }
+  for (const mine of state.mines) {
+    if (!mine.depot || !Sim.visibleAt(state, player, mine.site.x, mine.site.y)) continue;
+    const head = buildingBounds(mine.site, 0.95, false, mine.owner).y;
+    drawHealthBar(ctx, mine.site, mine.site.x, head, scale, player, false, 44);
+  }
+}
+
 function drawFactionBuilding(x, y, team, kind = 3, size = 1) {
   ctx.save();
   ctx.translate(x, y);
@@ -1914,7 +1936,7 @@ function drawFactionBuilding(x, y, team, kind = 3, size = 1) {
 function drawExpansionSites() {
   for (let i = 2; i < state.mines.length; i++) {
     const m = state.mines[i];
-    if (!m.site || !Sim.visibleAt(state, player, m.x, m.y)) continue;
+    if (!m.site || !Sim.visibleAt(state, player, m.site.x, m.site.y)) continue;
     const { x, y } = m.site;
     ctx.save();
     if (m.depot) {

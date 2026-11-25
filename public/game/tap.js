@@ -89,16 +89,24 @@ export function resolveTap(state, player, selection, point, scale = 1, onTarget 
       add(slot, slot.occupe ? 'building' : 'slot', 28, action, bounds);
     }
   }
+  const enemy = 1 - player;
+  for (const slot of state.slots?.[enemy] || []) {
+    if (!slot.occupe || !slot.batiment || !Sim.visibleAt(state, player, slot.x, slot.y)) continue;
+    const kind = Sim.BUILDINGS[enemy].findIndex((building) => building.id === slot.batiment.type);
+    const action = selected.length ? { kind: 'attack', target: slot.batiment } : { kind: 'none' };
+    add(slot, 'building', 22, action, buildingBounds(slot, 0.65, false, enemy, kind), true);
+  }
   state.mines.forEach((mine, index) => {
-    if (!Sim.visibleAt(state, player, mine.x, mine.y)) return;
     const action = workers.length && mine.owner === player
       ? { kind: 'gather', ids: workers.map((unit) => unit.id), index }
       : { kind: selected.length ? 'move' : 'mine', index };
-    add(mine, 'mine', 34, action, mineHitbox(mine), true);
-    if (index < 2 || !mine.site) return;
+    if (Sim.visibleAt(state, player, mine.x, mine.y)) {
+      add(mine, 'mine', 34, action, mineHitbox(mine), true);
+    }
+    if (index < 2 || !mine.site || !Sim.visibleAt(state, player, mine.site.x, mine.site.y)) return;
     const siteAction = mine.owner !== player && mine.depot
       ? selected.length
-        ? { kind: 'attackMove', x: point.x, y: point.y }
+        ? { kind: 'attack', target: mine.site }
         : { kind: 'enemyBase', index }
       : { kind: 'radial', context: { baseId: mine.depot ? 'mine_' + index : null, mine: index } };
     add(mine.site, mine.depot ? 'building' : 'slot', 28, siteAction,

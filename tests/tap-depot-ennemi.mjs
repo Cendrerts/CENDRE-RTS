@@ -7,6 +7,7 @@ state.visible[0].fill(1);
 const mine = state.mines[2];
 mine.owner = 1;
 mine.depot = true;
+Sim.migrateState(state);
 state.units = [0, 1, 2].map((index) => ({
   id: 100 + index,
   team: 0,
@@ -17,14 +18,10 @@ state.units = [0, 1, 2].map((index) => ({
 }));
 const selection = new Set(state.units.map((unit) => unit.id));
 const point = { x: mine.site.x, y: mine.site.y };
-const expectedOrder = { kind: 'attackMove', x: point.x, y: point.y };
+const expectedOrder = { kind: 'attack', target: mine.site };
 assert.deepEqual(resolveTap(state, 0, selection, point), expectedOrder);
 const offsetPoint = { x: point.x + 12, y: point.y - 8 };
-assert.deepEqual(resolveTap(state, 0, selection, offsetPoint), {
-  kind: 'attackMove',
-  x: offsetPoint.x,
-  y: offsetPoint.y,
-});
+assert.deepEqual(resolveTap(state, 0, selection, offsetPoint), expectedOrder);
 assert.deepEqual(resolveTap(state, 0, new Set(), point), { kind: 'enemyBase', index: 2 });
 assert.deepEqual(resolveTap(state, 0, selection, mine), { kind: 'move', index: 2 });
 assert.deepEqual(resolveTap(state, 0, new Set(), mine), { kind: 'mine', index: 2 });
@@ -49,4 +46,4 @@ assert.deepEqual(resolveTap(state, 0, selection, point), expectedOrder);
 state.visible[0].fill(0);
 enemy.x = point.x + 5;
 assert.deepEqual(resolveTap(state, 0, selection, point), { kind: 'move' });
-console.log('PASS: enemy depot attack-move, empty selection, unit priority, nearest target and mine taps.');
+console.log('PASS: direct enemy depot attack, empty selection, unit priority, nearest target and mine taps.');
