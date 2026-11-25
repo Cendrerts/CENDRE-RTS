@@ -12,9 +12,9 @@ function create() {
   return state;
 }
 
-function advance(state, seconds, options) {
+function advance(state, seconds) {
   for (let tick = 0; tick < Math.round(seconds * 20); tick++) {
-    Sim.tick(state, 0.05, options);
+    Sim.tick(state, 0.05);
   }
 }
 
@@ -74,10 +74,9 @@ const pantry = limited.pantries[0];
 pantry.stock = 5;
 add(limited, 1, pantry, -40, 0, 'commis');
 add(limited, 1, pantry, 0);
-advance(limited, 1, { aiTeam: 1 });
-assert.equal(limited.ingredients[1].conserves, 0);
 advance(limited, 1);
 assert.equal(limited.ingredients[1].conserves, 2);
+assert.equal(pantry.stock, 3);
 assert.deepEqual(view(limited, 0).damageEvents.filter(({ kind }) => kind === 'pantryRaid'), [
   { x: pantry.x, y: pantry.y, team: 0, time: limited.time, kind: 'pantryRaid' },
 ]);

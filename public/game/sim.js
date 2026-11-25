@@ -315,7 +315,7 @@ function createPantryTimers(time) {
     raidTime: {},
   }));
 }
-function pantriesTick(s, dt, aiTeam) {
+function pantriesTick(s, dt) {
   for (const [owner, pantry] of s.pantries.entries()) {
     const timers = s.pantryTimers[owner];
     while (s.time + 1e-9 >= timers.refillAt) {
@@ -332,7 +332,7 @@ function pantriesTick(s, dt, aiTeam) {
         guarded = true;
         break;
       }
-      if (unit.team === 1 - owner && unit.team !== aiTeam && distance < 70 && raiders.length < 3) {
+      if (unit.team === 1 - owner && distance < 70 && raiders.length < 3) {
         raiders.push(unit);
       }
     }
@@ -1367,7 +1367,7 @@ function automaticTarget(s, unit, range, structures, retaliating = false) {
   }
   return selected;
 }
-function tick(s, dt, { aiTeam = null } = {}) {
+function tick(s, dt) {
   migrateState(s);
   if (s.winner !== null) return;
   productionTick(s, dt);
@@ -1607,7 +1607,7 @@ function tick(s, dt, { aiTeam = null } = {}) {
   }
   if (structures.flat().some((structure) => structure.structure === 'depot' && structure.hp <= 0)) ensureSlots(s);
   s.units = s.units.filter((u) => u.hp > 0);
-  pantriesTick(s, dt, aiTeam);
+  pantriesTick(s, dt);
   s.shots = s.shots.filter((p) => (p.life -= dt) > 0);
 }
 

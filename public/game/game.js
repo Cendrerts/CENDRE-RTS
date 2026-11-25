@@ -1212,7 +1212,13 @@ function draw() {
     line(x - 15, y - 5, x + 32, y - 5, '#d39b66', 2);
     line(x - 15, y + 3, x + 32, y + 3, '#d39b66', 2);
     if (team === player && stock != null) {
-      bar(x, y - 53, stock, Sim.PANTRY_CAPACITY, 70);
+      const gaugeWidth = 70;
+      const gaugeX = x - gaugeWidth / 2;
+      const gaugeY = y - 53;
+      ctx.fillStyle = '#071413';
+      ctx.fillRect(gaugeX, gaugeY, gaugeWidth, 4);
+      ctx.fillStyle = '#e0a640';
+      ctx.fillRect(gaugeX, gaugeY, gaugeWidth * Math.max(0, stock / Sim.PANTRY_CAPACITY), 4);
     }
   }
   drawSlots();
@@ -1347,7 +1353,7 @@ function frame(t) {
   if (running && !paused) {
     if (!net) {
       soloAI.update(state);
-      Sim.tick(state, dt, { aiTeam: 1 - player });
+      Sim.tick(state, dt);
       if (state.time >= nextSoloSaveAt) {
         saveActiveSolo();
         nextSoloSaveAt += soloSaveInterval;
