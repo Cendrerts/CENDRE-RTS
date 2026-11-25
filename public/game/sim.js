@@ -2,9 +2,7 @@
 import {
   BUILDINGS,
   baseSites,
-  producers,
   ensureSlots as syncSlots,
-  construct as placeBuilding,
 } from './slots.js';
 import { BrigadeCuisine } from './cooks-config.js';
 import { RatsGout } from './rats-config.js';
@@ -437,7 +435,7 @@ function rallyBuilding(s, team, buildingId) {
   const mine = s.mines.find((mine, index) =>
     buildingId === 'mine_' + index && mine.depot && mine.owner === team);
   if (mine) return mine.site;
-  return s.slots?.[team]?.find((slot) => slot.id === buildingId && slot.occupe);
+  return s.slots?.[team]?.find((slot) => slot.id === buildingId && slot.occupe && !isUnderConstruction(s, slot));
 }
 function setRally(s, team, command) {
   const building = rallyBuilding(s, team, command.buildingId);
@@ -692,8 +690,52 @@ function ensureSlots(s) {
   });
 }
 function construct(s, team, type, baseId, slotId = null) {
+  const cfg = BUILDINGS[team]?.find((b) => b.id === type);
+  if (s.winner !== null || !cfg || !Number.isFinite(s.rubies?.[team]) || s.rubies[team] < cfg.cost)
+    return false;
   ensureSlots(s);
-  return placeBuilding(s, team, type, baseId, slotId);
+  const slot = s.slots[team].find(
+    (p) => !p.occupe && (!baseId || p.baseId === baseId) && (!slotId || p.id === slotId),
+  );
+  if (!slot) return false;
+  s.rubies[team] -= cfg.cost;
+  slot.occupe = true;
+  slot.batiment = {
+    type,
+    x: slot.x,
+    y: slot.y,
+    niveau: 1,
+    readyAt: s.time + cfg.constructionTime,
+  };
+  return true;
+}
+function isUnderConstruction(s, slot) {
+  return slot?.occupe === true && slot.batiment?.readyAt > s.time;
+}
+function cancelConstruction(s, team, slotId) {
+  if (s.winner !== null) return false;
+  const slot = ensureSlots(s)[team]?.find((item) => item.id === slotId);
+  if (!isUnderConstruction(s, slot)) return false;
+  const building = BUILDINGS[team].find((item) => item.id === slot.batiment.type);
+  if (!building) return false;
+  s.rubies[team] += building.cost;
+  slot.occupe = false;
+  slot.batiment = null;
+  delete slot.rally;
+  return true;
+}
+function producers(s, team, type) {
+  if (type === 'hero') {
+    return baseSites(s, team)
+      .filter((base) => base.id === 'main_' + team)
+      .map((base) => ({ ...base, unit: type }));
+  }
+  if (type === 'commis') return baseSites(s, team).map((b) => ({ ...b, name: b.name, unit: type }));
+  const cfg = BUILDINGS[team]?.find((b) => b.unit === type);
+  if (!cfg) return [];
+  return (s.slots?.[team] || [])
+    .filter((p) => p.occupe && p.batiment.type === cfg.id && !isUnderConstruction(s, p))
+    .map((p) => ({ id: p.id, x: p.x, y: p.y, team, baseId: p.baseId, name: cfg.name, unit: type }));
 }
 export function populationCap(state, team) {
   return unitLimit(team);
@@ -726,10 +768,16 @@ export function recruitBlockReason(state, team, type, producerId = null) {
   if (canRecruit(snapshot, team, type, producerId)) return null;
   const queue = snapshot.queues[team];
   const population = populationUsed(snapshot, team);
-  if (population + (type === 'hero' ? 3 : 1) > populationCap(snapshot, team)) return 'population';
-  if (type === 'hero' && heroBlockReason(snapshot, team)) return heroBlockReason(snapshot, team);
+  const config = BUILDINGS[team]?.find((building) => building.unit === type);
+  if (config && snapshot.slots?.[team]?.some((slot) =>
+    (!producerId || slot.id === producerId) && slot.batiment?.type === config.id &&
+    isUnderConstruction(snapshot, slot)) &&
+    (producerId || !producers(snapshot, team, type).length)) return 'construction';
   const buildings = producers(snapshot, team, type).filter((producer) =>
     !producerId || producer.id === producerId);
+  if (config && !buildings.length) return 'producer';
+  if (population + (type === 'hero' ? 3 : 1) > populationCap(snapshot, team)) return 'population';
+  if (type === 'hero' && heroBlockReason(snapshot, team)) return heroBlockReason(snapshot, team);
   if (!buildings.length) return 'producer';
   if (buildings.every((producer) =>
     queue.filter((job) => job.producerId === producer.id).length >= 8)) return 'queues';
@@ -1773,6 +1821,8 @@ export const CendreSim = {
   matchStats,
   ensureSlots,
   construct,
+  cancelConstruction,
+  isUnderConstruction,
   W,
   H,
   CELL,

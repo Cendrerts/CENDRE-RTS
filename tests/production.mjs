@@ -15,6 +15,7 @@ for (let team = 0; team < 2; team++) {
   const cfg = S.BUILDINGS[team][0];
   S.construct(s, team, cfg.id);
   S.construct(s, team, cfg.id);
+  s.time = s.slots[team][0].batiment.readyAt;
   const ps = S.producers(s, team, 'knight');
   assert.equal(ps.length, 2);
   assert(S.recruit(s, 'knight', team));
@@ -48,6 +49,7 @@ for (let team = 0; team < 2; team++) {
   assert(S.build(s, 0, 2));
   assert.equal(s.slots[0].length, 16);
   assert(S.construct(s, 0, S.BUILDINGS[0][1].id, 'mine_2'));
+  s.time = s.slots[0].find((slot) => slot.occupe).batiment.readyAt;
   const p = S.producers(s, 0, 'archer')[0];
   assert.equal(p.baseId, 'mine_2');
   assert(S.recruit(s, 'archer', 0, p.id));
@@ -72,10 +74,12 @@ for (let team = 0; team < 2; team++) {
   const s = S.create();
   s.rubies[0] = 99999;
   S.construct(s, 0, S.BUILDINGS[0][0].id);
+  s.time = s.slots[0][0].batiment.readyAt;
   const p = S.producers(s, 0, 'knight')[0];
   for (let i = 0; i < 8; i++) assert(S.recruit(s, 'knight', 0, p.id));
   assert(!S.recruit(s, 'knight', 0, p.id));
   S.construct(s, 0, S.BUILDINGS[0][0].id);
+  s.time = s.slots[0][1].batiment.readyAt;
   assert(S.recruit(s, 'knight', 0));
   while (s.units.filter((u) => u.team === 0).length + s.queues[0].length < 30) {
     S.spawn(s, 'commis', 0);

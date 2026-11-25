@@ -7,15 +7,23 @@ for (const team of [0, 1]) {
   const state = Sim.create();
   state.rubies[team] = 9999;
   const assertAvailability = () => {
-    for (const item of productionModel(state, team)) {
+    const items = productionModel(state, team);
+    assert.deepEqual(items.map((item) => item.type), ['commis', 'knight', 'archer', 'mage']);
+    for (const item of items) {
       assert.equal(item.disabled, !canRecruit(state, team, item.type));
     }
   };
   const archer = () => productionModel(state, team).find((item) => item.type === 'archer');
   assert.equal(archer().disabled, true, 'Un bâtiment est requis');
+  assert.equal(Sim.recruitBlockReason(state, team, 'archer'), 'producer');
+  assertAvailability();
   for (let index = 0; index < 3; index++) {
     assert(Sim.construct(state, team, Sim.BUILDINGS[team][1].id));
   }
+  assert.equal(archer().disabled, true);
+  assert.equal(Sim.recruitBlockReason(state, team, 'archer'), 'construction');
+  assertAvailability();
+  state.time = state.slots[team][0].batiment.readyAt;
   assert.equal(archer().disabled, false);
   const producers = Sim.producers(state, team, 'archer');
   assert.equal(producers.length, 3);

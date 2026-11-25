@@ -14,6 +14,7 @@ function fixture() {
   state.units = [];
   S.construct(state, 0, S.BUILDINGS[0][0].id);
   const slot = state.slots[0].find((slot) => slot.occupe);
+  state.time = slot.batiment.readyAt;
   // An open lane isolates rally behaviour from the production building's map position.
   slot.x = 710;
   slot.y = 430;

@@ -78,10 +78,15 @@ r = await sync(a, {
 });
 assert(!r.error);
 r = await sync(a, { seq: 5, command: { kind: 'recruit', type: 'knight' } });
+assert(r.error);
+assert.equal(r.state.queues[0].length, 1);
+const chantier = r.state.slots[0].find((slot) => slot.occupe);
+assert.equal(chantier.batiment.readyAt, r.state.time + 20);
+const paidBalance = r.state.rubies[0];
+r = await sync(a, { seq: 6, command: { kind: 'cancelConstruction', slotId: chantier.id } });
 assert(!r.error);
-assert.equal(r.state.queues[0].length, 2);
-assert(r.state.queues[0][1].producerId.startsWith('main_0_slot_'));
-assert.equal(r.state.slots[0].filter((p) => p.occupe).length, 1);
+assert.equal(r.state.rubies[0], paidBalance + 100);
+assert(r.state.slots[0].every((slot) => !slot.occupe));
 r = await sync(a, {}, now + 16000);
 assert.equal(r.status, 'disconnected');
 const time = r.state.time;
@@ -157,13 +162,13 @@ const batch = [
 ];
 const batchInput = { action: 'sync', code: ba.code, token: ba.token, commands: batch };
 const first = await handle(db, batchInput, now + 4000);
-assert(!first.error);
+assert.match(first.error, /Bâtiment en construction/);
 assert.equal(first.ack, 3);
-assert.equal(first.state.rubies[0], 0);
-assert.equal(first.state.queues[0].length, 2);
+assert.equal(first.state.rubies[0], 60);
+assert.deepEqual(first.state.queues[0].map((job) => job.type), ['commis']);
 const again = await handle(db, batchInput, now + 4000);
-assert.equal(again.state.rubies[0], 0);
-assert.equal(again.state.queues[0].length, 2);
+assert.equal(again.state.rubies[0], 60);
+assert.equal(again.state.queues[0].length, 1);
 const rejected = await handle(
   db,
   {

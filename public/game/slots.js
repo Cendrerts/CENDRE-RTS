@@ -1,13 +1,13 @@
 export const BUILDINGS = [
   [
-    { id: 'garde_manger', name: 'Garde-manger', unit: 'knight', cost: 100 },
-    { id: 'boucherie', name: 'Boucherie', unit: 'archer', cost: 150 },
-    { id: 'ecole_brigade', name: 'École de brigade', unit: 'mage', cost: 200 },
+    { id: 'garde_manger', name: 'Garde-manger', unit: 'knight', cost: 100, constructionTime: 20 },
+    { id: 'boucherie', name: 'Boucherie', unit: 'archer', cost: 150, constructionTime: 30 },
+    { id: 'ecole_brigade', name: 'École de brigade', unit: 'mage', cost: 200, constructionTime: 40 },
   ],
   [
-    { id: 'niche_ordures', name: 'Niche à Ordures', unit: 'knight', cost: 100 },
-    { id: 'atelier_ferraille', name: 'Atelier de Ferraille', unit: 'archer', cost: 150 },
-    { id: 'autel_peste', name: 'Autel de la Peste', unit: 'mage', cost: 200 },
+    { id: 'niche_ordures', name: 'Niche à Ordures', unit: 'knight', cost: 100, constructionTime: 20 },
+    { id: 'atelier_ferraille', name: 'Atelier de Ferraille', unit: 'archer', cost: 150, constructionTime: 30 },
+    { id: 'autel_peste', name: 'Autel de la Peste', unit: 'mage', cost: 200, constructionTime: 40 },
   ],
 ];
 export function baseSites(s, team) {
@@ -60,30 +60,4 @@ export function ensureSlots(s, place = (x, y) => ({ x, y })) {
     }
   s.slots = next;
   return next;
-}
-export function construct(s, team, type, baseId, slotId = null) {
-  const cfg = BUILDINGS[team]?.find((b) => b.id === type);
-  if (s.winner !== null || !cfg || !Number.isFinite(s.rubies?.[team]) || s.rubies[team] < cfg.cost)
-    return false;
-  const slot = s.slots[team].find(
-    (p) => !p.occupe && (!baseId || p.baseId === baseId) && (!slotId || p.id === slotId),
-  );
-  if (!slot) return false;
-  s.rubies[team] -= cfg.cost;
-  slot.occupe = true;
-  slot.batiment = { type, x: slot.x, y: slot.y, niveau: 1 };
-  return true;
-}
-export function producers(s, team, type) {
-  if (type === 'hero') {
-    return baseSites(s, team)
-      .filter((base) => base.id === 'main_' + team)
-      .map((base) => ({ ...base, unit: type }));
-  }
-  if (type === 'commis') return baseSites(s, team).map((b) => ({ ...b, name: b.name, unit: type }));
-  const cfg = BUILDINGS[team]?.find((b) => b.unit === type);
-  if (!cfg) return [];
-  return (s.slots?.[team] || [])
-    .filter((p) => p.occupe && p.batiment.type === cfg.id)
-    .map((p) => ({ id: p.id, x: p.x, y: p.y, team, baseId: p.baseId, name: cfg.name, unit: type }));
 }

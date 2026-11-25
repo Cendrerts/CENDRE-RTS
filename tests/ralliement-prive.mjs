@@ -8,6 +8,7 @@ s.rubies[1] = 1000;
 assert(Sim.construct(s, 1, buildingType, 'main_1'));
 const building = s.slots[1].find((slot) => slot.occupe);
 assert(building);
+s.time = building.batiment.readyAt;
 
 const baseRally = { x: 1234, y: 567 };
 const buildingRally = { x: 1350, y: 650 };

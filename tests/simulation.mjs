@@ -6,6 +6,7 @@ function idle() {
     s.rubies[t] += 450;
     for (const b of S.BUILDINGS[t]) S.construct(s, t, b.id);
   }
+  s.time = Math.max(...s.slots.flat().filter((slot) => slot.occupe).map((slot) => slot.batiment.readyAt));
   for (const u of s.units) {
     u.harvest = null;
     u.path = [];

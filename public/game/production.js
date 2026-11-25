@@ -96,7 +96,8 @@ export function initProduction(api) {
         bar.hidden = true;
         toggle.setAttribute('aria-expanded', 'false');
       }
-      for (const item of productionModel(state, player)) {
+      const items = productionModel(state, player);
+      for (const item of items) {
         const button = buttons.get(item.type);
         const disabled = item.disabled || !api.enabled();
         const signature = JSON.stringify([item.name, item.cost, item.queued, disabled, api.enabled()]);

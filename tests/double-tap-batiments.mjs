@@ -17,6 +17,7 @@ for (const player of [0, 1]) {
       assert(Sim.construct(state, player, config.id));
     }
     const slots = state.slots[player].filter((slot) => slot.occupe);
+    state.time = slots[0].batiment.readyAt;
     slots.forEach((slot, index) => {
       slot.x = 100 + index * 50;
       slot.y = 100;

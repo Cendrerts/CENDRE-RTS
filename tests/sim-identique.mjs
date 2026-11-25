@@ -24,6 +24,20 @@ try {
   await writeFile(join(directory, 'package.json'), '{"type":"module"}');
   const { CendreSim: Reference } = await import(pathToFileURL(join(directory, 'sim.js')));
   const { createAI: referenceAI } = await import(pathToFileURL(join(directory, 'ai.js')));
+  // La comparaison avec une référence antérieure à D66 garde la pose instantanée.
+  // construction.mjs vérifie le nouveau comportement en simulation normale.
+  if (!Reference.isUnderConstruction) {
+    const construct = Sim.construct;
+    Sim.construct = (state, team, ...args) => {
+      const placed = construct(state, team, ...args);
+      if (placed) {
+        const slot = state.slots[team].find((item) => Sim.isUnderConstruction(state, item));
+        delete slot.batiment.readyAt;
+      }
+      return placed;
+    };
+  }
+
   const referenceLoaded = loadedScenario(Reference);
   const loaded = loadedScenario(Sim);
   const identical = (actual, expected, label) => {

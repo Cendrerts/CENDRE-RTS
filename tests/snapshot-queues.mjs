@@ -70,6 +70,7 @@ await connected;
 checkSnapshot(false);
 match.sim.rubies[0] = 1000;
 command(match.sim, 0, { kind: 'construct', type: Sim.BUILDINGS[0][0].id });
+match.sim.time = match.sim.slots[0][0].batiment.readyAt;
 const kitchen = Sim.producers(match.sim, 0, 'knight')[0];
 for (let index = 0; index < 3; index++) {
   command(match.sim, 0, { kind: 'recruit', type: 'commis', producerId: 'main_0' });
