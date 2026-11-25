@@ -63,7 +63,7 @@ export class Match {
   snapshot(socket) {
     const { team } = socket.deserializeAttachment();
     const player = this.room.players.find((entry) => entry.team === team);
-    const state = view(this.sim, team);
+    const state = view(this.sim, team, { compactShots: true });
     const previousFields = this.snapshotFields.get(socket);
     const fields = { time: state.time };
     for (const field of ['slots', 'visible', 'explored', 'camps', 'watchtowers', 'braises', 'bases', 'corpses', 'ragout', 'festin']) {
