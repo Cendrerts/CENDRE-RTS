@@ -12,7 +12,7 @@ const DELAI = 40;
 const MINUTE = 60_000;
 const TICKS_PAR_SECONDE = 20;
 const GRAINE = 42;
-const CHAMPS_STABLES = ['mines', 'camps', 'watchtowers', 'braises', 'bases', 'corpses'];
+const CHAMPS_STABLES = ['mines', 'camps', 'watchtowers', 'braises', 'bases', 'corpses', 'ragout', 'festin'];
 
 function creerSocket(match, horloge, sockets, joueurs) {
   return class Socket {
