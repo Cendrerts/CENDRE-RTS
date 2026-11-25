@@ -37,6 +37,7 @@ export class Match {
     this.timer = null;
     this.snapshotFields = new WeakMap();
     this.snapshotUnits = new WeakMap();
+    this.pongStats = new Map();
     this.ready = state.blockConcurrencyWhile(async () => {
       const saved = await state.storage.get('room');
       if (saved) {
@@ -52,6 +53,10 @@ export class Match {
 
   now() {
     return this.clock.Date.now();
+  }
+
+  resetPongStats(socket) {
+    this.pongStats.set(socket, { tickLagMax: 0, cmdMaxMs: 0 });
   }
 
   sockets(team) {
@@ -224,8 +229,10 @@ export class Match {
       }
     }
     let broadcast = false;
+    let tickLagMax = 0;
     while (this.nextTick <= now) {
       if (['playing', 'disconnected'].includes(this.status(this.nextTick)) && this.nextTick > this.room.startAt) {
+        tickLagMax = Math.max(tickLagMax, this.now() - this.nextTick);
         S.tick(this.sim, 0.05);
       }
       if (this.nextTick >= this.nextSnapshot) {
@@ -233,6 +240,11 @@ export class Match {
         this.nextSnapshot += 100;
       }
       this.nextTick += STEP_MS;
+    }
+    if (tickLagMax > 0) {
+      for (const stats of this.pongStats.values()) {
+        stats.tickLagMax = Math.max(stats.tickLagMax, tickLagMax);
+      }
     }
     if (broadcast || this.sim.winner !== null) {
       for (const socket of this.sockets()) this.snapshot(socket);
@@ -327,6 +339,7 @@ export class Match {
     const now = this.now();
     attachment.lastMessageAt = now;
     socket.serializeAttachment(attachment);
+    let processingCommand = false;
     try {
       if (typeof raw !== 'string' || raw.length > 12000) throw new MatchError('Message incorrect.');
       const message = JSON.parse(raw);
@@ -339,8 +352,10 @@ export class Match {
             const session = await this.authenticate(new URL(attachment.url), message.token);
             if (socket.deserializeAttachment().closed) return;
             socket.serializeAttachment({ team: session.team, closed: false, lastMessageAt: this.now() });
+            this.resetPongStats(socket);
             for (const previous of this.sockets(session.team)) {
               if (previous !== socket) {
+                this.pongStats.delete(previous);
                 previous.serializeAttachment({ team: session.team, closed: true });
                 previous.close(1000, 'Session remplacée');
               }
@@ -358,6 +373,7 @@ export class Match {
       const { team } = attachment;
       const player = this.room.players.find((entry) => entry.team === team);
       if (message?.type === 'cmd') {
+        processingCommand = true;
         if (!Number.isSafeInteger(message.seq) || message.seq < 1)
           throw new MatchError('Séquence incorrecte.');
         // Send before any asynchronous work, including persistence or the next tick.
@@ -394,7 +410,9 @@ export class Match {
         this.stopTimer();
         this.ctx.waitUntil(this.save());
       } else if (message?.type === 'ping') {
-        this.send(socket, { type: 'pong' });
+        const stats = this.pongStats.get(socket);
+        this.resetPongStats(socket);
+        this.send(socket, { type: 'pong', tickLagMax: stats?.tickLagMax ?? 0, cmdMaxMs: stats?.cmdMaxMs ?? 0 });
       } else {
         throw new MatchError('Message inconnu.');
       }
@@ -402,10 +420,21 @@ export class Match {
       if (!(error instanceof MatchError) && !(error instanceof SyntaxError)) throw error;
       this.send(socket, { type: 'error', error: error.message });
       if (socket.deserializeAttachment().team === undefined) this.webSocketClose(socket);
+    } finally {
+      if (processingCommand) {
+        // Cloudflare's production clock can stay frozen during synchronous work.
+        const duration = this.now() - now;
+        if (duration > 0) {
+          for (const stats of this.pongStats.values()) {
+            stats.cmdMaxMs = Math.max(stats.cmdMaxMs, duration);
+          }
+        }
+      }
     }
   }
 
   webSocketClose(socket) {
+    this.pongStats.delete(socket);
     const attachment = socket.deserializeAttachment();
     if (attachment.closed) return;
     socket.serializeAttachment({ ...attachment, closed: true });

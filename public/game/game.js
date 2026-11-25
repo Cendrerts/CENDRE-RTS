@@ -45,9 +45,10 @@ const renderCache = createRenderCache(() => document.createElement('canvas'));
 const debug = new URLSearchParams(location.search).get('debug') === '1';
 const debugDisplay = debug ? document.createElement('output') : null;
 if (debugDisplay) {
-  debugDisplay.style.cssText = 'position:fixed;top:0;left:0;z-index:9999;background:#080e14;color:white;font:12px monospace;padding:4px;pointer-events:none';
+  debugDisplay.id = 'debugDisplay';
   document.body.append(debugDisplay);
 }
+let duelFrameMaxMs = 0;
 let preparedUnits = [];
 const terrain = new Image();
 const terrainAtlas = new Image();
@@ -1333,7 +1334,19 @@ function frame(t) {
   preparedUnits = prepareDrawList(state, player, Sim.canSee);
   draw();
   if (debugDisplay) {
-    debugDisplay.textContent = `${Math.round(1000 / interval)} FPS · ${(performance.now() - frameStarted).toFixed(2)} ms/image`;
+    const frameMs = performance.now() - frameStarted;
+    const stats = realtime?.performanceStats;
+    const showDuelStats = Boolean(stats && (net?.begun || net?.finished));
+    debugDisplay.toggleAttribute('data-duel', showDuelStats);
+    let display = `${Math.round(1000 / interval)} FPS · ${frameMs.toFixed(2)} ms/image`;
+    if (showDuelStats) {
+      if (!net.finished) duelFrameMaxMs = Math.max(duelFrameMaxMs, frameMs);
+      const ping = stats.pingMs === null ? '–' : Math.round(stats.pingMs);
+      display += `\nPing ${ping}/${Math.round(stats.pingMaxMs)} · Tick ${stats.tickLagMax} · Cmd ${stats.cmdMaxMs}` +
+        ` · Snap Δ${Math.round(stats.snapshotGapMaxMs)}/déc.${stats.snapshotProcessingMaxMs.toFixed(1)}` +
+        ` · Image ${duelFrameMaxMs.toFixed(1)} ms`;
+    }
+    debugDisplay.textContent = display;
   }
   requestAnimationFrame(frame);
 }
@@ -1491,7 +1504,9 @@ async function pollRoom() {
   }
 }
 async function connectRealtime(parameters) {
+  duelFrameMaxMs = 0;
   const client = new RealtimeClient({
+    debug,
     onSnapshot: showSnapshot,
     onRtt: (rtt) => {
       lastRtt = rtt;

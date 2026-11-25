@@ -381,3 +381,38 @@ try {
 console.log(
   'PASS: realtime rooms, 20 Hz simulation, synchronous ack, ownership, costs, deduplication, fog, 10 Hz snapshots, reconnect, eviction, surrender, timeouts and routing.',
 );
+
+const perfClock = new Clock();
+const perfContext = context();
+const perfMatch = new Match(perfContext, {}, perfClock);
+await perfMatch.ready;
+await perfMatch.authenticate(url('action=create'));
+await perfMatch.authenticate(url('action=join'));
+const perfSockets = [0, 1].map((team) => {
+  const socket = new Socket();
+  socket.serializeAttachment({ team, closed: false });
+  perfContext.acceptWebSocket(socket);
+  return socket;
+});
+const pong = (socket) => {
+  perfMatch.webSocketMessage(socket, '{"type":"ping"}');
+  return socket.messages.at(-1);
+};
+const emptyPong = { type: 'pong', tickLagMax: 0, cmdMaxMs: 0 };
+for (const socket of perfSockets) assert.deepEqual(pong(socket), emptyPong);
+await perfClock.advance(3000);
+perfMatch.advance();
+perfClock.time += 126;
+perfMatch.advance();
+const [sender, peer] = perfSockets;
+const sendMessage = sender.send.bind(sender);
+sender.send = (raw) => {
+  sendMessage(raw);
+  if (sender.messages.at(-1).type === 'ack') perfClock.time += 8;
+};
+perfMatch.webSocketMessage(sender, '{"type":"cmd","seq":1,"cmd":{"kind":"hold","ids":[1]}}');
+const measuredPong = { type: 'pong', tickLagMax: 76, cmdMaxMs: 8 };
+assert.deepEqual(pong(sender), measuredPong);
+assert.deepEqual(pong(sender), emptyPong);
+assert.deepEqual(pong(peer), measuredPong);
+assert.deepEqual(pong(peer), emptyPong);
