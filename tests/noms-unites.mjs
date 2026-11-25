@@ -36,6 +36,7 @@ for (const [faction, config] of [BrigadeCuisine, RatsGout].entries()) {
       if (type !== 'commis') {
         const building = Sim.BUILDINGS[faction].find((item) => item.unit === type);
         state.rubies[faction] = building.cost;
+        state.bases[faction].niveau = building.rank - 1;
         assert(Sim.construct(state, faction, building.id));
         state.time = state.slots[faction][0].batiment.readyAt;
       }

@@ -2075,19 +2075,14 @@ function ghostStatus() {
                 : 'Base secondaire · 120 rubis · Confirmez cet emplacement.',
     };
   }
-  const slot = (state.slots[player] || []).find(
-    (s) => s.id === slotId && s.baseId === context.baseId,
-  );
-  const cost = Sim.BUILDINGS[player].find((b) => b.id === option.id)?.cost;
+  const reason = Sim.constructBlockReason(state, player, option.id, context.baseId, slotId);
+  if (reason || !slotId) {
+    return { valid: false, message: reason || 'Touchez un emplacement libre pour construire.' };
+  }
+  const cost = Sim.BUILDINGS[player].find((building) => building.id === option.id)?.cost;
   return {
-    valid: !!slot && !slot.occupe && state.rubies[player] >= cost,
-    message: !slot
-      ? 'Aucun emplacement libre autour de cette base.'
-      : slot.occupe
-        ? 'Emplacement occupé · Touchez un autre terrain.'
-        : state.rubies[player] < cost
-          ? cost + ' rubis nécessaires · Ressources insuffisantes.'
-          : 'Fantôme · ' + cost + ' rubis · Confirmez pour construire.',
+    valid: true,
+    message: `Fantôme · ${cost} rubis · Confirmez pour construire.`,
   };
 }
 function drawBuildGhost() {
@@ -2336,7 +2331,14 @@ function panelCommand(command) {
     requestRecruit(command);
     return;
   }
-  if (net) sendCommand(command);
+  const reason = command.kind === 'upgradeMain'
+    ? Sim.upgradeMainBlockReason(state, player)
+    : command.kind === 'construct'
+      ? Sim.constructBlockReason(state, player, command.type, command.baseId, command.slotId)
+      : null;
+  if (reason) notify(reason);
+  else if (net) sendCommand(command);
+  else if (command.kind === 'upgradeMain') Sim.upgradeMain(state, player);
   else if (command.kind === 'setRally') Sim.setRally(state, player, command);
   else if (command.kind === 'construct')
     Sim.construct(state, player, command.type, command.baseId, command.slotId);
@@ -2381,6 +2383,14 @@ function renderContextPanel() {
   const currentHealthText = $('#contextIdentity .health-text');
   if (currentHealthText)
     currentHealthText.textContent = `${Math.ceil(model.left.hp)}/${Math.ceil(model.left.max)}`;
+  const upgradeProgress = $('#mainUpgrade progress');
+  const upgradeRemaining = model.upgrade?.readyAt != null
+    ? Math.max(0, model.upgrade.readyAt - state.time)
+    : 0;
+  if (upgradeProgress && model.upgrade?.readyAt != null) {
+    upgradeProgress.value = model.upgrade.duration - upgradeRemaining;
+    $('#mainUpgrade small').textContent = `${Math.ceil(upgradeRemaining - 1e-9)} s restantes`;
+  }
   const signature = JSON.stringify([model, paused, patrolArmed, rallyArmed, queueArmed, Sim.cookDishBlockReason(state, player, player === 1 ? 'festin' : 'ragout')], (key, value) =>
     ['remaining', 'hp', 'status'].includes(key) ? undefined : value,
   );
@@ -2457,8 +2467,11 @@ function renderContextPanel() {
       ? item.prerequisite || 'Rubis insuffisants ou file pleine'
       : item.name;
     button.setAttribute('aria-label', button.title);
-    button.disabled = paused || (item.locked && item.kind !== 'recruit');
-    if (item.kind === 'recruit' && item.locked) button.style.opacity = '0.45';
+    button.disabled = paused || (item.locked && !['recruit', 'building'].includes(item.kind));
+    if (item.locked && ['recruit', 'building'].includes(item.kind)) {
+      button.setAttribute('aria-disabled', 'true');
+      button.style.opacity = '0.45';
+    }
     let timer;
     let removed = false;
     if (item.kind === 'filter') {
@@ -2529,6 +2542,8 @@ function renderContextPanel() {
         requestRecruit({ kind: 'recruit', type: item.type, producerId: model.producerId }, 1, model.producerIds);
       } else if (item.kind === 'depot') {
         panelCommand({ kind: 'build', index: item.index });
+      } else if (item.locked) {
+        notify(item.prerequisite);
       } else if (panelContext.slotId) {
         panelCommand({
           kind: 'construct',
@@ -2548,6 +2563,34 @@ function renderContextPanel() {
       }
     };
     grid.append(button);
+  }
+  if (model.upgrade) {
+    const upgrade = model.upgrade;
+    const label = document.createElement('small');
+    if (upgrade.readyAt != null) {
+      const progressBox = document.createElement('div');
+      progressBox.id = 'mainUpgrade';
+      const title = document.createElement('b');
+      title.textContent = upgrade.name;
+      const progress = document.createElement('progress');
+      progress.max = upgrade.duration;
+      progress.value = upgrade.duration - upgradeRemaining;
+      progress.setAttribute('aria-label', `Montée vers ${upgrade.name}`);
+      label.textContent = `${Math.ceil(upgradeRemaining - 1e-9)} s restantes`;
+      progressBox.append(title, progress, label);
+      grid.append(progressBox);
+    } else {
+      const button = document.createElement('button');
+      button.id = 'mainUpgradeAction';
+      button.textContent = `Améliorer · ${upgrade.name}`;
+      label.textContent = `${upgrade.cost} rubis · ${upgrade.duration} s · Débloque rang ${upgrade.rank}`;
+      button.append(label);
+      button.disabled = paused;
+      button.setAttribute('aria-disabled', String(!!upgrade.reason));
+      button.title = upgrade.reason || `Débloque les bâtiments de rang ${upgrade.rank}`;
+      button.onclick = () => panelCommand({ kind: 'upgradeMain' });
+      grid.append(button);
+    }
   }
   const actions = $('#contextActions');
   for (const id of ['retreat', 'hold']) {

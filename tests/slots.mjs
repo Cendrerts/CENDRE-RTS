@@ -8,6 +8,7 @@ assert.deepEqual(
 );
 for (let t = 0; t < 2; t++) {
   s.rubies[t] = 2000;
+  s.bases[t].niveau = 3;
   const base = s.bases[t];
   assert(s.slots[t].every((p) => S.walk[Math.floor(p.y / 20) * S.COLS + Math.floor(p.x / 20)]));
   for (let i = 0; i < 8; i++) {
@@ -41,6 +42,7 @@ for (const team of [0, 1])
     const s = S.create(),
       slot = s.slots[team][3];
     s.rubies[team] = cfg.cost - 1;
+    s.bases[team].niveau = cfg.rank - 1;
     assert.throws(() => command(s, team, { kind: 'construct', type: cfg.id, slotId: slot.id }));
     assert.equal(s.rubies[team], cfg.cost - 1);
     assert(!slot.occupe);

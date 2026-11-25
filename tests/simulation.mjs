@@ -4,6 +4,7 @@ function idle() {
   const s = S.create();
   for (let t = 0; t < 2; t++) {
     s.rubies[t] += 450;
+    s.bases[t].niveau = 3;
     for (const b of S.BUILDINGS[t]) S.construct(s, t, b.id);
   }
   s.time = Math.max(...s.slots.flat().filter((slot) => slot.occupe).map((slot) => slot.batiment.readyAt));

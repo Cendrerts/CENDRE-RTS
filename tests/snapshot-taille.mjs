@@ -63,6 +63,11 @@ assert.equal(worker.orderQueue[0].x, 123.456);
 assert.equal(worker.target, worker);
 
 const mirror = Sim.create();
+// Maintient le scénario de mesure jusqu'à huit minutes, même après une percée.
+for (const base of mirror.bases) {
+  base.hp = 1000000;
+  base.max = base.hp;
+}
 const controllers = [0, 1].map((team) => createAI(team, 'brutal', mirror));
 const step = 0.05;
 const duration = 8 * 60;

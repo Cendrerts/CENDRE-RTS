@@ -48,6 +48,7 @@ for (const team of [0, 1]) {
   check(state, 'commis', 'population');
   state.units = [];
   state.queues[team] = [];
+  state.bases[team].niveau = 2;
   assert(Sim.construct(state, team, Sim.BUILDINGS[team][1].id));
   assert(Sim.construct(state, team, Sim.BUILDINGS[team][1].id));
   check(state, 'archer', 'construction');

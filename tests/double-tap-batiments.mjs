@@ -13,6 +13,7 @@ for (const player of [0, 1]) {
   for (const config of Sim.BUILDINGS[player]) {
     const state = Sim.create();
     state.rubies[player] = 9999;
+    state.bases[player].niveau = config.rank - 1;
     for (let index = 0; index < 4; index++) {
       assert(Sim.construct(state, player, config.id));
     }

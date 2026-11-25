@@ -73,6 +73,9 @@ function random() {
 }
 
 const state = S.create();
+// Les rangs requis sont déjà débloqués pour isoler la réponse économique au push.
+state.bases[0].niveau = 3;
+state.bases[1].niveau = 2;
 // Two earlier games each consume two draws per starting worker.
 for (let draw = 0; draw < 2 * 2 * state.units.length; draw++) random();
 for (const unit of state.units) {

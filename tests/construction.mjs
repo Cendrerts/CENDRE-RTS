@@ -9,6 +9,7 @@ for (const team of [0, 1]) {
   for (const [index, duration] of [20, 30, 40].entries()) {
     const state = Sim.create();
     state.time = 12;
+    state.bases[team].niveau = index + 1;
     state.rubies[team] = 1000;
     const { id: type, unit, cost } = Sim.BUILDINGS[team][index];
     const slot = state.slots[team][0];

@@ -6,6 +6,7 @@ import { productionModel } from '../public/game/production.js';
 for (const team of [0, 1]) {
   const state = Sim.create();
   state.rubies[team] = 9999;
+  state.bases[team].niveau = 2;
   const assertAvailability = () => {
     const items = productionModel(state, team);
     assert.deepEqual(items.map((item) => item.type), ['commis', 'knight', 'archer', 'mage']);

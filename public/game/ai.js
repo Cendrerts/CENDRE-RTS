@@ -332,7 +332,16 @@ export function createAI(team, difficulty = 'normal', state = null) {
         const saving = !emergency && expedition && state.rubies[team] < Sim.RULES.mineCost;
         if (!saving) {
           const nextBuilding = BUILD_ORDERS[team].find((building) => !built.has(building.id));
-          if (nextBuilding && nextBuilding.requires.every((id) => built.has(id)) && (nextBuilding.unit !== 'mage' || army.length >= 3) && (!emergency || army.length >= 5) && Sim.construct(state, team, nextBuilding.id)) actions++;
+          const wantsBuilding = nextBuilding && nextBuilding.requires.every((id) => built.has(id)) &&
+            (nextBuilding.unit !== 'mage' || army.length >= 3) && (!emergency || army.length >= 5);
+          const unlocked = (building) => {
+            const config = Sim.BUILDINGS[team].find((item) => item.id === building.id);
+            return !Sim.constructionTierReason(state, team, config);
+          };
+          const wantsUpgrade = wantsBuilding && !unlocked(nextBuilding);
+          if (wantsUpgrade && Sim.upgradeMain(state, team)) actions++;
+          if (wantsBuilding && !wantsUpgrade && Sim.construct(state, team, nextBuilding.id)) actions++;
+          const savingForUpgrade = wantsUpgrade && state.bases[team].readyAt == null;
           const weights = {
             knight: settings.micro ? 0.3 : 0.6,
             archer: 0.5,
@@ -342,7 +351,7 @@ export function createAI(team, difficulty = 'normal', state = null) {
           const available = order.filter((building) => Sim.producers(state, team, building.unit).some((producer) => !state.queues[team].some((job) => job.producerId === producer.id)));
           available.sort((a, b) => population(a.unit) / weights[a.unit] - population(b.unit) / weights[b.unit]);
           const unlocking = !emergency && settings.micro && ((!built.has(BUILD_ORDERS[team][1].id) && army.length >= (brutal ? 1 : 2)) || (!built.has(BUILD_ORDERS[team][2].id) && army.length >= 3));
-          if (!unlocking) {
+          if (!unlocking && !savingForUpgrade) {
             for (const building of available) {
               let affordable = true;
               for (const producer of Sim.producers(state, team, building.unit)) {
@@ -358,15 +367,15 @@ export function createAI(team, difficulty = 'normal', state = null) {
               if (!affordable) break;
             }
           }
-          if (surplus) {
+          if (surplus && !savingForUpgrade) {
             // Scale paid production when income outpaces the existing producers,
             // including when population reservations prevent more recruitment.
             const investment = [...order].sort((a, b) => buildingCount(a) - buildingCount(b))
-              .find((building) => building.requires.every((id) => built.has(id)));
+              .find((building) => unlocked(building) && building.requires.every((id) => built.has(id)));
             if (investment && Sim.construct(state, team, investment.id)) actions++;
           }
           for (const building of order) {
-            if (built.size === 3 && building.unit === preferred && buildingCount(building) < settings.copies && state.rubies[team] >= 150 && Sim.construct(state, team, building.id)) actions++;
+            if (built.size === 3 && unlocked(building) && building.unit === preferred && buildingCount(building) < settings.copies && state.rubies[team] >= 150 && Sim.construct(state, team, building.id)) actions++;
           }
         }
       }

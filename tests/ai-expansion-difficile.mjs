@@ -28,6 +28,7 @@ import { createAI } from '../public/game/ai.js';
     Sim.spawn(state, 'knight', team);
   }
   state.rubies[team] = 2000;
+  state.bases[team].niveau = 3;
   for (const building of ['niche_ordures', 'atelier_ferraille', 'autel_peste']) {
     assert(Sim.construct(state, team, building));
   }

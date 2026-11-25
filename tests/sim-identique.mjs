@@ -4,6 +4,7 @@ import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { pack } from '../lib/match.mjs';
 import { CendreSim as Sim } from '../public/game/sim.js';
 import { createAI } from '../public/game/ai.js';
 import { createMatch } from '../scripts/ia-diagnostic.mjs';
@@ -38,12 +39,20 @@ try {
     };
   }
 
+  // Les rangs sont déjà débloqués pour comparer le combat et les ordres avec
+  // une référence antérieure à D67. tour-principale.mjs teste les montées.
+  Reference.constructionTierReason ??= () => null;
+  const unlockAllRanks = (state) => {
+    for (const base of state.bases) base.niveau = 3;
+  };
   const referenceLoaded = loadedScenario(Reference);
   const loaded = loadedScenario(Sim);
+  unlockAllRanks(referenceLoaded);
+  unlockAllRanks(loaded);
   const identical = (actual, expected, label) => {
     // Compare the entire serializable state, including visibility, events,
     // target references, positions, resources and winner, without rounding.
-    assert.equal(JSON.stringify(actual), JSON.stringify(expected), label);
+    assert.equal(pack(actual), pack(expected), label);
   };
   identical(loaded, referenceLoaded, 'loadedScenario initial');
   for (let tick = 1; tick <= 1200; tick++) {
@@ -54,6 +63,12 @@ try {
     }
   }
   const { state, delays } = createMatch(18, false);
+  unlockAllRanks(state);
+  // Les tours survivent à la première percée pour comparer les cinq minutes.
+  for (const base of state.bases) {
+    base.hp = 1000000;
+    base.max = base.hp;
+  }
   const referenceState = structuredClone(state);
   const controllers = [0, 1].map((team) => createAI(team, 'brutal', state));
   const referenceControllers = [0, 1].map((team) => referenceAI(team, 'brutal', referenceState));
