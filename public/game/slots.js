@@ -29,9 +29,13 @@ export function baseSites(s, team) {
 export function ensureSlots(s, place = (x, y) => ({ x, y })) {
   const old = (s.slots || [[], []]).flat(),
     next = [[], []],
-    occupied = [];
+    sites = [baseSites(s, 0), baseSites(s, 1)],
+    // Completed buildings and worksites survive the loss of their depot.
+    detached = old.filter((slot) => slot.occupe && slot.detached &&
+      !sites[slot.team].some((base) => base.id === slot.baseId)),
+    occupied = [...detached];
   for (let team = 0; team < 2; team++)
-    for (const base of baseSites(s, team)) {
+    for (const base of sites[team]) {
       const offsets = [
         [-75, -50],
         [75, -50],
@@ -56,6 +60,7 @@ export function ensureSlots(s, place = (x, y) => ({ x, y })) {
         if (slot) {
           slot.id = id;
           slot.baseId = base.id;
+          delete slot.detached;
         } else {
           const pos = place(base.x + dx, base.y + dy, occupied, base);
           slot = { id, baseId: base.id, team, ...pos, occupe: false, batiment: null };
@@ -64,6 +69,7 @@ export function ensureSlots(s, place = (x, y) => ({ x, y })) {
         occupied.push(slot);
       });
     }
+  for (const slot of detached) next[slot.team].push(slot);
   s.slots = next;
   return next;
 }

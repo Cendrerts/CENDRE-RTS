@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -17,31 +17,9 @@ try {
     const source = execFileSync('git', ['show', `origin/main:${file}`]);
     await writeFile(join(directory, file.slice('public/game/'.length)), source);
   }
-  // Use the branch's AI on both sides so the test only compares the simulations.
-  for (const file of ['ai.js', 'ai-config.js']) {
-    const source = await readFile(new URL(`../public/game/${file}`, import.meta.url));
-    await writeFile(join(directory, file), source);
-  }
   await writeFile(join(directory, 'package.json'), '{"type":"module"}');
   const { CendreSim: Reference } = await import(pathToFileURL(join(directory, 'sim.js')));
-  const { createAI: referenceAI } = await import(pathToFileURL(join(directory, 'ai.js')));
-  // La comparaison avec une référence antérieure à D66 garde la pose instantanée.
-  // construction.mjs vérifie le nouveau comportement en simulation normale.
-  if (!Reference.isUnderConstruction) {
-    const construct = Sim.construct;
-    Sim.construct = (state, team, ...args) => {
-      const placed = construct(state, team, ...args);
-      if (placed) {
-        const slot = state.slots[team].find((item) => Sim.isUnderConstruction(state, item));
-        delete slot.batiment.readyAt;
-      }
-      return placed;
-    };
-  }
-
-  // Les rangs sont déjà débloqués pour comparer le combat et les ordres avec
-  // une référence antérieure à D67. tour-principale.mjs teste les montées.
-  Reference.constructionTierReason ??= () => null;
+  // Les rangs sont débloqués pour comparer le scénario chargé avec une référence antérieure à D67.
   const unlockAllRanks = (state) => {
     for (const base of state.bases) base.niveau = 3;
   };
@@ -69,27 +47,29 @@ try {
     base.hp = 1000000;
     base.max = base.hp;
   }
-  const referenceState = structuredClone(state);
+  // D70 change les combats de cette partie. Comparer deux parties indépendantes
+  // jouées avec les nouvelles règles, y compris les dégâts aux bâtiments.
+  const secondState = structuredClone(state);
   const controllers = [0, 1].map((team) => createAI(team, 'brutal', state));
-  const referenceControllers = [0, 1].map((team) => referenceAI(team, 'brutal', referenceState));
-  identical(state, referenceState, 'Brutal initial');
+  const secondControllers = [0, 1].map((team) => createAI(team, 'brutal', secondState));
+  identical(state, secondState, 'Brutal initial');
   for (let step = 1; step <= 3000; step++) {
     for (const team of [0, 1]) {
       if (state.time >= delays[team]) {
         controllers[team].update(state);
       }
-      if (referenceState.time >= delays[team]) {
-        referenceControllers[team].update(referenceState);
+      if (secondState.time >= delays[team]) {
+        secondControllers[team].update(secondState);
       }
     }
     Sim.tick(state, 0.1);
-    Reference.tick(referenceState, 0.1);
+    Sim.tick(secondState, 0.1);
     if (step % 600 === 0) {
-      identical(state, referenceState, `Brutal minute ${step / 600}`);
+      identical(state, secondState, `Brutal minute ${step / 600}`);
     }
   }
   assert.ok(state.time >= 300 - 1e-8, 'La partie doit couvrir cinq minutes');
-  console.log('sim-identique : 1 200 ticks chargés et Brutal/Brutal graine 18, cinq minutes identiques');
+  console.log('sim-identique : 1 200 ticks chargés et Brutal/Brutal graine 18, cinq minutes identiques avec les règles D70');
 } finally {
   await rm(directory, { recursive: true, force: true });
 }

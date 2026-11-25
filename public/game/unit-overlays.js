@@ -1,18 +1,18 @@
 // Coordinates use world units; scale converts them to CSS screen pixels.
 export const TEAM_COLORS = ['#74b9ff', '#b6ed63'];
 
-export function healthBarBounds(x, headY, scale) {
+export function healthBarBounds(x, headY, scale, width = 24) {
   return {
-    x: x - 12 / scale,
+    x: x - width / 2 / scale,
     y: headY - 8 / scale,
-    width: 24 / scale,
+    width: width / scale,
     height: 4 / scale,
   };
 }
 
-export function drawHealthBar(ctx, unit, x, headY, scale, player, selected) {
+export function drawHealthBar(ctx, unit, x, headY, scale, player, selected, width = 24) {
   if (unit.hp >= unit.max && !selected) return;
-  const bounds = healthBarBounds(x, headY, scale);
+  const bounds = healthBarBounds(x, headY, scale, width);
   const fraction = Math.max(0, Math.min(1, unit.hp / unit.max));
   ctx.save();
   ctx.fillStyle = '#091215';

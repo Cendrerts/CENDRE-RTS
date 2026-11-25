@@ -67,8 +67,8 @@ export function resolveTap(state, player, selection, point, scale = 1, onTarget 
     if (base.hp <= 0 || !Sim.canSee(state, player, base)) continue;
     const action = base.team === player
       ? { kind: 'radial', context: { baseId: 'main_' + player } }
-      : selected.length ? { kind: 'attack', target: base } : { kind: 'none' };
-    add(base, combat && !workers.length && base.team !== player ? 'enemy' : 'building', 0, action, buildingBounds(base, 1, true));
+      : selected.length ? { kind: 'attackMove', x: base.x, y: base.y } : { kind: 'none' };
+    add(base, 'building', 0, action, buildingBounds(base, 1, true));
   }
   for (const slot of state.slots?.[player] || []) {
     const action = slot.occupe
@@ -89,13 +89,21 @@ export function resolveTap(state, player, selection, point, scale = 1, onTarget 
       add(slot, slot.occupe ? 'building' : 'slot', 28, action, bounds);
     }
   }
+  const enemy = 1 - player;
+  for (const slot of state.slots?.[enemy] || []) {
+    if (!slot.occupe || !Sim.visibleAt(state, player, slot.x, slot.y)) continue;
+    const kind = Sim.BUILDINGS[enemy].findIndex((building) => building.id === slot.batiment.type);
+    const action = selected.length ? { kind: 'attackMove', x: slot.x, y: slot.y } : { kind: 'none' };
+    add(slot, 'building', 22, action, buildingBounds(slot, 0.65, false, enemy, kind), true);
+  }
   state.mines.forEach((mine, index) => {
-    if (!Sim.visibleAt(state, player, mine.x, mine.y)) return;
     const action = workers.length && mine.owner === player
       ? { kind: 'gather', ids: workers.map((unit) => unit.id), index }
       : { kind: selected.length ? 'move' : 'mine', index };
-    add(mine, 'mine', 34, action, mineHitbox(mine), true);
-    if (index < 2 || !mine.site) return;
+    if (Sim.visibleAt(state, player, mine.x, mine.y)) {
+      add(mine, 'mine', 34, action, mineHitbox(mine), true);
+    }
+    if (index < 2 || !mine.site || !Sim.visibleAt(state, player, mine.site.x, mine.site.y)) return;
     const siteAction = mine.owner !== player && mine.depot
       ? selected.length
         ? { kind: 'attackMove', x: point.x, y: point.y }

@@ -14,6 +14,8 @@ const COLS = W / CELL;
 const ROWS = H / CELL;
 const TYPES = BrigadeCuisine.unites;
 const NEUTRAL = -1;
+const PRODUCTION_HP = 600;
+const DEPOT_HP = 400;
 const BOAR = {
   hp: 220,
   damage: 12,
@@ -555,10 +557,10 @@ function applyDamage(s, target, damage, attackerTeam = null, attackerId = null) 
   const wasAlive = target.hp > 0;
   target.hp -= damage;
   if (damage > 0 && target.devour?.startedAt != null) cancelDevour(target);
-  if (wasAlive && target.hp <= 0 && !target.base && target.type !== 'commis') {
+  if (wasAlive && target.hp <= 0 && !target.base && !target.structure && target.type !== 'commis') {
     s.corpses.push({ id: target.id, x: target.x, y: target.y, type: target.type, team: target.team, expiresAt: s.time + 30 });
   }
-  if (wasAlive && target.hp <= 0) awardHeroExperience(s, target);
+  if (wasAlive && target.hp <= 0 && !target.structure) awardHeroExperience(s, target);
   recordDamageEvent(s, target);
   if (target.team === NEUTRAL) {
     if (wasAlive && !target.returning && attackerTeam !== null) {
@@ -568,11 +570,44 @@ function applyDamage(s, target, damage, attackerTeam = null, attackerId = null) 
     return;
   }
   if (!wasAlive || target.hp > 0) return;
-  if (!target.base) s.matchCounters[target.team].unitsLost++;
+  if (target.structure) destroyStructure(s, target);
+  else if (!target.base) s.matchCounters[target.team].unitsLost++;
   if (attackerTeam === null || attackerTeam === target.team) return;
-  const counter = target.base ? 'buildingsDestroyed' : 'unitsKilled';
+  const counter = target.base || target.structure ? 'buildingsDestroyed' : 'unitsKilled';
   s.matchCounters[attackerTeam][counter]++;
 }
+function initStructure(entity, structure, id, team, max) {
+  entity.hp ??= max;
+  entity.max ??= max;
+  entity.structure = structure;
+  entity.structureId = id;
+  entity.team = team;
+}
+
+function destroyStructure(s, target) {
+  let producerId;
+  if (target.structure === 'slot') {
+    const slot = s.slots[target.team].find((entry) => entry.batiment === target);
+    producerId = slot.id;
+    releaseSlot(slot);
+  } else {
+    const mine = s.mines[target.structureId];
+    producerId = 'mine_' + target.structureId;
+    mine.owner = null;
+    mine.depot = false;
+    mine.site = { x: target.x, y: target.y };
+    for (const slot of s.slots[target.team]) {
+      if (slot.occupe && slot.baseId === producerId) slot.detached = true;
+    }
+    for (const unit of s.units) {
+      if (unit.harvest?.mine !== target.structureId) continue;
+      unit.harvest = null;
+      unit.path = [];
+    }
+  }
+  s.queues[target.team] = s.queues[target.team].filter((job) => job.producerId !== producerId);
+}
+
 // Shared migration for saved solo states and persisted server matches.
 function migrateState(s) {
   for (const base of s.bases) base.niveau ??= 1;
@@ -594,7 +629,13 @@ function migrateState(s) {
     if (!Object.hasOwn(s, 'rubies')) s.rubies = s.gold;
     delete s.gold;
   }
-  for (const mine of s.mines || []) {
+  for (const slots of s.slots || []) {
+    for (const slot of slots) {
+      if (slot.occupe && slot.batiment) initStructure(slot.batiment, 'slot', slot.id, slot.team, PRODUCTION_HP);
+    }
+  }
+  for (const [index, mine] of (s.mines || []).entries()) {
+    if (mine.depot && mine.site) initStructure(mine.site, 'depot', index, mine.owner, DEPOT_HP);
     if (mine.remaining === undefined) mine.remaining = RULES.mineReserve;
     if (mine.boost) mine.name = 'Veine riche';
   }
@@ -755,6 +796,7 @@ function construct(s, team, type, baseId, slotId = null) {
     niveau: 1,
     readyAt: s.time + cfg.constructionTime,
   };
+  initStructure(slot.batiment, 'slot', slot.id, team, PRODUCTION_HP);
   return true;
 }
 function isUnderConstruction(s, slot) {
@@ -767,10 +809,13 @@ function cancelConstruction(s, team, slotId) {
   const building = BUILDINGS[team].find((item) => item.id === slot.batiment.type);
   if (!building) return false;
   s.rubies[team] += building.cost;
+  releaseSlot(slot);
+  return true;
+}
+function releaseSlot(slot) {
   slot.occupe = false;
   slot.batiment = null;
   delete slot.rally;
-  return true;
 }
 function producers(s, team, type) {
   if (type === 'hero') {
@@ -1120,6 +1165,8 @@ function build(s, team, index) {
   m.owner = team;
   if (index >= 2) {
     m.site ??= { x: m.x - 60, y: m.y + 30 };
+    if (m.site.team !== team) delete m.site.lastDamageEventAt;
+    initStructure(m.site, 'depot', index, team, DEPOT_HP);
     m.depot = true;
   }
   ensureSlots(s);
@@ -1136,6 +1183,7 @@ function canSee(s, t, u) {
   if (!visibleAt(s, t, u.x, u.y)) return false;
   if (
     !u.base &&
+    !u.structure &&
     forest(u) &&
     !s.units.some((a) => a.team === t && Math.hypot(a.x - u.x, a.y - u.y) < RULES.forestReveal)
   )
@@ -1188,18 +1236,19 @@ function recordDamageEvent(s, entity) {
 }
 // Workers can defend themselves but are not combat threats.
 function targetPriority(entity) {
-  if (entity.base || !entity.type) return 3;
+  if (entity.base || entity.structure || !entity.type) return 3;
   if (entity.type === 'commis' || !(stats(entity.type, entity.team).damage > 0)) return 2;
   return 1;
 }
 function targetKey(entity) {
+  if (entity.structure) return `${entity.structure}:${entity.team}:${entity.structureId}`;
   return entity.base ? `base${entity.team}` : entity.id;
 }
-function automaticTarget(s, unit, range, retaliating = false) {
+function automaticTarget(s, unit, range, structures, retaliating = false) {
   let priority = Infinity;
   let nearestDistance = Infinity;
   const candidates = [];
-  const entities = [...s.units, ...s.monsters, s.bases[1 - unit.team]];
+  const entities = [...s.units, ...s.monsters, ...structures[1 - unit.team]];
   for (const candidate of entities) {
     if (candidate.team === NEUTRAL && (candidate.returning || !candidate.targetId || candidate.lastAttackAt === undefined)) continue;
     if (candidate.team === unit.team || candidate.hp <= 0) continue;
@@ -1258,7 +1307,12 @@ function tick(s, dt) {
   braisesTick(s, dt);
   const fighting = new Set();
   const entities = new Map([...s.units, ...s.monsters].map((unit) => [unit.id, unit]));
-  for (const base of s.bases) entities.set(targetKey(base), base);
+  const structures = s.bases.map((base, team) => [
+    base,
+    ...s.slots[team].filter((slot) => slot.occupe).map((slot) => slot.batiment),
+    ...s.mines.filter((mine) => mine.depot && mine.owner === team).map((mine) => mine.site),
+  ]);
+  for (const structure of structures.flat()) entities.set(targetKey(structure), structure);
   for (let u of s.units) {
     if (u.hp <= 0) continue;
     u.cool -= dt;
@@ -1315,13 +1369,27 @@ function tick(s, dt) {
         target = null;
         if (u.chasing) u.path = [];
       }
+      if (target && targetPriority(target) === 3) {
+        const enemy = automaticTarget(s, u, cfg.range, structures);
+        if (enemy && targetPriority(enemy) < 3) {
+          target = enemy;
+          u.repath = 0;
+        }
+      }
       if (!target) {
-        target = automaticTarget(s, u, cfg.range + 75);
-      } else if (s.time - (u.lastRetargetAt ?? -Infinity) >= 0.5) {
-        const threat = targetPriority(target) > 1 ? automaticTarget(s, u, cfg.range + 75) : null;
+        target = automaticTarget(s, u, cfg.range + 75, structures);
+        if (target && targetPriority(target) < 3 && Math.hypot(target.x - u.x, target.y - u.y) > cfg.range) {
+          const nearby = automaticTarget(s, u, cfg.range, structures);
+          if (nearby?.structure) target = nearby;
+        }
+      } else if (
+        (!target.structure || Math.hypot(target.x - u.x, target.y - u.y) > cfg.range) &&
+        s.time - (u.lastRetargetAt ?? -Infinity) >= 0.5
+      ) {
+        const threat = targetPriority(target) > 1 ? automaticTarget(s, u, cfg.range + 75, structures) : null;
         let attacker = threat && targetPriority(threat) === 1 ? threat : null;
         if (!attacker && Math.hypot(target.x - u.x, target.y - u.y) > cfg.range) {
-          attacker = automaticTarget(s, u, cfg.range, true);
+          attacker = automaticTarget(s, u, cfg.range, structures, true);
         }
         if (attacker && attacker !== target) {
           target = attacker;
@@ -1445,6 +1513,7 @@ function tick(s, dt) {
       }
     }
   }
+  if (structures.flat().some((structure) => structure.structure === 'depot' && structure.hp <= 0)) ensureSlots(s);
   s.units = s.units.filter((u) => u.hp > 0);
   s.shots = s.shots.filter((p) => (p.life -= dt) > 0);
 }

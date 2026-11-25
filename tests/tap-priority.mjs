@@ -28,7 +28,7 @@ for (const player of [0, 1]) {
     kind: 'gather', ids: [worker.id], index: player,
   });
   assert.equal(resolveTap(state, player, army, enemy).kind, 'attack');
-  assert.equal(resolveTap(state, player, army, state.bases[1 - player]).kind, 'attack');
+  assert.equal(resolveTap(state, player, army, state.bases[1 - player]).kind, 'attackMove');
   assert.deepEqual(resolveTap(state, player, army, worker), { kind: 'select', id: worker.id });
   const group = new Set([soldier.id, worker.id]);
   assert.deepEqual(resolveTap(state, player, group, soldier), { kind: 'select', id: soldier.id });
