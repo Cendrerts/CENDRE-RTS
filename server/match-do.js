@@ -3,9 +3,8 @@ import { MatchError, command, digest, pack, unpack, view } from '../lib/match.mj
 
 const STEP_MS = 50;
 const SAVE_MS = 5000;
-const COMMAND_REFILL_PER_SECOND = 30;
-const COMMAND_CREDIT_PER_ORDER = 1000;
-const COMMAND_BURST = 60;
+const COMMAND_REFILL_MS = 100;
+const COMMAND_BURST = 20;
 const COMMAND_ERROR_INTERVAL_MS = 1000;
 
 export class Match {
@@ -329,13 +328,11 @@ export class Match {
         this.send(socket, { type: 'ack', seq: message.seq });
         if (message.seq <= player.seq) return;
         player.seq = message.seq;
-        // Add 30 credits per millisecond to keep the fractional refill interval exact.
-        const capacity = COMMAND_BURST * COMMAND_CREDIT_PER_ORDER;
+        // Count credit in milliseconds so partial refills stay exact.
+        const capacity = COMMAND_BURST * COMMAND_REFILL_MS;
         const elapsed = Math.max(0, now - (attachment.commandRefillAt ?? now));
-        const previousCredit = attachment.commandCreditUnits
-          ?? (attachment.commandCredit == null ? capacity : attachment.commandCredit * COMMAND_REFILL_PER_SECOND);
-        const credit = Math.min(capacity, previousCredit + elapsed * COMMAND_REFILL_PER_SECOND);
-        if (credit < COMMAND_CREDIT_PER_ORDER) {
+        const credit = Math.min(capacity, (attachment.commandCredit ?? capacity) + elapsed);
+        if (credit < COMMAND_REFILL_MS) {
           if (now - (attachment.commandErrorAt ?? -Infinity) >= COMMAND_ERROR_INTERVAL_MS) {
             attachment.commandErrorAt = now;
             socket.serializeAttachment(attachment);
@@ -343,8 +340,7 @@ export class Match {
           }
           return;
         }
-        attachment.commandCreditUnits = credit - COMMAND_CREDIT_PER_ORDER;
-        delete attachment.commandCredit;
+        attachment.commandCredit = credit - COMMAND_REFILL_MS;
         attachment.commandRefillAt = now;
         socket.serializeAttachment(attachment);
         if (!message.cmd || typeof message.cmd !== 'object' || Array.isArray(message.cmd))
