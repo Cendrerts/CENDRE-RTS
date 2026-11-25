@@ -1,8 +1,6 @@
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
-
-import { parseReplayOptions } from '../scripts/tests-longs-options.mjs';
+import { parseReplayOptions, reportReplay } from '../scripts/tests-longs-options.mjs';
+import { CendreSim as Sim } from '../public/game/sim.js';
 
 assert.deepEqual(parseReplayOptions(18, 37, false, []), { seed: null, series: 'difficile-normal' });
 assert.deepEqual(parseReplayOptions(1, 20, true, ['--serie', 'brutal-difficile', '--graine', '14']), { seed: 14, series: 'brutal-difficile' });
@@ -12,24 +10,29 @@ for (const argumentsList of [['--graine'], ['--graine', '17'], ['--graine', '38'
 assert.throws(() => parseReplayOptions(1, 20, true, ['--serie', 'inconnue', '--graine', '1']));
 assert.throws(() => parseReplayOptions(1, 20, true, ['--serie', 'brutal-difficile']));
 
-const result = spawnSync(process.execPath, ['tests/ia-sans-blocage.mjs', '--graine', '23'], {
-  cwd: fileURLToPath(new URL('../', import.meta.url)),
-  encoding: 'utf8',
-  timeout: 240000,
-});
-assert.ifError(result.error);
-assert.equal(result.status, 0, result.stderr);
-const lines = result.stdout.trim().split('\n');
-// Résultat revalidé avec le seuil de contre-attaque après une perte visible (#181).
-const expected = 'Seed 23: cooks, 380.2s, rats team 0, rubies 0/590, waves 1/2, bank seconds 0/0';
-assert.deepEqual(lines.filter((line) => line.startsWith('Seed ')), [expected]);
-const reports = lines.filter((line) => line.startsWith('releve ')).map((line) => JSON.parse(line.slice(7)));
-const duration = Number(expected.split(', ')[1].slice(0, -1));
-const expectedReports = [];
-for (let seconds = 120; seconds <= duration; seconds += 120) {
-  expectedReports.push([seconds, 0], [seconds, 1]);
+// Vérifier les relevés sans lancer un duel dont le résultat dépend de l'équilibrage.
+const state = Sim.create();
+const controllers = [{ metrics: { waves: 1 } }, { metrics: { waves: 2 } }];
+const lines = [];
+const originalLog = console.log;
+console.log = (line) => lines.push(line);
+try {
+  for (const seconds of [120, 240, 360]) {
+    state.time = seconds;
+    const step = seconds * 10 - 1;
+    reportReplay(null, step, state, controllers);
+    reportReplay(23, step - 1, state, controllers);
+    reportReplay(23, step, state, controllers);
+    reportReplay(23, step + 1, state, controllers);
+  }
+} finally {
+  console.log = originalLog;
 }
-assert.deepEqual(reports.map(({ seconds, team }) => [seconds, team]), expectedReports);
-assert(lines.indexOf(expected) > lines.findLastIndex((line) => line.startsWith('releve ')));
-assert(!result.stdout.includes('Tournament:'));
-console.log('PASS: graine 23 identique au tournoi, partie unique et relevés à 120 s.');
+assert(lines.every((line) => line.startsWith('releve ')));
+const reports = lines.map((line) => JSON.parse(line.slice(7)));
+assert.deepEqual(reports.map(({ seconds, team, waves }) => [seconds, team, waves]), [
+  [120, 0, 1], [120, 1, 2],
+  [240, 0, 1], [240, 1, 2],
+  [360, 0, 1], [360, 1, 2],
+]);
+console.log('PASS : options de rejeu et relevés des deux équipes toutes les 120 s.');

@@ -7,6 +7,11 @@ export function buildingBounds(target, size = 1, main = false, team = target.tea
   return { x: target.x - 34 * size, y: target.y - top * size, width: 68 * size, height: (top + 18) * size };
 }
 
+export function constructionBarBounds(slot, kind, scale) {
+  const { y } = buildingBounds(slot, 0.65, false, slot.team, kind);
+  return { x: slot.x - 24 / scale, y: y - 13 / scale, width: 48 / scale, height: 9 / scale };
+}
+
 // Bounds match the sprite dimensions in drawCook and the crystals in drawMine.
 export function unitHitbox(unit) {
   const size = unit.type === 'commis' ? 34 : unit.type === 'archer' ? 52 : unit.type === 'mage' ? 49 : 46;
@@ -69,9 +74,20 @@ export function resolveTap(state, player, selection, point, scale = 1, onTarget 
     const action = slot.occupe
       ? { kind: 'production', id: slot.id }
       : { kind: 'radial', context: { baseId: slot.baseId, slotId: slot.id } };
-    add(slot, slot.occupe ? 'building' : 'slot', 28, action,
-      slot.occupe ? buildingBounds(slot, 0.65, false, player,
-        Sim.BUILDINGS[player].findIndex((building) => building.id === slot.batiment?.type)) : null);
+    const kind = Sim.BUILDINGS[player].findIndex((building) => building.id === slot.batiment?.type);
+    const bounds = slot.occupe ? buildingBounds(slot, 0.65, false, player, kind) : null;
+    if (Sim.isUnderConstruction(state, slot)) {
+      const bar = constructionBarBounds(slot, kind, scale);
+      const width = Math.max(bounds.width, bar.width);
+      const top = bar.y;
+      bounds.x = slot.x - width / 2;
+      bounds.width = width;
+      bounds.height = Math.max(bounds.y + bounds.height - top, 44 / scale);
+      bounds.y = top;
+      add(slot, 'building', 0, action, bounds, true);
+    } else {
+      add(slot, slot.occupe ? 'building' : 'slot', 28, action, bounds);
+    }
   }
   state.mines.forEach((mine, index) => {
     if (!Sim.visibleAt(state, player, mine.x, mine.y)) return;

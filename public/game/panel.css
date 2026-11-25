@@ -161,6 +161,9 @@
   gap: 4px;
   max-width: 180px;
 }
+#contextPanel[data-mode='construction'] #contextActions {
+  align-content: center;
+}
 #contextActions:empty {
   display: none;
 }

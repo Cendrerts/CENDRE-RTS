@@ -7,6 +7,8 @@ for (const team of [0, 1]) {
     const state = Sim.create();
     state.rubies[team] = 1000;
     assert(Sim.construct(state, team, team ? 'niche_ordures' : 'garde_manger'));
+    const readyAt = state.slots[team][0].batiment.readyAt;
+    state.time = readyAt;
     state.rubies[team] = 150;
     const controller = createAI(team, difficulty);
     for (let step = 0; step < 90; step++) {
@@ -18,7 +20,7 @@ for (const team of [0, 1]) {
     }
     assert.equal(state.queues[team].some((job) => job.type === 'hero'), difficulty === 'normal');
     if (difficulty === 'normal') {
-      assert(state.time < 10);
+      assert(state.time - readyAt < 10);
       // La mort autorise une nouvelle production, sans second héros vivant.
       Sim.tick(state, 35);
       assert(state.units.some((unit) => unit.team === team && unit.type === 'hero'));
@@ -97,6 +99,7 @@ for (const team of [0, 1]) {
 {
   const state = Sim.create();
   assert(Sim.construct(state, 0, 'garde_manger'));
+  state.time = state.slots[0][0].batiment.readyAt;
   state.rubies[0] = 150;
   Sim.spawn(state, 'knight', 1);
   const enemy = state.units.at(-1);
@@ -112,6 +115,7 @@ for (const production of [false, true]) {
   const state = Sim.create();
   if (production) {
     assert(Sim.construct(state, 0, 'garde_manger'));
+    state.time = state.slots[0][0].batiment.readyAt;
     while (Sim.populationUsed(state, 0) < Sim.unitLimit(0) - 2) {
       Sim.spawn(state, 'knight', 0);
     }

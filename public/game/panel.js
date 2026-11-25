@@ -18,14 +18,18 @@ export function panelModel(state, player, selection, context = {}) {
   );
   const producers = selectedProducers(state, player, context.producerIds || [context.producerId]);
   const producer = producers[0];
+  const slot = state.slots?.[player]?.find((item) => item.id === context.slotId);
+  const construction = Sim.isUnderConstruction(state, slot) ? slot : null;
   const mode =
-    context.baseId || context.slotId || context.bases
-      ? 'base'
-      : producer
-        ? 'production'
-        : units.length
-          ? 'units'
-          : 'empty';
+    construction
+      ? 'construction'
+      : context.baseId || context.slotId || context.bases
+        ? 'base'
+        : producer
+          ? 'production'
+          : units.length
+            ? 'units'
+            : 'empty';
   const activeTab = mode === 'base'
     ? context.tab || (context.bases ? 'bases' : context.slotId ? 'buildings' : 'production')
     : null;
@@ -88,6 +92,10 @@ export function panelModel(state, player, selection, context = {}) {
       },
     ];
   if (context.slotId) left.status = 'Emplacement choisi';
+  if (construction) {
+    left.name = Sim.BUILDINGS[player].find((building) => building.id === construction.batiment.type).name;
+    left.status = `En construction · ${Math.ceil(construction.batiment.readyAt - state.time)} s restantes`;
+  }
   if (mode === 'base' && activeTab !== 'production') {
     items = activeTab === 'bases'
       ? [

@@ -39,6 +39,7 @@ for (const player of [0, 1]) {
   assert.equal(panelModel(state, player, new Set(), { baseId: base.producerId }).queue.length, 1);
   state.queues[player] = [];
   assert(S.construct(state, player, S.BUILDINGS[player][0].id, slot.baseId, slot.id));
+  state.time = slot.batiment.readyAt;
   const production = panelModel(state, player, selected, { producerId: slot.id });
   assert.equal(production.mode, 'production');
   assert.equal(production.grid[0][0].type, 'knight');
@@ -100,6 +101,7 @@ for (const player of [0, 1]) {
   assert.equal(construction.activeTab, 'buildings');
   state.rubies[player] = 9999;
   assert(S.construct(state, player, S.BUILDINGS[player][0].id, slot.baseId, slot.id));
+  state.time = slot.batiment.readyAt;
   const production = panelModel(state, player, selected, {
     producerId: slot.id,
     visibility: panelVisibility(collapsed, 'building'),

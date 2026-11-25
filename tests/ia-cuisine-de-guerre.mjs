@@ -207,6 +207,13 @@ for (const difficulty of ['normal', 'difficile', 'brutal']) {
 
 for (let game = 0; game < 3; game++) {
   const state = Sim.create();
+  // Démarrer avec des escouades de chasse pour tester la cuisine dès qu'elle
+  // est possible, indépendamment du délai de construction des producteurs.
+  for (const team of [0, 1]) {
+    for (let index = 0; index < 6; index++) {
+      Sim.spawn(state, 'knight', team);
+    }
+  }
   const controllers = [0, 1].map((team) => createAI(team, 'normal', state));
   const kills = [0, 0];
   let cooked = 0;

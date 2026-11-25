@@ -50,6 +50,8 @@ for (const team of [0, 1]) {
   state.queues[team] = [];
   assert(Sim.construct(state, team, Sim.BUILDINGS[team][1].id));
   assert(Sim.construct(state, team, Sim.BUILDINGS[team][1].id));
+  check(state, 'archer', 'construction');
+  state.time = state.slots[team][0].batiment.readyAt;
   const producerId = Sim.producers(state, team, 'archer')[0].id;
   state.queues[team] = Array.from({ length: 8 }, () => ({ producerId, type: 'archer', remaining: 1 }));
   check(state, 'archer', null);

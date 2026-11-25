@@ -33,6 +33,12 @@ for (const [faction, config] of [BrigadeCuisine, RatsGout].entries()) {
     }
     for (const count of [0, 1, 2, 7]) {
       const state = Sim.create();
+      if (type !== 'commis') {
+        const building = Sim.BUILDINGS[faction].find((item) => item.unit === type);
+        state.rubies[faction] = building.cost;
+        assert(Sim.construct(state, faction, building.id));
+        state.time = state.slots[faction][0].batiment.readyAt;
+      }
       state.queues[faction] = Array.from({ length: count }, () => ({ type }));
       const item = productionModel(state, faction).find((item) => item.type === type);
       assert.equal(item.name, singular);

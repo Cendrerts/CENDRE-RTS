@@ -15,7 +15,7 @@ import { UnitVoices, selectionVoice } from './unit-voices.js';
 import { createRadialMenu } from './radial.js';
 import { unitLabel, buildingSelectionVisuals, buildingsOfType, selectedProducers, selectedRecruitCommand, selectedRallyCommands, armyUnits, armyToastText, groupToastText, filterSelection, cameraBounds, unitsOfType, createFieldDoubleTap, createPortraitTap, unitsInBox, boxSelection } from './selection.js';
 import { createGestures } from './gestures.js';
-import { resolveTap, isEmptyTap } from './tap.js';
+import { constructionBarBounds, resolveTap, isEmptyTap } from './tap.js';
 import { installMobileDisplay } from './mobile-display.js';
 import { initTouchUI } from './mobile.js';
 import { createControlGroups, groupUnits, assignGroup, initControlGroups } from './control-groups.js';
@@ -739,6 +739,13 @@ function handleFieldTap(e, duration) {
   if (action.kind === 'production') {
     selected.clear();
     const slot = state.slots[player].find((candidate) => candidate.id === action.id);
+    if (Sim.isUnderConstruction(state, slot)) {
+      fieldDoubleTap.reset();
+      panelContext = { baseId: slot.baseId, slotId: slot.id };
+      panelVisibilityState = panelVisibility(panelVisibilityState, 'building');
+      updateUI();
+      return;
+    }
     const tap = fieldDoubleTap.tap('building:' + slot.batiment.type, e.clientX, e.clientY, performance.now());
     const buildings = tap === 'double'
       ? buildingsOfType(state, player, slot.batiment.type, cameraBounds(ox, oy, scale, viewWidth, viewHeight))
@@ -1237,6 +1244,7 @@ function draw() {
     if (Sim.visibleAt(state, player, s.x, s.y) && Sim.visibleAt(state, player, s.tx, s.ty))
       line(s.x, s.y, s.tx, s.ty, s.team ? '#8ef1ce' : '#ffd388', 2);
   drawFog();
+  drawConstructionBars();
   drawOrderQueues();
   if (marker) {
     const elapsed = (performance.now() - marker.started) / 1000;
@@ -1743,7 +1751,7 @@ function drawSlots() {
       if (s.team !== player && !Sim.visibleAt(state, player, s.x, s.y)) continue;
       const { x, y } = s;
       ctx.save();
-      const chosen = s.team === player && s.id === panelContext.slotId && !s.occupe;
+      const chosen = s.team === player && s.id === panelContext.slotId;
       ctx.lineWidth = chosen ? 3 : 1.5;
       if (chosen) {
         ctx.shadowColor = '#fff0a6';
@@ -1763,6 +1771,7 @@ function drawSlots() {
       ctx.setLineDash([]);
       if (s.occupe) {
         const index = Sim.BUILDINGS[s.team].findIndex((b) => b.id === s.batiment.type);
+        if (Sim.isUnderConstruction(state, s)) ctx.globalAlpha = 0.55;
         drawFactionBuilding(x, y, s.team, index, 0.65);
       } else if (s.team === player) {
         line(x - 4, y, x + 4, y, '#e3c891');
@@ -1770,6 +1779,26 @@ function drawSlots() {
       }
       ctx.restore();
     }
+}
+
+function drawConstructionBars() {
+  for (const slot of state.slots.flat()) {
+    if (!Sim.isUnderConstruction(state, slot)) continue;
+    if (slot.team !== player && !Sim.visibleAt(state, player, slot.x, slot.y)) continue;
+    const buildings = Sim.BUILDINGS[slot.team];
+    const index = buildings.findIndex((building) => building.id === slot.batiment.type);
+    if (index < 0) continue;
+    const { x, y, width, height } = constructionBarBounds(slot, index, scale);
+    const inset = 1 / scale;
+    const remaining = slot.batiment.readyAt - state.time;
+    const progress = Math.max(0, 1 - remaining / buildings[index].constructionTime);
+    ctx.fillStyle = '#f7e7c8';
+    ctx.fillRect(x, y, width, height);
+    ctx.fillStyle = '#101d22';
+    ctx.fillRect(x + inset, y + inset, width - 2 * inset, height - 2 * inset);
+    ctx.fillStyle = '#ffd365';
+    ctx.fillRect(x + inset, y + inset, (width - 2 * inset) * progress, height - 2 * inset);
+  }
 }
 
 function drawFactionBuilding(x, y, team, kind = 3, size = 1) {
@@ -2157,7 +2186,8 @@ radial = createRadialMenu({
       option.kind === 'depot'
         ? Sim.build(state, player, context.mine)
         : Sim.construct(state, player, option.id, context.baseId, slotId);
-    notify(ok ? 'Construction terminée' : 'Construction impossible : emplacement indisponible.');
+    const successMessage = option.kind === 'depot' ? 'Construction terminée' : 'Construction lancée';
+    notify(ok ? successMessage : 'Construction impossible : emplacement indisponible.');
     updateUI();
     return ok;
   },
@@ -2285,6 +2315,7 @@ function requestRecruit(command, count = 1, producerIds = null) {
       queues: 'Files pleines',
       rubies: `Rubis insuffisants : il manque ${missing}`,
       producer: 'Aucun bâtiment pour cette unité',
+      construction: 'Bâtiment en construction',
     };
     notify(recruitToastText(launched, messages[reason]));
     toastTime = 3;
@@ -2310,6 +2341,8 @@ function panelCommand(command) {
   else if (command.kind === 'construct')
     Sim.construct(state, player, command.type, command.baseId, command.slotId);
   else if (command.kind === 'build') Sim.build(state, player, command.index);
+  else if (command.kind === 'cancelConstruction')
+    Sim.cancelConstruction(state, player, command.slotId);
   else if (command.kind === 'cancelProduction')
     Sim.cancelProduction(state, player, command.producerId, command.jobId);
   updateUI();
@@ -2317,9 +2350,8 @@ function panelCommand(command) {
 function renderContextPanel() {
   if (!panelRoot) return;
   const selectedSlot = state.slots[player].find((slot) => slot.id === panelContext.slotId);
-  if (selectedSlot?.occupe) {
+  if (selectedSlot?.occupe && !Sim.isUnderConstruction(state, selectedSlot)) {
     panelContext = { producerId: selectedSlot.id };
-    panelVisibilityState = panelVisibility(panelVisibilityState, 'building');
   }
   panelVisibilityState = panelVisibility(panelVisibilityState);
   if (rallyArmed && openedRallyBuilding()?.id !== rallyArmed) rallyArmed = null;
@@ -2364,17 +2396,19 @@ function renderContextPanel() {
   status.className = 'unit-status';
   status.textContent = model.left.status;
   label.append(status);
-  if (model.mode === 'base' || model.mode === 'production') {
+  if (['base', 'production', 'construction'].includes(model.mode)) {
     portrait.textContent = model.mode === 'base' ? '⌂' : '⚒';
     portrait.className = 'building-portrait';
   }
-  const health = document.createElement('progress');
-  health.max = model.left.max;
-  health.value = model.left.hp;
-  const healthText = document.createElement('small');
-  healthText.className = 'health-text';
-  healthText.textContent = `${Math.ceil(model.left.hp)}/${Math.ceil(model.left.max)}`;
-  portrait.append(health, healthText);
+  if (model.mode !== 'construction') {
+    const health = document.createElement('progress');
+    health.max = model.left.max;
+    health.value = model.left.hp;
+    const healthText = document.createElement('small');
+    healthText.className = 'health-text';
+    healthText.textContent = `${Math.ceil(model.left.hp)}/${Math.ceil(model.left.max)}`;
+    portrait.append(health, healthText);
+  }
   identity.append(portrait, label);
   const tabs = $('#contextTabs');
   tabs.replaceChildren();
@@ -2521,7 +2555,13 @@ function renderContextPanel() {
     if (control) $('#squadTools').append(control);
   }
   actions.replaceChildren();
-  if (model.mode === 'units') {
+  if (model.mode === 'construction') {
+    const cancel = document.createElement('button');
+    cancel.textContent = 'Annuler';
+    cancel.disabled = paused;
+    cancel.onclick = () => panelCommand({ kind: 'cancelConstruction', slotId: model.slotId });
+    actions.append(cancel);
+  } else if (model.mode === 'units') {
     const ability = document.createElement('button');
     ability.innerHTML = iconSvg('special') + ' Compétence spéciale';
     ability.disabled = true;

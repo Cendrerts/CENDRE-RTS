@@ -318,7 +318,11 @@ export function createAI(team, difficulty = 'normal', state = null) {
             actions++;
           }
         }
-        const built = new Set(state.slots[team].filter((slot) => slot.occupe).map((slot) => slot.batiment.type));
+        const placed = state.slots[team].filter((slot) => slot.occupe);
+        const built = new Set(placed.map((slot) => slot.batiment.type));
+        // Count pending copies for investment, while recruitment uses operational producers.
+        const buildingCount = (building) => state.slots[team].filter((slot) =>
+          slot.occupe && slot.batiment.type === building.id).length;
         const composition = intelligence.composition;
         const clustered = settings.micro ? intelligence.clustered : enemies.some((enemy) => enemies.filter((other) => distance(enemy, other) < 80).length >= 4);
         const earlyMages = brutal && army.filter((unit) => unit.type === 'archer').length >= 2;
@@ -357,12 +361,12 @@ export function createAI(team, difficulty = 'normal', state = null) {
           if (surplus) {
             // Scale paid production when income outpaces the existing producers,
             // including when population reservations prevent more recruitment.
-            const investment = [...order].sort((a, b) => Sim.producers(state, team, a.unit).length - Sim.producers(state, team, b.unit).length)
+            const investment = [...order].sort((a, b) => buildingCount(a) - buildingCount(b))
               .find((building) => building.requires.every((id) => built.has(id)));
             if (investment && Sim.construct(state, team, investment.id)) actions++;
           }
           for (const building of order) {
-            if (built.size === 3 && building.unit === preferred && Sim.producers(state, team, building.unit).length < settings.copies && state.rubies[team] >= 150 && Sim.construct(state, team, building.id)) actions++;
+            if (built.size === 3 && building.unit === preferred && buildingCount(building) < settings.copies && state.rubies[team] >= 150 && Sim.construct(state, team, building.id)) actions++;
           }
         }
       }

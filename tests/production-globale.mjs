@@ -12,10 +12,12 @@ for (const team of [0, 1]) {
     }
   };
   const archer = () => productionModel(state, team).find((item) => item.type === 'archer');
-  assert.equal(archer().disabled, true, 'Un bâtiment est requis');
+  assert.equal(archer(), undefined, 'Un bâtiment est requis');
   for (let index = 0; index < 3; index++) {
     assert(Sim.construct(state, team, Sim.BUILDINGS[team][1].id));
   }
+  assert.equal(archer(), undefined);
+  state.time = state.slots[team][0].batiment.readyAt;
   assert.equal(archer().disabled, false);
   const producers = Sim.producers(state, team, 'archer');
   assert.equal(producers.length, 3);
