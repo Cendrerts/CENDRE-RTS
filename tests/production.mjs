@@ -42,6 +42,7 @@ for (let team = 0; team < 2; team++) {
 {
   const s = S.create();
   s.rubies[0] = 9999;
+  s.bases[0].niveau = 2;
   const u = s.units[0],
     m = s.mines[2];
   u.x = m.x;

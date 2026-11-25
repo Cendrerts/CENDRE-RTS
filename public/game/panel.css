@@ -514,3 +514,26 @@ button svg[data-icon='selection'] {
 #contextActions:has(#heroAction) .queue-label {
   position: static;
 }
+
+#contextPanel #contextGrid #mainUpgradeAction,
+#mainUpgrade {
+  box-sizing: border-box;
+  width: 164px;
+  min-height: 44px;
+  line-height: 1.3;
+}
+#mainUpgradeAction[aria-disabled='true'] {
+  opacity: 0.55;
+}
+#mainUpgrade {
+  padding: 2px 5px;
+  font-size: 11px;
+}
+#mainUpgrade progress {
+  display: block;
+  width: 100%;
+  accent-color: #e6c47e;
+}
+#contextPanel:has(#mainUpgradeAction, #mainUpgrade) #panelChevron {
+  right: 76px;
+}

@@ -159,6 +159,7 @@ if (replay.seed === null && replay.block === null) {
     const state = S.create();
     for (let index = 0; index < 8; index++) S.spawn(state, 'knight', 0);
     state.rubies[0] = 2000;
+    state.bases[0].niveau = 3;
     for (const building of BUILD_ORDERS[0]) assert(S.construct(state, 0, building.id));
     const controller = createAI(0, 'difficile');
     for (const time of [0, 1, 2]) {

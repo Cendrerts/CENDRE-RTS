@@ -130,6 +130,7 @@ for (const horde of replay.seed === null ? [false, true] : [false]) {
         {
           const state = sim.create();
           state.rubies[0] = 10000;
+          state.bases[0].niveau = 3;
           for (const type of ['garde_manger', 'boucherie', 'ecole_brigade', 'boucherie', 'boucherie']) {
             assert(sim.construct(state, 0, type));
           }

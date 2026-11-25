@@ -1,18 +1,24 @@
+export const MAIN_LEVELS = [
+  { names: ['Cuisine', 'Décharge'], cost: 0, constructionTime: 0 },
+  { names: ['Brasserie', 'Grande Décharge'], cost: 250, constructionTime: 45 },
+  { names: ['Grand Restaurant', 'Palais des Ordures'], cost: 450, constructionTime: 60 },
+];
+
 export const BUILDINGS = [
   [
-    { id: 'garde_manger', name: 'Garde-manger', unit: 'knight', cost: 100, constructionTime: 20 },
-    { id: 'boucherie', name: 'Boucherie', unit: 'archer', cost: 150, constructionTime: 30 },
-    { id: 'ecole_brigade', name: 'École de brigade', unit: 'mage', cost: 200, constructionTime: 40 },
+    { id: 'garde_manger', name: 'Garde-manger', unit: 'knight', rank: 2, cost: 100, constructionTime: 20 },
+    { id: 'boucherie', name: 'Boucherie', unit: 'archer', rank: 3, cost: 150, constructionTime: 30 },
+    { id: 'ecole_brigade', name: 'École de brigade', unit: 'mage', rank: 4, cost: 200, constructionTime: 40 },
   ],
   [
-    { id: 'niche_ordures', name: 'Niche à Ordures', unit: 'knight', cost: 100, constructionTime: 20 },
-    { id: 'atelier_ferraille', name: 'Atelier de Ferraille', unit: 'archer', cost: 150, constructionTime: 30 },
-    { id: 'autel_peste', name: 'Autel de la Peste', unit: 'mage', cost: 200, constructionTime: 40 },
+    { id: 'niche_ordures', name: 'Niche à Ordures', unit: 'knight', rank: 2, cost: 100, constructionTime: 20 },
+    { id: 'atelier_ferraille', name: 'Atelier de Ferraille', unit: 'archer', rank: 3, cost: 150, constructionTime: 30 },
+    { id: 'autel_peste', name: 'Autel de la Peste', unit: 'mage', rank: 4, cost: 200, constructionTime: 40 },
   ],
 ];
 export function baseSites(s, team) {
   return [
-    { id: 'main_' + team, ...s.bases[team], name: team ? 'Grande Décharge' : 'Cuisine Centrale' },
+    { id: 'main_' + team, ...s.bases[team], name: MAIN_LEVELS[(s.bases[team].niveau ?? 1) - 1].names[team] },
     ...s.mines.flatMap((m, i) =>
       m.depot && m.owner === team
         ? [{ id: 'mine_' + i, ...m.site, team, mine: i, name: m.name }]

@@ -5,6 +5,7 @@ import { CendreSim as Sim } from '../public/game/sim.js';
 const s = Sim.create();
 const buildingType = Sim.BUILDINGS[1][1].id;
 s.rubies[1] = 1000;
+s.bases[1].niveau = 2;
 assert(Sim.construct(s, 1, buildingType, 'main_1'));
 const building = s.slots[1].find((slot) => slot.occupe);
 assert(building);

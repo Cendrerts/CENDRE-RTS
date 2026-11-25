@@ -1,6 +1,7 @@
 'use strict';
 import {
   BUILDINGS,
+  MAIN_LEVELS,
   baseSites,
   ensureSlots as syncSlots,
 } from './slots.js';
@@ -319,8 +320,8 @@ function create() {
     aiClock: 0,
     fogClock: 0,
     bases: [
-      { x: 450, y: 1750, team: 0, hp: 1500, max: 1500, base: true },
-      { x: 3550, y: 450, team: 1, hp: 1500, max: 1500, base: true },
+      { x: 450, y: 1750, team: 0, hp: 1500, max: 1500, base: true, niveau: 1 },
+      { x: 3550, y: 450, team: 1, hp: 1500, max: 1500, base: true, niveau: 1 },
     ],
     watchtowers: createWatchtowers(),
     braises: createBraises(),
@@ -574,6 +575,7 @@ function applyDamage(s, target, damage, attackerTeam = null, attackerId = null) 
 }
 // Shared migration for saved solo states and persisted server matches.
 function migrateState(s) {
+  for (const base of s.bases) base.niveau ??= 1;
   s.watchtowers ??= createWatchtowers();
   s.braises ??= createBraises();
   s.braisesNextAt ??= 240;
@@ -689,15 +691,61 @@ function ensureSlots(s) {
     return best || { x, y };
   });
 }
-function construct(s, team, type, baseId, slotId = null) {
-  const cfg = BUILDINGS[team]?.find((b) => b.id === type);
-  if (s.winner !== null || !cfg || !Number.isFinite(s.rubies?.[team]) || s.rubies[team] < cfg.cost)
-    return false;
-  ensureSlots(s);
-  const slot = s.slots[team].find(
-    (p) => !p.occupe && (!baseId || p.baseId === baseId) && (!slotId || p.id === slotId),
+function constructionTierReason(s, team, building) {
+  const requiredLevel = building.rank - 1;
+  if ((s.bases[team].niveau ?? 1) >= requiredLevel) return null;
+  return `Tour principale de niveau ${requiredLevel} requise (bâtiment de rang ${building.rank}).`;
+}
+function availableSlot(s, team, baseId, slotId) {
+  return s.slots?.[team]?.find(
+    (slot) => !slot.occupe && (!baseId || slot.baseId === baseId) && (!slotId || slot.id === slotId),
   );
-  if (!slot) return false;
+}
+function constructBlockReason(s, team, type, baseId, slotId = null) {
+  if (s.winner !== null) return 'La partie est terminée.';
+  const building = BUILDINGS[team]?.find((item) => item.id === type);
+  if (!building) return 'Type de bâtiment inconnu.';
+  const tierReason = constructionTierReason(s, team, building);
+  if (tierReason) return tierReason;
+  if (!availableSlot(s, team, baseId, slotId)) {
+    const occupied = slotId && s.slots?.[team]?.some((slot) =>
+      slot.id === slotId && (!baseId || slot.baseId === baseId) && slot.occupe,
+    );
+    return occupied ? 'Emplacement occupé.' : 'Aucun emplacement libre pour ce bâtiment.';
+  }
+  if (!Number.isFinite(s.rubies[team]) || s.rubies[team] < building.cost) {
+    return `${building.cost} rubis nécessaires.`;
+  }
+  return null;
+}
+function nextMainLevel(s, team) {
+  return MAIN_LEVELS[s.bases[team].niveau ?? 1];
+}
+function upgradeMainBlockReason(s, team) {
+  if (s.winner !== null) return 'La partie est terminée.';
+  const base = s.bases[team];
+  if (!(base?.hp > 0)) return 'Tour principale indisponible.';
+  const next = nextMainLevel(s, team);
+  if (!next) return 'Niveau maximal atteint.';
+  if (base.readyAt != null) return 'Montée de niveau déjà en cours.';
+  if (!(s.rubies[team] >= next.cost)) return `${next.cost} rubis nécessaires.`;
+  return null;
+}
+function upgradeMain(s, team) {
+  if (upgradeMainBlockReason(s, team)) return false;
+  const next = nextMainLevel(s, team);
+  s.rubies[team] -= next.cost;
+  s.bases[team].readyAt = s.time + next.constructionTime;
+  return true;
+}
+function constructionPending(s, building, tolerance = 0) {
+  return building?.readyAt > s.time + tolerance;
+}
+function construct(s, team, type, baseId, slotId = null) {
+  ensureSlots(s);
+  if (constructBlockReason(s, team, type, baseId, slotId)) return false;
+  const cfg = BUILDINGS[team].find((building) => building.id === type);
+  const slot = availableSlot(s, team, baseId, slotId);
   s.rubies[team] -= cfg.cost;
   slot.occupe = true;
   slot.batiment = {
@@ -710,7 +758,7 @@ function construct(s, team, type, baseId, slotId = null) {
   return true;
 }
 function isUnderConstruction(s, slot) {
-  return slot?.occupe === true && slot.batiment?.readyAt > s.time;
+  return slot?.occupe === true && constructionPending(s, slot.batiment);
 }
 function cancelConstruction(s, team, slotId) {
   if (s.winner !== null) return false;
@@ -1188,6 +1236,12 @@ function tick(s, dt) {
   if (s.winner !== null) return;
   productionTick(s, dt);
   s.time += dt;
+  for (const base of s.bases) {
+    if (base.readyAt != null && !constructionPending(s, base, 1e-9)) {
+      base.niveau++;
+      delete base.readyAt;
+    }
+  }
   ragoutTick(s);
   festinTick(s);
   s.corpses = s.corpses.filter((corpse) => corpse.expiresAt > s.time + 1e-9);
@@ -1791,7 +1845,7 @@ function restore(texte) {
       if (!Array.isArray(fog) || fog.length !== 2 ||
           !fog.every((grid) => grid instanceof Uint8Array && grid.length === walk.length)) return null;
     }
-    return state;
+    return migrateState(state);
   } catch {
     return null;
   }
@@ -1821,6 +1875,11 @@ export const CendreSim = {
   matchStats,
   ensureSlots,
   construct,
+  constructBlockReason,
+  constructionTierReason,
+  nextMainLevel,
+  upgradeMain,
+  upgradeMainBlockReason,
   cancelConstruction,
   isUnderConstruction,
   W,

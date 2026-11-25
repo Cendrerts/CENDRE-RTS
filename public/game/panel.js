@@ -74,7 +74,19 @@ export function panelModel(state, player, selection, context = {}) {
             : 'Prêt'
         : `Production ${queue.length}/${8 * Math.max(1, producers.length)}`,
   };
+  const mainSelected = !context.slotId && (context.baseId || context.producerId) === 'main_' + player;
+  const base = state.bases[player];
+  const nextLevel = mainSelected && Sim.nextMainLevel(state, player);
+  const upgrade = nextLevel && (activeTab === 'production' || mode === 'production') ? {
+    name: nextLevel.names[player],
+    cost: nextLevel.cost,
+    duration: nextLevel.constructionTime,
+    rank: (base.niveau ?? 1) + 2,
+    readyAt: base.readyAt,
+    reason: Sim.upgradeMainBlockReason(state, player),
+  } : null;
   if (context.bases) left.status = 'Unité proche · mine libre';
+  if (mainSelected) left.status += ` · Niveau ${base.niveau ?? 1}`;
   let items = [];
   if (mode === 'units')
     items = counts.map((item) => ({
@@ -128,18 +140,16 @@ export function panelModel(state, player, selection, context = {}) {
               : [],
           ),
         ]
-      : Sim.BUILDINGS[player].map((building) => ({
-          ...building,
-          type: building.unit,
-          kind: 'building',
-          locked: !(state.slots[player] || []).some(
-            (slot) =>
-              !slot.occupe &&
-              (!context.baseId || slot.baseId === context.baseId) &&
-              (!context.slotId || slot.id === context.slotId),
-          ),
-          prerequisite: 'Emplacement libre requis',
-        }));
+      : Sim.BUILDINGS[player].map((building) => {
+          const prerequisite = Sim.constructBlockReason(state, player, building.id, context.baseId, context.slotId);
+          return {
+            ...building,
+            type: building.unit,
+            kind: 'building',
+            locked: !!prerequisite,
+            prerequisite,
+          };
+        });
   }
   const unitLabels = player
     ? { hero: 'Roi-Rat', commis: 'Essuyeur', knight: 'Éboueur', archer: 'Tireur', mage: 'Chaman' }
@@ -175,5 +185,6 @@ export function panelModel(state, player, selection, context = {}) {
     producerIds: producers.map((producer) => producer.id),
     actions: mode === 'units' ? ['hold', 'patrol', 'ability', 'disengage'] : [],
     queue,
+    upgrade,
   };
 }
