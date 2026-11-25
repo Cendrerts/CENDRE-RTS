@@ -958,17 +958,40 @@ function productionTick(s, dt) {
   }
 }
 
+function targetReference(target) {
+  if (!target) return null;
+  if (target.structure) {
+    return { structure: target.structure, team: target.team, structureId: target.structureId };
+  }
+  if (target.base) return { base: true, team: target.team };
+  return { id: target.id };
+}
+
+function resolveTarget(s, reference) {
+  if (!reference) return null;
+  if (reference.base) return s.bases[reference.team] ?? null;
+  if (reference.structure) {
+    const { structure, team, structureId } = reference;
+    if (team !== 0 && team !== 1) return null;
+    if (structure === 'slot') {
+      return s.slots[team].find((slot) => slot.id === structureId)?.batiment ?? null;
+    }
+    if (structure === 'depot' && Number.isInteger(structureId)) {
+      const mine = s.mines[structureId];
+      if (mine?.depot && mine.owner === team) return mine.site;
+    }
+    return null;
+  }
+  return [...s.units, ...s.monsters].find((unit) => unit.id === reference.id) ?? null;
+}
+
 function startWaypoint(s, unit, point) {
   unit.path = route(unit.x, unit.y, point.x, point.y);
   if (!unit.path.length) unit.path = [{ x: point.x, y: point.y }];
   unit.attackDestination = point.attackMove ? point : null;
   unit.retreat = !point.attackMove && !point.target;
   unit.chasing = false;
-  unit.target = point.target
-    ? point.target.base
-      ? s.bases[point.target.team]
-      : [...s.units, ...s.monsters].find((candidate) => candidate.id === point.target.id) || null
-    : null;
+  unit.target = resolveTarget(s, point.target);
   if (point.target && (!unit.target || unit.target.hp <= 0 || !canSee(s, unit.team, unit.target))) {
     unit.target = null;
     unit.path = [];
@@ -1030,7 +1053,7 @@ function order(s, ids, x, y, target = null, retreat = !target, queue = false) {
       if (target) {
         point.x = target.x;
         point.y = target.y;
-        point.target = target.base ? { base: true, team: target.team } : { id: target.id };
+        point.target = targetReference(target);
         point.attackMove = false;
       }
       u.orderQueue.push(point);
@@ -1351,6 +1374,7 @@ function tick(s, dt) {
     const activeWaypoint = u.queueActive ? u.orderQueue?.[0] : null;
     const targetedWaypoint = activeWaypoint?.target;
     if (target && (target.returning || target.hp <= 0 || !canSee(s, u.team, target) ||
+        (target.structure && resolveTarget(s, target) !== target) ||
         (targetedWaypoint && u.chasing &&
           Math.hypot(target.x - activeWaypoint.x, target.y - activeWaypoint.y) > cfg.range + 75 +
             (target.base ? 45 : 0) &&
@@ -1421,6 +1445,11 @@ function tick(s, dt) {
       const destination = u.patrol.points[u.patrol.index];
       u.attackDestination = destination;
       u.path = route(u.x, u.y, destination.x, destination.y);
+    }
+    // Garder la cible de l’ordre pendant que l’unité riposte à portée.
+    if (target?.structure && target === u.target) {
+      const enemy = automaticTarget(s, u, cfg.range, structures);
+      if (enemy && targetPriority(enemy) < 3) target = enemy;
     }
     let d = target ? Math.hypot(target.x - u.x, target.y - u.y) : Infinity;
     if (target && d <= cfg.range + (target.base ? 45 : 0) && !u.retreat) {
@@ -1921,6 +1950,8 @@ function restore(texte) {
 }
 
 export const CendreSim = {
+  targetReference,
+  resolveTarget,
   devour,
   cancelDevour,
   hold,

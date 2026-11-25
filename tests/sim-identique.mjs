@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -16,6 +16,11 @@ try {
   for (const file of files.filter((name) => name.endsWith('.js'))) {
     const source = execFileSync('git', ['show', `origin/main:${file}`]);
     await writeFile(join(directory, file.slice('public/game/'.length)), source);
+  }
+  // La même IA pilote les deux parties pour isoler les différences de simulation.
+  for (const file of ['ai.js', 'ai-config.js']) {
+    const source = await readFile(new URL(`../public/game/${file}`, import.meta.url));
+    await writeFile(join(directory, file), source);
   }
   await writeFile(join(directory, 'package.json'), '{"type":"module"}');
   const { CendreSim: Reference } = await import(pathToFileURL(join(directory, 'sim.js')));
@@ -47,11 +52,21 @@ try {
     base.hp = 1000000;
     base.max = base.hp;
   }
-  // D70 change les combats de cette partie. Comparer deux parties indépendantes
-  // jouées avec les nouvelles règles, y compris les dégâts aux bâtiments.
+  const probe = Reference.create();
+  const slot = probe.slots[0][0];
+  const building = Reference.BUILDINGS[0][0];
+  probe.rubies[0] = building.cost;
+  assert(Reference.construct(probe, 0, building.id, slot.baseId, slot.id));
+  // Tant qu’origin/main n’a pas D70, les dégâts aux bâtiments changent le duel.
+  // Le duel vérifie alors le déterminisme de la branche et revient à main dès que D70 y figure.
+  const referenceHasD70 = Number.isFinite(slot.batiment.hp);
+  const secondSim = referenceHasD70 ? Reference : Sim;
+  const secondAI = referenceHasD70
+    ? (await import(pathToFileURL(join(directory, 'ai.js')))).createAI
+    : createAI;
   const secondState = structuredClone(state);
   const controllers = [0, 1].map((team) => createAI(team, 'brutal', state));
-  const secondControllers = [0, 1].map((team) => createAI(team, 'brutal', secondState));
+  const secondControllers = [0, 1].map((team) => secondAI(team, 'brutal', secondState));
   identical(state, secondState, 'Brutal initial');
   for (let step = 1; step <= 3000; step++) {
     for (const team of [0, 1]) {
@@ -63,13 +78,14 @@ try {
       }
     }
     Sim.tick(state, 0.1);
-    Sim.tick(secondState, 0.1);
+    secondSim.tick(secondState, 0.1);
     if (step % 600 === 0) {
       identical(state, secondState, `Brutal minute ${step / 600}`);
     }
   }
   assert.ok(state.time >= 300 - 1e-8, 'La partie doit couvrir cinq minutes');
-  console.log('sim-identique : 1 200 ticks chargés et Brutal/Brutal graine 18, cinq minutes identiques avec les règles D70');
+  const comparison = referenceHasD70 ? 'avec origin/main' : 'entre deux parties de la branche (main sans D70)';
+  console.log(`sim-identique : 1 200 ticks chargés et Brutal/Brutal graine 18, cinq minutes identiques ${comparison}`);
 } finally {
   await rm(directory, { recursive: true, force: true });
 }

@@ -802,12 +802,12 @@ function handleFieldTap(e, duration) {
     showOrderFeedback(feedbackAction, target || destination, [...selected]);
     if (net) {
       sendCommand({
-        kind: patrolArmed ? 'patrol' : attackMove ? 'attackMove' : 'move',
+        kind: target?.structure ? 'attack' : patrolArmed ? 'patrol' : attackMove ? 'attackMove' : 'move',
         ids: [...selected],
         x: destination.x,
         y: destination.y,
         queue: queueArmed && !patrolArmed,
-        target: target ? (target.base ? { base: true } : { id: target.id }) : null,
+        target: Sim.targetReference(target),
       });
     } else if (patrolArmed) Sim.patrol(state, [...selected], p.x, p.y);
     else Sim.order(state, [...selected], destination.x, destination.y, target, !target && !attackMove, queueArmed);

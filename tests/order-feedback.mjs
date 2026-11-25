@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
+import { CendreSim as Sim } from '../public/game/sim.js';
 import { createFieldDoubleTap } from '../public/game/selection.js';
 import { orderFeedback, drawOrderFeedback, vibrateOrder } from '../public/game/order-feedback.js';
 
@@ -37,9 +38,10 @@ for (const kind of ['move', 'attackMove', 'patrol', 'attack', 'gather']) {
   let serverReplied = false;
   const response = new Promise((resolve) => { respond = resolve; });
   const point = { x: 100, y: 200 };
-  const target = { id: 8, x: 120, y: 220 };
+  const target = { structure: 'slot', structureId: 'main_1_0', team: 1, x: 120, y: 220 };
   const context = vm.createContext({
     orderFeedback,
+    Sim,
     scale: 1,
     performance: { now: () => 10 },
     world: () => point,
@@ -66,7 +68,11 @@ for (const kind of ['move', 'attackMove', 'patrol', 'attack', 'gather']) {
     vibrateOrder,
     settings: { vibration: false },
     net: true,
-    sendCommand: () => {
+    sendCommand: (command) => {
+      if (kind === 'attack') {
+        assert.equal(command.kind, 'attack');
+        assert.deepEqual(command.target, { structure: 'slot', structureId: 'main_1_0', team: 1 });
+      }
       assert(context.marker, 'marker exists before dispatch');
       return response.then(() => { serverReplied = true; });
     },

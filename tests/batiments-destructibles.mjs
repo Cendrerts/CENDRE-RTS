@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { pack, unpack, view } from '../lib/match.mjs';
+import { command, pack, unpack, view } from '../lib/match.mjs';
 import { CendreSim as Sim } from '../public/game/sim.js';
 import { buildingBounds, resolveTap, unitHitbox } from '../public/game/tap.js';
 
@@ -119,7 +119,9 @@ for (const chantier of [false, true]) {
   const attacker = placeUnit(state, 'knight', 0, slot.x, slot.y + 25);
   const defender = placeUnit(state, 'commis', 1, slot.x - 20, slot.y + 25);
   Sim.hold(state, 1, [defender.id]);
+  Sim.order(state, [attacker.id], slot.x, slot.y, slot.batiment);
   attack(state, attacker);
+  assert.equal(attacker.target, slot.batiment);
   assert(defender.hp < defender.max);
   assert.equal(slot.batiment.hp, 600);
   defender.x -= 140;
@@ -135,11 +137,84 @@ for (const chantier of [false, true]) {
   const bounds = buildingBounds(slot, 0.65, false, 1, 0);
   const point = { x: slot.x, y: bounds.y + bounds.height / 2 };
   defender.x -= 140;
-  assert.deepEqual(resolveTap(state, 0, selection, point, 0.8), { kind: 'attackMove', x: slot.x, y: slot.y });
+  assert.deepEqual(resolveTap(state, 0, selection, point, 0.8), { kind: 'attack', target: slot.batiment });
   defender.x = point.x + 5;
   const hitbox = unitHitbox(defender);
   defender.y += point.y - (hitbox.y + hitbox.height / 2);
   assert.deepEqual(resolveTap(state, 0, selection, point, 0.8), { kind: 'attack', target: defender });
+}
+
+for (const tapTower of [true, false]) {
+  const state = scenario();
+  const tower = state.bases[1];
+  const slots = state.slots[1].filter((slot) => slot.baseId === 'main_1').slice(0, 3);
+  assert.equal(slots.length, 3);
+  for (const slot of slots) {
+    assert(Sim.construct(state, 1, Sim.BUILDINGS[1][0].id, slot.baseId, slot.id));
+  }
+  state.time = Math.max(...slots.map((slot) => slot.batiment.readyAt));
+  const attackers = Array.from({ length: 6 }, (_, index) =>
+    placeUnit(state, 'knight', 0, tower.x - 400, tower.y + (index - 2.5) * 24));
+  const selection = new Set(attackers.map((unit) => unit.id));
+  const [selectedSlot, ...otherSlots] = slots;
+  const point = tapTower ? tower : selectedSlot;
+  state.visible[0].fill(1);
+  const action = resolveTap(state, 0, selection, point);
+  assert.deepEqual(action, { kind: 'attack', target: tapTower ? tower : selectedSlot.batiment });
+  Sim.order(state, [...selection], point.x, point.y, action.target);
+  // Garder la visibilité forcée malgré le recalcul périodique du brouillard.
+  state.fogClock = -30;
+  for (let tick = 0; tick < 600; tick++) {
+    Sim.tick(state, 0.05);
+    if (!tapTower && !selectedSlot.occupe) break;
+  }
+  if (tapTower) {
+    assert.equal(tower.hp, 0);
+    assert(slots.every((slot) => slot.occupe));
+  } else {
+    assert.equal(selectedSlot.batiment, null);
+    assert.equal(tower.hp, tower.max);
+    assert(otherSlots.every((slot) => slot.occupe));
+  }
+}
+
+{
+  const state = scenario();
+  const slot = state.slots[1][0];
+  assert(Sim.construct(state, 1, Sim.BUILDINGS[1][0].id, slot.baseId, slot.id));
+  const mine = state.mines[2];
+  const worker = placeUnit(state, 'commis', 1, mine.x, mine.y);
+  assert(Sim.build(state, 1, 2));
+  const attacker = placeUnit(state, 'knight', 0, slot.x - 100, slot.y);
+  state.visible[0].fill(1);
+  assert.deepEqual(resolveTap(state, 0, new Set([attacker.id]), mine.site), {
+    kind: 'attack', target: mine.site,
+  });
+  for (const building of [slot.batiment, mine.site]) {
+    const order = {
+      kind: 'attack',
+      ids: [attacker.id],
+      x: building.x,
+      y: building.y,
+      target: { structure: building.structure, team: 1, structureId: building.structureId },
+    };
+    state.visible[0].fill(1);
+    command(state, 0, order);
+    assert.equal(attacker.target, building);
+    Sim.hold(state, 0, [attacker.id]);
+    command(state, 0, { ...order, queue: true });
+    assert.equal(attacker.target, building);
+    const restored = unpack(pack(state));
+    const restoredAttacker = restored.units.find((unit) => unit.id === attacker.id);
+    const restoredBuilding = building === mine.site ? restored.mines[2].site : restored.slots[1][0].batiment;
+    assert.equal(restoredAttacker.target, restoredBuilding);
+    assert.deepEqual(restoredAttacker.orderQueue[0].target, order.target);
+    state.visible[0].fill(0);
+    command(state, 0, order);
+    assert.equal(attacker.target, null);
+    command(state, 1, { ...order, ids: [worker.id] });
+    assert.equal(worker.target, null);
+  }
 }
 
 console.log('PASS : destruction, files, reprise, chantier, victoire, ciblage et tap.');
