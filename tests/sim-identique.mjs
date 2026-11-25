@@ -26,8 +26,9 @@ try {
   const { CendreSim: Reference } = await import(pathToFileURL(join(directory, 'sim.js')));
   const probe = Reference.create();
   const referenceHasSimpleHeroes = !Object.hasOwn(probe, 'heroProgress');
-  // La progression des héros change les statistiques et le déroulement des combats.
-  const loadedReferenceSim = referenceHasSimpleHeroes ? Reference : Sim;
+  const referenceHasPantries = Object.hasOwn(probe, 'pantries');
+  // Les héros et les garde-manger modifient l’état dès le début du scénario.
+  const loadedReferenceSim = referenceHasSimpleHeroes && referenceHasPantries ? Reference : Sim;
   // Les rangs sont débloqués pour comparer le scénario chargé avec une référence antérieure à D67.
   const unlockAllRanks = (state) => {
     for (const base of state.bases) base.niveau = 3;
@@ -68,7 +69,7 @@ try {
   // Comparer deux parties de la branche tant que main n'a pas les mêmes règles.
   const referenceHasD70 = Number.isFinite(slot.batiment.hp);
   const referenceHasD68 = typeof probe.ingredients[0]?.viande === 'number';
-  const sameRules = referenceHasD70 && referenceHasD68 && referenceHasSimpleHeroes;
+  const sameRules = referenceHasD70 && referenceHasD68 && referenceHasSimpleHeroes && referenceHasPantries;
   const secondSim = sameRules ? Reference : Sim;
   const secondAI = sameRules
     ? (await import(pathToFileURL(join(directory, 'ai.js')))).createAI

@@ -144,7 +144,7 @@ export class RealtimeClient {
             }
           }
           delete state.exploredAdded;
-          for (const field of ['slots', 'visible', 'explored', 'camps', 'watchtowers', 'braises', 'bases', 'corpses', 'ragout', 'festin']) {
+          for (const field of ['slots', 'visible', 'explored', 'camps', 'watchtowers', 'braises', 'bases', 'corpses', 'ragout', 'festin', 'pantries']) {
             if (Object.hasOwn(state, field)) {
               snapshotFields[field] = state[field];
             } else if (Object.hasOwn(snapshotFields, field)) {

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { CendreSim as Sim } from '../public/game/sim.js';
 
-const cellAt = (x, y) => Math.floor(y / Sim.CELL) * Sim.COLS + Math.floor(x / Sim.CELL);
+import { cellAt, shortestPath as pathBetween } from './helpers/map-path.mjs';
 function reachable(start, blocked = () => false) {
   const visited = new Set([cellAt(start.x, start.y)]);
   const queue = [...visited];
@@ -87,49 +87,6 @@ for (let y = 850; y < 1350; y += 20) {
     assert(Sim.walk[cellAt(x, y)], 'Clairière centrale de 700 × 500');
   }
 }
-// Dijkstra on the collision grid, with the same diagonals and corner rule as route().
-function shortestPath(blocked = () => false) {
-  const start = cellAt(state.bases[0].x, state.bases[0].y);
-  const target = cellAt(state.bases[1].x, state.bases[1].y);
-  const distances = new Float64Array(Sim.walk.length).fill(Infinity);
-  const previous = new Int32Array(Sim.walk.length).fill(-1);
-  const open = new Set([start]);
-  const available = (cell) => Sim.walk[cell] && !blocked(
-    (cell % Sim.COLS) * Sim.CELL + Sim.CELL / 2,
-    Math.floor(cell / Sim.COLS) * Sim.CELL + Sim.CELL / 2,
-  );
-  distances[start] = 0;
-  while (open.size) {
-    let cell = -1;
-    for (const candidate of open) {
-      if (cell === -1 || distances[candidate] < distances[cell]) cell = candidate;
-    }
-    open.delete(cell);
-    if (cell === target) {
-      const points = [];
-      for (let step = target; step !== start; step = previous[step]) points.push(step);
-      return { length: distances[target], points };
-    }
-    const column = cell % Sim.COLS;
-    const row = Math.floor(cell / Sim.COLS);
-    for (let dy = -1; dy <= 1; dy++) {
-      for (let dx = -1; dx <= 1; dx++) {
-        if (!dx && !dy) continue;
-        const x = column + dx;
-        const y = row + dy;
-        const next = y * Sim.COLS + x;
-        if (x < 0 || y < 0 || x >= Sim.COLS || y >= Sim.ROWS || !available(next)) continue;
-        if (dx && dy && (!available(cell + dx) || !available(cell + dy * Sim.COLS))) continue;
-        const distance = distances[cell] + Sim.CELL * Math.hypot(dx, dy);
-        if (distance >= distances[next]) continue;
-        distances[next] = distance;
-        previous[next] = cell;
-        open.add(next);
-      }
-    }
-  }
-  assert.fail('Approche déconnectée');
-}
 // Cut the four connectors at their narrow sections. At the map's midline,
 // retain only the selected approach; the base/natural accesses stay shared.
 const passagesBlocked = (x, y) =>
@@ -137,6 +94,7 @@ const passagesBlocked = (x, y) =>
   (x >= 3220 && x < 3260 && y >= 1280 && y < 1420) ||
   (x >= 1720 && x < 1880 && y >= 580 && y < 620) ||
   (x >= 2120 && x < 2280 && y >= 1580 && y < 1620);
+const shortestPath = (blocked) => pathBetween(...state.bases, blocked);
 const centre = shortestPath((x, y) => passagesBlocked(x, y) ||
   (x >= 1980 && x < 2020 && (y < 840 || y >= 1360)));
 const flanks = [0, 1].map((south) => shortestPath((x, y) => passagesBlocked(x, y) ||
