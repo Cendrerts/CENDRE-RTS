@@ -332,4 +332,16 @@ assert.deepEqual(received.at(-1).festin, { readyAt: null });
 checkPlayer([]);
 checkOpponent([]);
 
+const shot = { x: 100.456, y: 200.789, tx: 300.12, ty: 400.98, team: player.team, life: 0.15 };
+match.sim.visible[player.team].fill(1);
+match.sim.shots = [shot];
+match.snapshot(socket);
+client.socket.receive(socket.messages.at(-1));
+assert.deepEqual(received.at(-1).shots, [
+  { x: 100, y: 201, tx: 300, ty: 401, team: player.team },
+]);
+assert.deepEqual(view(match.sim, player.team).shots, [
+  { x: 100.456, y: 200.789, tx: 300.12, ty: 400.98, team: player.team, life: 0.15 },
+]);
+
 console.log(`Snapshot stable : ${complete.length} → ${reduced.length} caractères (−${savings}).`);

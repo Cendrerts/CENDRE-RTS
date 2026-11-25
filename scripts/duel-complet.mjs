@@ -34,14 +34,23 @@ function creerSocket(match, horloge, sockets, joueurs) {
           let reference = null;
           let octetsFilesOmises = 0;
           let octetsUnites = 0;
+          let octetsTirs = 0;
           const message = JSON.parse(data);
           if (message.type === 'snapshot') {
             octetsUnites = Buffer.byteLength(JSON.stringify(message.state.units));
+            octetsTirs = Buffer.byteLength(JSON.stringify(message.state.shots));
             const vue = view(match.sim, equipe, { compactUnits: false });
             const champs = Object.fromEntries(CHAMPS_STABLES.map((champ) => [champ, vue[champ]]));
+            const shots = vue.shots.map(({ x, y, tx, ty, team }) => ({
+              x: Math.round(x),
+              y: Math.round(y),
+              tx: Math.round(tx),
+              ty: Math.round(ty),
+              team,
+            }));
             reference = {
               ...JSON.parse(JSON.stringify({
-                units: vue.units, queues: vue.queues, damageEvents: vue.damageEvents, ...champs,
+                units: vue.units, queues: vue.queues, damageEvents: vue.damageEvents, shots, ...champs,
               })),
               visible: match.sim.visible[equipe].slice(),
               explored: match.sim.explored[equipe].slice(),
@@ -56,7 +65,7 @@ function creerSocket(match, horloge, sockets, joueurs) {
             if (joueur) {
               joueur.reference = reference;
               joueur.receptions.push({
-                temps: horloge.temps, octets, octetsFilesOmises, octetsUnites, snapshot: reference !== null,
+                temps: horloge.temps, octets, octetsFilesOmises, octetsUnites, octetsTirs, snapshot: reference !== null,
               });
             }
             this.onmessage({ data });
@@ -136,7 +145,7 @@ function verifierSnapshot(joueur, { state, team, status }) {
       }
     }
   }
-  for (const champ of CHAMPS_STABLES) {
+  for (const champ of [...CHAMPS_STABLES, 'shots']) {
     if (!isDeepStrictEqual(reference[champ], state[champ])) {
       ecart(null, premierChamp(reference[champ], state[champ], [champ]));
     }
@@ -214,6 +223,7 @@ function mesurer(receptions, debut, fin) {
   let octets = 0;
   let octetsFilesOmises = 0;
   let octetsUnites = 0;
+  let octetsTirs = 0;
   let max = 0;
   let snapshots = 0;
   for (const [droite, reception] of receptions.entries()) {
@@ -226,6 +236,7 @@ function mesurer(receptions, debut, fin) {
     octets += reception.octets;
     octetsFilesOmises += reception.octetsFilesOmises;
     octetsUnites += reception.octetsUnites;
+    octetsTirs += reception.octetsTirs;
     max = Math.max(max, fenetre);
     snapshots += Number(reception.snapshot);
   }
@@ -236,6 +247,7 @@ function mesurer(receptions, debut, fin) {
     max,
     snapshots,
     unitesMoyenneOctets: snapshots ? Math.round(octetsUnites / snapshots) : 0,
+    tirsMoyenneOctets: snapshots ? octetsTirs / snapshots : 0,
   };
 }
 
