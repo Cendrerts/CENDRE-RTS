@@ -310,7 +310,8 @@ const checkOpponent = (sentFields) => checkDishes(
 checkOpponent(['ragout', 'festin']);
 await opponentConnected;
 
-match.sim.ingredients = [80, 80];
+match.sim.ingredients[0].viande = 80;
+match.sim.ingredients[1].viande = 80;
 command(match.sim, player.team, { kind: 'cookDish', dish: 'ragout' });
 command(match.sim, opponent.team, { kind: 'cookDish', dish: 'festin' });
 checkPlayer(['ragout']);

@@ -164,7 +164,14 @@ input,select,textarea{font-size:16px!important}
 .attack-alert{position:fixed;z-index:30;width:48px;height:48px;min-width:48px;padding:0;border:2px solid #ff8a8a;border-radius:50%;background:#740c20e8;color:#ff6464;font-size:26px;touch-action:manipulation;box-shadow:0 0 12px #ff304d88}
 
 /* Pause and settings remain reachable with a thumb in landscape. */
-header .stats{margin-left:0}header #pause{margin-left:auto}header #netBadge{position:static;max-width:32vw;font:11px Arial;overflow-wrap:anywhere}
+header .stats{margin-left:0}header #pause{margin-left:auto}
+header #netBadge {
+  position: static;
+  transform: none;
+  max-width: 32vw;
+  font: 11px Arial;
+  overflow-wrap: anywhere;
+}
 #pauseMenu[hidden],#settingsPanel[hidden],#pauseActions[hidden]{display:none}
 #pauseMenu{position:fixed;inset:0;z-index:80;background:#071414b8;display:flex;align-items:center;justify-content:center;padding:12px}
 .pause-panel{position:relative;width:min(440px,100%);max-height:calc(100dvh - 24px);overflow:auto;background:#152628;border:1px solid #9d855c;border-radius:12px;padding:16px;font:16px Arial;box-shadow:0 12px 50px #0009}

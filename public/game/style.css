@@ -91,3 +91,20 @@ footer{border-top:3px ridge #626963;background:linear-gradient(#202a2a,#0c1319);
   transform: translateX(-50%);
   white-space: pre;
 }
+
+.stats {
+  align-items: center;
+  white-space: nowrap;
+}
+
+.ingredient-stock,
+.dish-cost {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.dish-cost {
+  vertical-align: middle;
+  white-space: nowrap;
+}

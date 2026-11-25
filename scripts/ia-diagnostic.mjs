@@ -26,7 +26,7 @@ export function snapshot(state, team, controller) {
     military: military.length,
     workers: workers.length,
     rubies: state.rubies[team],
-    ingredients: state.ingredients[team],
+    ingredients: state.ingredients[team].viande,
     waves: controller.metrics.waves,
     exploitedMines: exploitedMines.size,
     heroAlive: Boolean(hero),

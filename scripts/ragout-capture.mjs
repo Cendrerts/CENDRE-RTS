@@ -27,7 +27,7 @@ window.ragoutCapture = () => {
   state = Sim.create();
   state.visible[player].fill(1);
   state.explored[player].fill(1);
-  state.ingredients[0] = 80;
+  state.ingredients[0].viande = 80;
   selected.clear();
   panelContext = { baseId: 'main_0' };
   panelVisibilityState = panelVisibility(panelVisibilityState, 'building');
@@ -62,7 +62,7 @@ try {
   await page.locator('#start').click();
   await page.evaluate(() => window.ragoutCapture());
   await page.waitForTimeout(500);
-  const size = await page.locator('#ingredients').evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize));
+  const size = await page.locator('#viande').evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize));
   assert(size >= 9);
   await mkdir('docs/issue-106', { recursive: true });
   await page.screenshot({ path: 'docs/issue-106/tour-ragout-844x390.png' });

@@ -57,7 +57,7 @@ function hunter(state, team, x, y) {
   monster.hp = 1;
   command(state, 1, { kind: 'move', ids: [lastHunter.id], x: monster.x, y: monster.y, target: { id: monster.id } });
   S.tick(state, 0.05);
-  assert.deepEqual(state.ingredients, [0, 15], 'Le dernier coup prime sur le premier attaquant');
+  assert.deepEqual(state.ingredients.map((stock) => stock.viande), [0, 15], 'Le dernier coup prime sur le premier attaquant');
 }
 {
   const state = S.create();
@@ -83,14 +83,14 @@ for (const team of [0, 1]) {
   const restored = unpack(pack(state));
   assert.equal(restored.units.at(-1).target, restored.monsters[0]);
   S.tick(restored, 0.05);
-  assert.equal(restored.ingredients[team], 15);
-  assert.equal(restored.ingredients[1 - team], 0);
+  assert.equal(restored.ingredients[team].viande, 15);
+  assert.equal(restored.ingredients[1 - team].viande, 0);
   assert.equal(restored.camps[0].respawnAt, null, 'Un camp partiellement vivant ne réapparaît pas');
   assert(view(restored, team).monsters.some((monster) => monster.camp === restored.camps[0].name));
   advance(restored, 0.1);
-  assert.equal(restored.ingredients[team], 15, 'Butin unique');
-  assert.equal(view(restored, team).ingredients[team], 15);
-  assert.equal(view(restored, 1 - team).ingredients[team], 0);
+  assert.equal(restored.ingredients[team].viande, 15, 'Butin unique');
+  assert.equal(view(restored, team).ingredients[team].viande, 15);
+  assert.equal(view(restored, 1 - team).ingredients[team].viande, 0);
 }
 {
   const state = S.create();

@@ -51,7 +51,7 @@ for (const alive of [true, false]) {
   const state = fresh();
   const chef = spawn(state, 'hero', 0);
   chef.hp = alive ? chef.max : 0;
-  state.ingredients[0] = 120;
+  state.ingredients[0].viande = 120;
   for (let meal = 0; meal < 3; meal++) {
     assert.equal(Sim.cookDish(state, 0).ok, true);
     advance(state, 19.9);
@@ -82,12 +82,12 @@ for (const corpseType of ['knight', 'sanglier']) {
   assert(king.devour?.startedAt != null);
   advance(state, 2.9);
   assert.equal(king.xp, 0);
-  assert.equal(state.ingredients[1], 0);
+  assert.equal(state.ingredients[1].viande, 0);
   assert.equal(state.corpses.length, 1);
   advance(state, 0.1);
   assert.equal(king.xp, 40);
   assert.equal(state.heroProgress[1].xp, 40);
-  assert.equal(state.ingredients[1], corpseType === 'sanglier' ? 10 : 6);
+  assert.equal(state.ingredients[1].viande, corpseType === 'sanglier' ? 10 : 6);
   assert.equal(king.hp, health + king.max * 0.3);
   assert.equal(state.corpses.length, 0);
   state.corpses.push({ ...corpse, expiresAt: state.time + 30 });

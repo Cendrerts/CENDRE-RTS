@@ -15,7 +15,7 @@ window.festinCapture = () => {
   state = Sim.create();
   state.visible[player].fill(1);
   state.explored[player].fill(1);
-  state.ingredients[1] = 80;
+  state.ingredients[1].viande = 80;
   selected.clear();
   panelContext = { baseId: 'main_1' };
   panelVisibilityState = panelVisibility(panelVisibilityState, 'building');
@@ -55,7 +55,7 @@ try {
   await page.locator('#start').click();
   await page.evaluate(() => window.festinCapture());
   await page.waitForTimeout(500);
-  const size = await page.locator('#ingredients').evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize));
+  const size = await page.locator('#viande').evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize));
   assert(size >= 9);
   await mkdir('docs/issue-123', { recursive: true });
   await page.screenshot({ path: 'docs/issue-123/grande-decharge-844x390.png' });
@@ -67,7 +67,7 @@ try {
   assert.match(await page.locator('#toast').textContent(), /préparation/);
   await page.evaluate(() => window.advanceFestinCapture());
   await page.waitForTimeout(100);
-  assert.match(await page.locator('#ingredients').textContent(), /Festin 9 s/);
+  assert.match(await page.locator('#dishStatus').textContent(), /Festin 9 s/);
   await page.screenshot({ path: 'docs/issue-123/festin-preparation-844x390.png' });
   assert.deepEqual(errors, []);
   console.log(`PASS : captures Festin 844×390, ingrédients à ${size}px, aucune erreur navigateur.`);

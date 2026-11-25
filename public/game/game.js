@@ -285,9 +285,18 @@ function updateUI() {
   let army = state.units.filter((u) => u.team === player);
   selected = new Set([...selected].filter((id) => army.some((u) => u.id === id)));
   const ragoutSeconds = Math.max(0, Math.ceil((state.ragout?.expiresAt || 0) - state.time));
-  $('#ingredients').textContent = Math.floor(state.ingredients?.[player] || 0) +
-    (player === 0 && ragoutSeconds > 0 ? ' · Ragoût ' + ragoutSeconds + ' s' : '') +
-    (player === 1 && state.festin?.readyAt != null ? ' · Festin ' + Math.max(0, Math.ceil(state.festin.readyAt - state.time)) + ' s' : '');
+  const stock = state.ingredients[player];
+  for (const ingredient of ['viande', 'epices', 'conserves']) {
+    $('#' + ingredient).textContent = Math.floor(stock[ingredient]);
+  }
+  const dishStatus = $('#dishStatus');
+  let dishCountdown = '';
+  if (player === 0 && ragoutSeconds > 0) dishCountdown = 'Ragoût ' + ragoutSeconds + ' s';
+  if (player === 1 && state.festin?.readyAt != null) {
+    dishCountdown = 'Festin ' + Math.max(0, Math.ceil(state.festin.readyAt - state.time)) + ' s';
+  }
+  dishStatus.textContent = dishCountdown;
+  dishStatus.hidden = !dishCountdown;
   $('#rubies').textContent = Math.floor(state.rubies[player]);
   $('#population').textContent = Sim.populationUsed(state, player) + ' / ' + Sim.unitLimit(player);
   $('#clock').textContent =
@@ -2676,7 +2685,10 @@ function renderContextPanel() {
       const dish = player === 1 ? 'festin' : 'ragout';
       const dishButton = document.createElement('button');
       dishButton.id = dish + 'Action';
-      dishButton.innerHTML = iconSvg(dish) + (player === 1 ? ' Festin · 40' : ' Ragoût · 40');
+      const dishName = player === 1 ? 'Festin' : 'Ragoût';
+      dishButton.innerHTML = iconSvg(dish) + ' ' + dishName +
+        ' <span class="dish-cost"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><use href="#viande-icon"/></svg> 40</span>';
+      dishButton.setAttribute('aria-label', dishName + ' · 40 Viande');
       dishButton.style.minHeight = '44px';
       dishButton.style.minWidth = '44px';
       const reason = Sim.cookDishBlockReason(state, player, dish);

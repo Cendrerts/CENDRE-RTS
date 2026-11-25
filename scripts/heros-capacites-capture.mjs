@@ -25,7 +25,7 @@ window.herosCapture = () => {
     Sim.spawn(state, type, 0);
     Object.assign(state.units.at(-1), { x: hero.x + dx, y: hero.y + dy, hold: true });
   }
-  state.ingredients[0] = 40;
+  state.ingredients[0].viande = 40;
   Sim.cookDish(state, 0);
   Sim.tick(state, 20);
   state.visible[player].fill(1);

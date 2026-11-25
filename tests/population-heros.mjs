@@ -50,7 +50,7 @@ function festinScenario(population) {
   state.units = [];
   state.camps = [];
   state.monsters = [];
-  state.ingredients[1] = 40;
+  state.ingredients[1].viande = 40;
   Sim.spawn(state, 'hero', 1);
   state.units.at(-1).hold = true;
   while (Sim.populationUsed(state, 1) < population) {
