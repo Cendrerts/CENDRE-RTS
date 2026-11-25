@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createGestures } from '../public/game/gestures.js';
 
 const gestures = createGestures();
-const send = (type, id, x, y, time = 0) => gestures.update({ type, id, x, y, time });
+const send = (type, id, x, y, time = 0) => gestures.update({ type, id, x, y, time, pointerType: 'mouse' });
 send('down', 1, 10, 20);
 assert.deepEqual(send('move', 1, 30, 50), {
   kind: 'camera', from: { x: 10, y: 20, time: 0, distance: 0 }, to: { x: 30, y: 50, distance: 0 },
@@ -12,9 +12,26 @@ send('down', 1, 0, 0, 100);
 assert.equal(send('move', 1, 4, 5), null);
 assert.deepEqual(send('up', 1, 4, 5, 150), { kind: 'tap', x: 4, y: 5, duration: 50 });
 send('down', 1, 0, 0);
-assert.equal(send('move', 1, 8, 0).kind, 'camera');
+assert.equal(send('move', 1, 8, 0, 250).kind, 'camera');
 // Returning to the start must not turn a drag into a tap.
-assert.equal(send('up', 1, 0, 0).kind, 'camera');
+assert.equal(send('up', 1, 0, 0, 280).kind, 'camera');
+send('down', 1, 0, 0);
+assert.deepEqual(send('up', 1, 12, 0, 120), { kind: 'tap', x: 12, y: 0, duration: 120 });
+send('down', 1, 0, 0);
+assert.equal(send('up', 1, 12, 0, 600).kind, 'camera');
+send('down', 1, 0, 0);
+assert.equal(send('move', 1, 12, 0, 100), null);
+assert.equal(send('up', 1, 12, 0, 120).kind, 'tap');
+send('down', 1, 0, 0);
+assert.equal(send('move', 1, 12, 0, 100), null);
+assert.equal(gestures.tick(500), null);
+assert.deepEqual(send('up', 1, 12, 0, 600), {
+  kind: 'camera', from: { x: 0, y: 0, time: 0, distance: 0 }, to: { x: 12, y: 0, distance: 0 },
+});
+send('down', 1, 0, 0);
+assert.equal(send('up', 1, 16, 0, 120).kind, 'camera');
+send('down', 1, 0, 0);
+assert.equal(send('up', 1, 12, 0, 250).kind, 'camera');
 send('down', 1, 0, 0);
 assert.equal(send('down', 2, 10, 0).kind, 'camera');
 const pinch = send('move', 2, 20, 0);

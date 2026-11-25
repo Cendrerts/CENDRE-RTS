@@ -194,25 +194,29 @@ function checkMove(socket, team, seq, applied, error) {
 }
 
 let moveSeq = 0;
-for (let index = 0; index < 20; index++) {
+for (let index = 0; index < 200; index++) {
+  checkMove(sb2, b.team, ++moveSeq, index < 60, index === 60);
+}
+checkMove(sa, a.team, 4, true);
+await clock.advance(950);
+for (let index = 0; index < 28; index++) {
   checkMove(sb2, b.team, ++moveSeq, true);
 }
+checkMove(sb2, b.team, ++moveSeq, false);
+await clock.advance(50);
+checkMove(sb2, b.team, ++moveSeq, true);
+checkMove(sb2, b.team, ++moveSeq, true);
 checkMove(sb2, b.team, ++moveSeq, false, true);
 checkMove(sb2, b.team, ++moveSeq, false);
-checkMove(sa, a.team, 4, true);
-await clock.advance(1000);
-for (let index = 0; index < 10; index++) {
-  checkMove(sb2, b.team, ++moveSeq, true);
-}
-checkMove(sb2, b.team, ++moveSeq, false, true);
 
-for (let index = 0; index < 150; index++) {
-  await clock.advance(200);
+for (let index = 0; index < 300; index++) {
+  await clock.advance(50);
   checkMove(sb2, b.team, ++moveSeq, true);
+  if (index % 2 === 1) checkMove(sb2, b.team, ++moveSeq, true);
 }
 
 await clock.advance(2000);
-for (let index = 0; index < 20; index++) {
+for (let index = 0; index < 60; index++) {
   checkMove(sb2, b.team, ++moveSeq, true);
 }
 checkMove(sb2, b.team, ++moveSeq, false, true);

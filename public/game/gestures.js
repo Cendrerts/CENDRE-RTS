@@ -1,4 +1,6 @@
 // Pure input recognizer: coordinates and inertia are expressed in CSS pixels.
+const MOUSE_DRAG_THRESHOLD = 8;
+
 export function createGestures() {
   const pointers = new Map();
   let start = null;
@@ -24,6 +26,10 @@ export function createGestures() {
 
   function hold(time) {
     if (!start || multi || mode) return null;
+    if (start.pointerType === 'mouse') {
+      const [pointer] = pointers.values();
+      if (Math.hypot(pointer.x - start.x, pointer.y - start.y) >= MOUSE_DRAG_THRESHOLD) return null;
+    }
     const progress = Math.max(0, Math.min(1, (time - start.time) / 300));
     if (progress === 1) mode = 'select-box';
     return { kind: 'hold', x: start.x, y: start.y, progress, ready: progress === 1 };
@@ -73,16 +79,21 @@ export function createGestures() {
       if (before && type === 'move') action = { kind: 'camera', from: before, to: pair() };
     } else {
       const distance = Math.hypot(x - start.x, y - start.y);
-      const threshold = start.pointerType === 'touch' ? 14 : 8;
+      const touch = start.pointerType === 'touch';
+      const mouse = start.pointerType === 'mouse';
+      const duration = time - start.time;
+      const threshold = touch ? 14 : MOUSE_DRAG_THRESHOLD;
+      const quickTap = duration < 250 && ((touch && distance < 24) || (mouse && !mode && distance < 16));
       hold(time);
-      if (!mode && distance >= threshold) mode = 'camera';
-      const quickTap = start.pointerType === 'touch' && time - start.time < 250 && distance < 24;
+      const startCamera = !mode && distance >= threshold && !(mouse && quickTap);
+      if (startCamera) mode = 'camera';
       if (type === 'up' && (quickTap || (!mode && distance < threshold) || (mode === 'select-box' && distance < threshold))) {
-        action = { kind: 'tap', x, y, duration: time - start.time };
+        action = { kind: 'tap', x, y, duration };
       } else if (mode === 'select-box') {
         action = { kind: 'select-box', start: { x: start.x, y: start.y }, end: { x, y }, final: type === 'up' };
       } else if (mode === 'camera') {
-        action = { kind: 'camera', from: { ...previous, distance: 0 }, to: { x, y, distance: 0 } };
+        const from = startCamera && mouse ? { x: start.x, y: start.y, time: start.time } : previous;
+        action = { kind: 'camera', from: { ...from, distance: 0 }, to: { x, y, distance: 0 } };
         if (type === 'move') {
           const elapsed = Math.max(16, time - previous.time) / 1000;
           const speed = Math.hypot(x - previous.x, y - previous.y) / elapsed;
