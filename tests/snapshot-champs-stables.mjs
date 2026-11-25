@@ -4,7 +4,7 @@ import { Match } from '../server/match-do.js';
 import { RealtimeClient } from '../public/game/realtime.js';
 import { CendreSim as Sim } from '../public/game/sim.js';
 
-const stableFields = ['camps', 'watchtowers', 'braises', 'bases', 'corpses'];
+const stableFields = ['camps', 'watchtowers', 'braises', 'bases', 'corpses', 'ragout', 'festin'];
 
 class Socket {
   messages = [];
@@ -62,11 +62,11 @@ const match = new Match(context, {}, clock);
 await match.ready;
 const url = (query) => new URL(`https://cendre.test/api/ws?code=ABCDEFG&${query}`);
 const player = await match.authenticate(url('action=create&team=0'));
-await match.authenticate(url('action=join'));
+const opponent = await match.authenticate(url('action=join'));
 
-function connectSocket() {
+function connectSocket(team = player.team) {
   const socket = new Socket();
-  socket.serializeAttachment({ team: player.team, closed: false, lastMessageAt: clock.time });
+  socket.serializeAttachment({ team, closed: false, lastMessageAt: clock.time });
   sockets.push(socket);
   return socket;
 }
@@ -84,7 +84,7 @@ assert.equal(firstState.visible, firstView.visible);
 assert.deepEqual(firstState.mines, firstView.mines);
 assert(!Object.hasOwn(firstState, 'minesChanged'));
 for (const field of stableFields) {
-  assert(Array.isArray(firstState[field]), field);
+  assert(Object.hasOwn(firstState, field), field);
   assert.deepEqual(firstState[field], firstView[field], field);
 }
 
@@ -121,8 +121,9 @@ assert.deepEqual(received[0].explored, expectedExplored);
 assert.deepEqual(received[1].explored, expectedExplored);
 assert.deepEqual(received[1].slots, firstState.slots);
 assert.deepEqual(received[1].mines, firstState.mines);
+const secondView = view(match.sim, player.team);
 for (const field of stableFields) {
-  assert.deepEqual(received[1][field], firstState[field], field);
+  assert.deepEqual(received[1][field], secondView[field], field);
 }
 const visibleForPlayer = () => match.sim.visible.map((grid, team) =>
   Array.from(grid, (cell) => team === player.team ? cell : 0),
@@ -271,5 +272,64 @@ assert.deepEqual(restoredState.slots, replacementState.slots);
 assert.equal(restoredState.explored, replacementState.explored);
 assert.equal(restoredState.visible, replacementState.visible);
 assert.deepEqual(restoredState.mines, replacementState.mines);
+
+const opponentSocket = connectSocket(opponent.team);
+let opponentState;
+const opponentClient = new RealtimeClient({
+  Socket,
+  clock,
+  onSnapshot: ({ state }) => {
+    opponentState = state;
+  },
+});
+const opponentConnected = opponentClient.connect({ code: opponent.code, token: opponent.token });
+opponentClient.socket.receive(JSON.stringify({ type: 'session', code: opponent.code, token: opponent.token }));
+
+function checkDishes(serverSocket, realtimeClient, team, latestState, sentFields) {
+  match.snapshot(serverSocket);
+  const snapshot = serverSocket.messages.at(-1);
+  const wireState = JSON.parse(snapshot).state;
+  const serverView = view(match.sim, team);
+  realtimeClient.socket.receive(snapshot);
+  for (const field of ['ragout', 'festin']) {
+    assert.equal(Object.hasOwn(wireState, field), sentFields.includes(field), field);
+    if (sentFields.includes(field)) {
+      assert.deepEqual(wireState[field], serverView[field], field);
+    }
+    assert.deepEqual(latestState()[field], serverView[field], field);
+  }
+}
+
+const checkPlayer = (sentFields) => checkDishes(
+  replacement, client, player.team, () => received.at(-1), sentFields,
+);
+const checkOpponent = (sentFields) => checkDishes(
+  opponentSocket, opponentClient, opponent.team, () => opponentState, sentFields,
+);
+checkOpponent(['ragout', 'festin']);
+await opponentConnected;
+
+match.sim.ingredients = [80, 80];
+command(match.sim, player.team, { kind: 'cookDish', dish: 'ragout' });
+command(match.sim, opponent.team, { kind: 'cookDish', dish: 'festin' });
+checkPlayer(['ragout']);
+checkOpponent(['festin']);
+assert.notEqual(received.at(-1).ragout.readyAt, null);
+assert.notEqual(opponentState.festin.readyAt, null);
+assert.deepEqual(opponentState.ragout, { readyAt: null, expiresAt: 0 });
+assert.deepEqual(received.at(-1).festin, { readyAt: null });
+checkPlayer([]);
+checkOpponent([]);
+
+Sim.tick(match.sim, 20);
+checkPlayer(['ragout']);
+checkOpponent(['festin']);
+assert.equal(received.at(-1).ragout.readyAt, null);
+assert(received.at(-1).ragout.expiresAt > match.sim.time);
+assert.equal(opponentState.festin.readyAt, null);
+assert.deepEqual(opponentState.ragout, { readyAt: null, expiresAt: 0 });
+assert.deepEqual(received.at(-1).festin, { readyAt: null });
+checkPlayer([]);
+checkOpponent([]);
 
 console.log(`Snapshot stable : ${complete.length} → ${reduced.length} caractères (−${savings}).`);
