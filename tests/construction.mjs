@@ -27,7 +27,8 @@ for (const team of [0, 1]) {
     assert.throws(() => command(state, team, { kind: 'recruit', type: unit, producerId: slot.id }));
     assert.equal(Sim.recruitBlockReason(state, team, unit), 'construction');
     assert.equal(Sim.recruitBlockReason(state, team, unit, slot.id), 'construction');
-    assert(!productionModel(state, team).some((item) => item.type === unit));
+    const productionButton = () => productionModel(state, team).find((item) => item.type === unit);
+    assert.equal(productionButton().disabled, true);
     const panel = panelModel(state, team, new Set(), { slotId: slot.id });
     assert.equal(panel.mode, 'construction');
     assert.match(panel.left.status, new RegExp(`${duration} s restantes`));
@@ -42,6 +43,7 @@ for (const team of [0, 1]) {
     assert.equal(Sim.canRecruit(state, team, unit, slot.id), false);
     state.time = slot.batiment.readyAt;
     assert.equal(Sim.canRecruit(state, team, unit, slot.id), true);
+    assert.equal(productionButton().disabled, false);
     assert.equal(Sim.recruitBlockReason(state, team, unit, slot.id), null);
     assert.throws(() => command(state, team, cancel), /Chantier indisponible/);
 

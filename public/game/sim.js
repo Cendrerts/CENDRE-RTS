@@ -773,10 +773,11 @@ export function recruitBlockReason(state, team, type, producerId = null) {
     (!producerId || slot.id === producerId) && slot.batiment?.type === config.id &&
     isUnderConstruction(snapshot, slot)) &&
     (producerId || !producers(snapshot, team, type).length)) return 'construction';
-  if (population + (type === 'hero' ? 3 : 1) > populationCap(snapshot, team)) return 'population';
-  if (type === 'hero' && heroBlockReason(snapshot, team)) return heroBlockReason(snapshot, team);
   const buildings = producers(snapshot, team, type).filter((producer) =>
     !producerId || producer.id === producerId);
+  if (config && !buildings.length) return 'producer';
+  if (population + (type === 'hero' ? 3 : 1) > populationCap(snapshot, team)) return 'population';
+  if (type === 'hero' && heroBlockReason(snapshot, team)) return heroBlockReason(snapshot, team);
   if (!buildings.length) return 'producer';
   if (buildings.every((producer) =>
     queue.filter((job) => job.producerId === producer.id).length >= 8)) return 'queues';

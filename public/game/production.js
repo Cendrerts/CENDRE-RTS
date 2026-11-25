@@ -9,9 +9,7 @@ export function recruitToastText(launched, message) {
 
 export function productionModel(state, player) {
   const queue = state.queues[player];
-  const types = ['commis', 'knight', 'archer', 'mage'].filter((type) =>
-    Sim.producers(state, player, type).length > 0);
-  return types.map((type) => {
+  return ['commis', 'knight', 'archer', 'mage'].map((type) => {
     const stats = Sim.stats(type, player);
     const queued = queue.filter((job) => job.type === type).length;
     return {
@@ -66,7 +64,7 @@ export function initProduction(api) {
       press.timer = setTimeout(() => {
         suppressClick = true;
         cancel();
-        if (button.hidden || bar.hidden || root.hidden || !api.enabled()) return;
+        if (bar.hidden || root.hidden || !api.enabled()) return;
         api.vibrate();
         api.recruitBatch({ kind: 'recruit', type }, 5);
       }, 450);
@@ -99,9 +97,6 @@ export function initProduction(api) {
         toggle.setAttribute('aria-expanded', 'false');
       }
       const items = productionModel(state, player);
-      for (const [type, button] of buttons) {
-        button.hidden = !items.some((item) => item.type === type);
-      }
       for (const item of items) {
         const button = buttons.get(item.type);
         const disabled = item.disabled || !api.enabled();
