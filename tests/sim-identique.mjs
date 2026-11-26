@@ -27,8 +27,10 @@ try {
   const probe = Reference.create();
   const referenceHasSimpleHeroes = !Object.hasOwn(probe, 'heroProgress');
   const referenceHasPantries = Object.hasOwn(probe, 'pantries');
-  // Les héros et les garde-manger modifient l’état dès le début du scénario.
-  const loadedReferenceSim = referenceHasSimpleHeroes && referenceHasPantries ? Reference : Sim;
+  const referenceHasFieldKitchens = Object.hasOwn(probe, 'fieldKitchens');
+  // Les héros, les garde-manger et la cuisine de campagne modifient l’état initial.
+  const loadedReferenceSim = referenceHasSimpleHeroes && referenceHasPantries && referenceHasFieldKitchens
+    ? Reference : Sim;
   // Les rangs sont débloqués pour comparer le scénario chargé avec une référence antérieure à D67.
   const unlockAllRanks = (state) => {
     for (const base of state.bases) base.niveau = 3;
@@ -69,7 +71,7 @@ try {
   // Comparer deux parties de la branche tant que main n'a pas les mêmes règles.
   const referenceHasD70 = Number.isFinite(slot.batiment.hp);
   const referenceHasD68 = typeof probe.ingredients[0]?.viande === 'number';
-  const sameRules = referenceHasD70 && referenceHasD68 && referenceHasSimpleHeroes && referenceHasPantries;
+  const sameRules = referenceHasD70 && referenceHasD68 && loadedReferenceSim === Reference;
   const secondSim = sameRules ? Reference : Sim;
   const secondAI = sameRules
     ? (await import(pathToFileURL(join(directory, 'ai.js')))).createAI

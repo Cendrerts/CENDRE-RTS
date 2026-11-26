@@ -36,7 +36,9 @@ export function resolveTap(state, player, selection, point, scale = 1, onTarget 
     ? ['mine', 'unit', 'enemy', 'building', 'slot']
     : combat ? ['enemy', 'unit', 'building', 'mine', 'slot'] : ['unit', 'enemy', 'building', 'slot', 'mine'];
   if (ratMilitary) priorities.splice(priorities.indexOf('enemy') + 1, 0, 'corpse');
+  priorities.splice(priorities.indexOf('building') + 1, 0, 'fieldKitchen');
   priorities.push('pantry');
+  const kitchens = (state.fieldKitchens || []).filter((kitchen) => kitchen && Sim.canSee(state, player, kitchen));
   const pantry = state.pantries?.[1 - player];
   let pantryHit = false;
   if (pantry && Sim.visibleAt(state, player, pantry.x, pantry.y)) {
@@ -48,12 +50,23 @@ export function resolveTap(state, player, selection, point, scale = 1, onTarget 
     add(pantry, 'pantry', 22, action, bounds);
     pantryHit = candidates.length > 0;
   }
+  const pantryCandidates = candidates.length;
+  for (const kitchen of kitchens) {
+    const bounds = { x: kitchen.x - 19, y: kitchen.y - 44, width: 63, height: 56 };
+    const action = kitchen.team === player
+      ? { kind: 'fieldKitchen', id: kitchen.structureId }
+      : selected.length ? { kind: 'attack', target: kitchen } : { kind: 'none' };
+    add(kitchen, 'fieldKitchen', 22, action, bounds);
+  }
+  const kitchenHit = candidates.length > pantryCandidates;
+  const ownKitchen = candidates.find((candidate) =>
+    candidate.action.kind === 'fieldKitchen' && candidate.distance <= 10);
   function add(target, category, radius, action, bounds = null, sprite = false) {
     const center = sprite
       ? { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 }
       : target;
     let distance = Math.hypot(point.x - center.x, point.y - center.y) * scale;
-    if (pantryHit && action.kind === 'attack' && sprite && target.type && !target.structure) {
+    if (sprite && action.kind === 'attack' && target.type && !target.structure && (pantryHit || kitchenHit)) {
       const groundDistance = Math.hypot(point.x - target.x, point.y - target.y) * scale;
       if (groundDistance <= 6) distance = Math.min(distance, groundDistance);
     }
@@ -62,13 +75,17 @@ export function resolveTap(state, player, selection, point, scale = 1, onTarget 
       ? point.x >= bounds.x - margin && point.x <= bounds.x + bounds.width + margin &&
         point.y >= bounds.y - margin && point.y <= bounds.y + bounds.height + margin
       : distance <= radius;
-    const hit = insideBounds || ((sprite || category === 'pantry') && distance <= radius);
+    const hit = insideBounds || ((sprite || category === 'pantry' || category === 'fieldKitchen') && distance <= radius);
     if (hit) candidates.push({ target, category, distance, action, bounds, radius, center, sprite });
   }
   for (const unit of [...state.units, ...(state.monsters || [])]) {
     if (unit.hp <= 0 || (unit.team !== player && !Sim.canSee(state, player, unit))) continue;
-    if (unit.team === player) add(unit, 'unit', 26, { kind: 'select', id: unit.id }, unitHitbox(unit), true);
-    else add(unit, combat && !workers.length ? 'enemy' : 'unit', 26, selected.length ? { kind: 'attack', target: unit } : { kind: 'none' }, unitHitbox(unit), true);
+    if (unit.team === player) {
+      // Laisser le Chef sélectionné ouvrir la cuisine qu’il vient de poser sous lui.
+      if (ownKitchen && unit.type === 'hero' && selection.has(unit.id) &&
+          Math.hypot(unit.x - ownKitchen.target.x, unit.y - ownKitchen.target.y) <= Sim.CELL) continue;
+      add(unit, 'unit', 26, { kind: 'select', id: unit.id }, unitHitbox(unit), true);
+    } else add(unit, combat && !workers.length ? 'enemy' : 'unit', 26, selected.length ? { kind: 'attack', target: unit } : { kind: 'none' }, unitHitbox(unit), true);
   }
   for (const corpse of state.corpses || []) {
     if (!ratMilitary) continue;

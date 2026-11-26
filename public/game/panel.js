@@ -20,6 +20,8 @@ export function panelModel(state, player, selection, context = {}) {
   const producer = producers[0];
   const slot = state.slots?.[player]?.find((item) => item.id === context.slotId);
   const construction = Sim.isUnderConstruction(state, slot) ? slot : null;
+  const kitchen = state.fieldKitchens?.[player];
+  const kitchenSelected = kitchen && kitchen.structureId === context.fieldKitchenId;
   const mode =
     construction
       ? 'construction'
@@ -29,7 +31,7 @@ export function panelModel(state, player, selection, context = {}) {
           ? 'production'
           : units.length
             ? 'units'
-            : 'empty';
+            : kitchenSelected ? 'fieldKitchen' : 'empty';
   const activeTab = mode === 'base'
     ? context.tab || (context.bases ? 'bases' : context.slotId ? 'buildings' : 'production')
     : null;
@@ -74,6 +76,13 @@ export function panelModel(state, player, selection, context = {}) {
             : 'Prêt'
         : `Production ${queue.length}/${8 * Math.max(1, producers.length)}`,
   };
+  if (mode === 'fieldKitchen') {
+    left.name = 'Cuisine de campagne';
+    left.type = 'fieldKitchen';
+    left.max = kitchen.maxHp;
+    left.hp = kitchen.hp;
+    left.status = state.ragout?.at === 'campagne' && state.ragout.readyAt != null ? 'Ragoût en cuisson' : 'Prête';
+  }
   const mainSelected = !context.slotId && (context.baseId || context.producerId) === 'main_' + player;
   const base = state.bases[player];
   const nextLevel = mainSelected && Sim.nextMainLevel(state, player);

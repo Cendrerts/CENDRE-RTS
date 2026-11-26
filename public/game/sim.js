@@ -368,6 +368,8 @@ function create() {
     pantries: createPantries(),
     pantryTimers: createPantryTimers(0),
     ragout: { readyAt: null, expiresAt: 0 },
+    fieldKitchens: [null, null],
+    fieldKitchenReadyAt: 0,
     festin: { readyAt: null },
     monsterId: 0,
     monsters: [],
@@ -622,7 +624,16 @@ function initStructure(entity, structure, id, team, max) {
   entity.team = team;
 }
 
+function removeFieldKitchen(s, team) {
+  s.fieldKitchens[team] = null;
+  if (s.ragout.at === 'campagne') s.ragout.readyAt = null;
+}
+
 function destroyStructure(s, target) {
+  if (target.structure === 'fieldKitchen') {
+    removeFieldKitchen(s, target.team);
+    return;
+  }
   let producerId;
   if (target.structure === 'slot') {
     const slot = s.slots[target.team].find((entry) => entry.batiment === target);
@@ -678,6 +689,11 @@ function migrateState(s) {
   }
   s.pantryTimers ??= createPantryTimers(s.time);
   s.ragout ??= { readyAt: null, expiresAt: 0 };
+  s.ragout.at ??= 'tour';
+  s.ragout.x ??= s.bases[0].x;
+  s.ragout.y ??= s.bases[0].y;
+  s.fieldKitchens ??= [null, null];
+  s.fieldKitchenReadyAt ??= 0;
   s.festin ??= { readyAt: null };
   s.monsterId ??= 0;
   s.monsters ??= [];
@@ -712,7 +728,41 @@ const RAGOUT_REASONS = {
 function festinFreePlaces(s) {
   return populationCap(s, 1) - populationUsed(s, 1);
 }
-function cookDishBlockReason(s, team, dish = 'ragout') {
+const FIELD_KITCHEN_COST = 60;
+const RAGOUT_RADIUS = 350;
+
+function fieldKitchen(s, team) {
+  if (team !== 0) return { ok: false, reason: 'Seuls les Cuistots ont un Grand Chef.' };
+  if (s.winner !== null) return { ok: false, reason: RAGOUT_REASONS.ended };
+  const chef = s.units.find((unit) => unit.team === team && unit.type === 'hero' && unit.hp > 0);
+  if (!chef) return { ok: false, reason: 'Aucun Grand Chef vivant.' };
+  const cell = nearest(chef.x, chef.y);
+  const x = (cell % COLS + 0.5) * CELL;
+  const y = (Math.floor(cell / COLS) + 0.5) * CELL;
+  const enemyBase = s.bases[1];
+  if (Math.hypot(x - enemyBase.x, y - enemyBase.y) <= 600) {
+    return { ok: false, reason: 'Trop près de la base adverse.' };
+  }
+  const remaining = Math.ceil((s.fieldKitchenReadyAt ?? 0) - s.time - 1e-9);
+  if (remaining > 0) {
+    return { ok: false, reason: `Cuisine de campagne disponible dans ${remaining} s.` };
+  }
+  if (s.rubies[team] < FIELD_KITCHEN_COST) {
+    return { ok: false, reason: 'Rubis insuffisants : 60 nécessaires.' };
+  }
+  migrateState(s);
+  removeFieldKitchen(s, team);
+  const kitchen = {
+    x, y, hp: 250, maxHp: 250, placedAt: s.time,
+    team, structure: 'fieldKitchen', structureId: s.time,
+  };
+  s.fieldKitchens[team] = kitchen;
+  s.fieldKitchenReadyAt = s.time + 60;
+  s.rubies[team] -= FIELD_KITCHEN_COST;
+  return { ok: true, reason: null };
+}
+
+function cookDishBlockReason(s, team, dish = 'ragout', { at } = {}) {
   if (dish === 'festin') {
     if (team !== 1) return 'Seuls les Rats-Goût peuvent préparer le Festin.';
     if (s.winner !== null) return RAGOUT_REASONS.ended;
@@ -725,24 +775,34 @@ function cookDishBlockReason(s, team, dish = 'ragout') {
   if (dish !== 'ragout') return 'Plat inconnu.';
   if (team !== 0) return RAGOUT_REASONS.faction;
   if (s.winner !== null) return RAGOUT_REASONS.ended;
-  if (!(s.bases[team]?.hp > 0)) return RAGOUT_REASONS.tower;
+  if (at === 'campagne') {
+    if (!s.fieldKitchens?.[team]) return 'Aucune cuisine de campagne.';
+  } else if (!(s.bases[team]?.hp > 0)) return RAGOUT_REASONS.tower;
   if (s.ragout?.readyAt != null) return RAGOUT_REASONS.cooking;
   if ((s.ingredients?.[team]?.viande || 0) < 40) return RAGOUT_REASONS.ingredients;
   return null;
 }
-function cookDish(s, team, dish = 'ragout') {
-  const reason = cookDishBlockReason(s, team, dish);
+function cookDish(s, team, dish = 'ragout', { at = 'tour' } = {}) {
+  const reason = cookDishBlockReason(s, team, dish, { at });
   if (reason) return { ok: false, reason };
   migrateState(s);
   s.ingredients[team].viande -= 40;
   if (dish === 'festin') s.festin.readyAt = s.time + 15;
-  else s.ragout.readyAt = s.time + 20;
+  else {
+    const location = at === 'campagne' ? s.fieldKitchens[team] : s.bases[team];
+    Object.assign(s.ragout, {
+      readyAt: s.time + 20,
+      at: at === 'campagne' ? 'campagne' : 'tour',
+      x: location.x,
+      y: location.y,
+    });
+  }
   return { ok: true, reason: null };
 }
 function fumets(s) {
   const active = [];
   if (s.ragout?.readyAt != null) {
-    const { x, y } = s.bases[0];
+    const { x, y } = s.ragout.at ? s.ragout : s.bases[0];
     active.push({ team: 0, x, y });
   }
   if (s.festin?.readyAt != null) {
@@ -775,7 +835,8 @@ function ragoutTick(s) {
   s.ragout.expiresAt = s.ragout.readyAt + 45;
   s.ragout.readyAt = null;
   for (const unit of s.units) {
-    if (unit.team === 0 && unit.type !== 'commis' && unit.hp > 0) {
+    if (unit.team === 0 && unit.type !== 'commis' && unit.hp > 0 &&
+        Math.hypot(unit.x - s.ragout.x, unit.y - s.ragout.y) <= RAGOUT_RADIUS) {
       unit.ragoutUntil = s.ragout.expiresAt;
     }
   }
@@ -1045,6 +1106,10 @@ function resolveTarget(s, reference) {
   if (reference.structure) {
     const { structure, team, structureId } = reference;
     if (team !== 0 && team !== 1) return null;
+    if (structure === 'fieldKitchen') {
+      const kitchen = s.fieldKitchens?.[team];
+      return kitchen && (structureId === undefined || kitchen.structureId === structureId) ? kitchen : null;
+    }
     if (structure === 'slot') {
       return s.slots[team].find((slot) => slot.id === structureId)?.batiment ?? null;
     }
@@ -1459,6 +1524,7 @@ function tick(s, dt) {
     base,
     ...s.slots[team].filter((slot) => slot.occupe).map((slot) => slot.batiment),
     ...s.mines.filter((mine) => mine.depot && mine.owner === team).map((mine) => mine.site),
+    ...(s.fieldKitchens[team] ? [s.fieldKitchens[team]] : []),
   ]);
   for (const structure of structures.flat()) entities.set(targetKey(structure), structure);
   for (let u of s.units) {
@@ -2076,6 +2142,9 @@ function restore(texte) {
 
 export const CendreSim = {
   PANTRY_CAPACITY,
+  FIELD_KITCHEN_COST,
+  RAGOUT_RADIUS,
+  fieldKitchen,
   targetReference,
   resolveTarget,
   devour,

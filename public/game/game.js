@@ -77,7 +77,7 @@ smokeCtx.fillRect(0, 0, 48, 48);
 const noFumets = [];
 let soloFumets = noFumets;
 let fumetState;
-let ragoutCooking;
+let fumetRagoutReadyAt;
 let festinCooking;
 let state = Sim.create(),
   selected = new Set(),
@@ -186,6 +186,7 @@ function ghostPortrait(type) {
   );
 }
 function portraitFor(type) {
+  if (type === 'fieldKitchen') return iconSvg('ragout');
   const portraitType = type === 'hero' ? 'knight' : type;
   return player ? ratSVG(portraitType) : cookSVG(portraitType);
 }
@@ -744,7 +745,7 @@ function handleFieldTap(e, duration) {
   const action =
     (attackMoveArmed || patrolArmed) &&
     selected.size &&
-    !['select', 'radial', 'production', 'enemyBase', 'attackMove'].includes(resolved.kind)
+    !['select', 'radial', 'production', 'enemyBase', 'attackMove', 'fieldKitchen'].includes(resolved.kind)
       ? { kind: 'move' }
       : resolved;
   if (!['select', 'production'].includes(action.kind)) fieldDoubleTap.reset();
@@ -752,6 +753,14 @@ function handleFieldTap(e, duration) {
     if (action.context.mine !== undefined) selectedMine = action.context.mine;
     selected.clear();
     panelContext = { ...action.context, bases: !action.context.baseId };
+    panelVisibilityState = panelVisibility(panelVisibilityState, 'building');
+    updateUI();
+    return;
+  }
+  if (action.kind === 'fieldKitchen') {
+    selected.clear();
+    selectedMine = null;
+    panelContext = { fieldKitchenId: action.id };
     panelVisibilityState = panelVisibility(panelVisibilityState, 'building');
     updateUI();
     return;
@@ -1127,11 +1136,11 @@ function drawFog() {
 }
 function activeFumets() {
   if (net) return state.fumets ?? noFumets;
-  const hasRagout = state.ragout?.readyAt != null;
+  const ragoutReadyAt = state.ragout?.readyAt;
   const hasFestin = state.festin?.readyAt != null;
-  if (fumetState !== state || ragoutCooking !== hasRagout || festinCooking !== hasFestin) {
+  if (fumetState !== state || fumetRagoutReadyAt !== ragoutReadyAt || festinCooking !== hasFestin) {
     fumetState = state;
-    ragoutCooking = hasRagout;
+    fumetRagoutReadyAt = ragoutReadyAt;
     festinCooking = hasFestin;
     soloFumets = Sim.fumets(state);
   }
@@ -1142,7 +1151,8 @@ function drawFumets(fumets, now) {
   ctx.save();
   for (let index = 0; index < fumets.length; index++) {
     const { x, y, team } = fumets[index];
-    const roofY = y - (team === 0 ? 80 : 178);
+    const campaign = net ? fumets[index].at === 'campagne' : team === 0 && state.ragout.at === 'campagne';
+    const roofY = y - (campaign ? 29 : team === 0 ? 80 : 178);
     for (let puff = 0; puff < 5; puff++) {
       const phase = (now / 2200 + puff / 5) % 1;
       const width = (24 + phase * 28) / scale;
@@ -1155,11 +1165,83 @@ function drawFumets(fumets, now) {
   }
   ctx.restore();
 }
+function visibleFieldKitchens() {
+  return (state.fieldKitchens || []).filter((kitchen) => kitchen && Sim.canSee(state, player, kitchen));
+}
+
+function drawFieldKitchens() {
+  for (const kitchen of visibleFieldKitchens()) {
+    const { x, y, hp, maxHp, team } = kitchen;
+    const cooking = team === player && state.ragout?.at === 'campagne' && state.ragout.readyAt != null;
+    ctx.save();
+    if (cooking) {
+      ctx.beginPath();
+      ctx.arc(x, y, Sim.RAGOUT_RADIUS, 0, Math.PI * 2);
+      ctx.strokeStyle = '#ffdc8eaa';
+      ctx.fillStyle = '#ffdc8e12';
+      ctx.lineWidth = 2 / scale;
+      ctx.setLineDash([6 / scale, 5 / scale]);
+      ctx.fill();
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    ctx.translate(x, y);
+    if (panelContext.fieldKitchenId === kitchen.structureId && team === player) {
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 32, 13, 0, 0, Math.PI * 2);
+      ctx.strokeStyle = TEAM_COLORS[team];
+      ctx.lineWidth = 2 / scale;
+      ctx.stroke();
+    }
+    ctx.fillStyle = '#b54d26';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 15, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ffb84d';
+    ctx.beginPath();
+    ctx.moveTo(-11, 1);
+    ctx.lineTo(-4, -12);
+    ctx.lineTo(1, -5);
+    ctx.lineTo(8, -14);
+    ctx.lineTo(12, 1);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#252c34';
+    ctx.beginPath();
+    ctx.ellipse(0, -16, 19, 13, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#a67446';
+    ctx.beginPath();
+    ctx.ellipse(0, -24, 18, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ded0a9';
+    ctx.fillRect(22, -44, 2, 44);
+    ctx.fillStyle = TEAM_COLORS[team];
+    ctx.beginPath();
+    ctx.moveTo(24, -44);
+    ctx.lineTo(44, -39);
+    ctx.lineTo(24, -31);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    const barWidth = 52;
+    bar(x, y + 11, hp, maxHp, barWidth);
+    if (cooking) {
+      const progress = Math.max(0, 1 - (state.ragout.readyAt - state.time) / 20);
+      ctx.fillStyle = '#071413';
+      ctx.fillRect(x - barWidth / 2, y + 18, barWidth, 6);
+      ctx.fillStyle = '#ffbf61';
+      ctx.fillRect(x - barWidth / 2, y + 18, barWidth * progress, 6);
+    }
+  }
+}
+
 function drawMini(fumets, now) {
   drawMinimap(mc, {
     terrain,
     fog,
     watchtowers: state.watchtowers,
+    fieldKitchens: visibleFieldKitchens(),
     pantries: (state.pantries || []).flatMap(({ x, y }, team) =>
       team === player || state.explored[player][Math.floor(y / CELL) * COLS + Math.floor(x / CELL)]
         ? [{ x, y, team }]
@@ -1340,7 +1422,7 @@ function draw() {
       if (b.team === 1 && state.festin?.readyAt != null) {
         bar(b.x, b.y - 94, 15 - (state.festin.readyAt - state.time), 15, 85);
       }
-      if (b.team === 0 && state.ragout?.readyAt != null) {
+      if (b.team === 0 && state.ragout?.readyAt != null && state.ragout.at !== 'campagne') {
         bar(b.x, b.y - 94, 20 - (state.ragout.readyAt - state.time), 20, 85);
       }
     }
@@ -1348,6 +1430,7 @@ function draw() {
     if (Sim.visibleAt(state, player, s.x, s.y) && Sim.visibleAt(state, player, s.tx, s.ty))
       line(s.x, s.y, s.tx, s.ty, s.team ? '#8ef1ce' : '#ffd388', 2);
   drawFog();
+  drawFieldKitchens();
   const fumets = activeFumets();
   const fumetTime = performance.now();
   drawFumets(fumets, fumetTime);
@@ -2467,11 +2550,21 @@ function panelCommand(command) {
     updateUI();
     return;
   }
+  if (command.kind === 'fieldKitchen') {
+    if (net) {
+      sendCommand(command);
+    } else {
+      const result = Sim.fieldKitchen(state, player);
+      if (!result.ok) notify(result.reason);
+    }
+    updateUI();
+    return;
+  }
   if (command.kind === 'cookDish') {
-    const reason = Sim.cookDishBlockReason(state, player, command.dish);
+    const reason = Sim.cookDishBlockReason(state, player, command.dish, command);
     if (reason) notify(reason);
     else if (net) sendCommand(command);
-    else Sim.cookDish(state, player, command.dish);
+    else Sim.cookDish(state, player, command.dish, command);
     updateUI();
     return;
   }
@@ -2539,6 +2632,10 @@ function renderContextPanel() {
     upgradeProgress.value = model.upgrade.duration - upgradeRemaining;
     $('#mainUpgrade small').textContent = `${Math.ceil(upgradeRemaining - 1e-9)} s restantes`;
   }
+  const chefSelected = player === 0 && model.mode === 'units' && state.units.some((unit) =>
+    unit.team === player && unit.type === 'hero' && unit.hp > 0 && selected.has(unit.id));
+  const dishLocation = model.mode === 'fieldKitchen' ? 'campagne' : 'tour';
+  const dishReason = Sim.cookDishBlockReason(state, player, player === 1 ? 'festin' : 'ragout', { at: dishLocation });
   const kingSelected = player === 1 && model.mode === 'units' && state.units.some((unit) =>
     unit.team === player && unit.type === 'hero' && unit.hp > 0 && selected.has(unit.id));
   const feastReason = kingSelected
@@ -2549,7 +2646,7 @@ function renderContextPanel() {
   const feastRemaining = kingSelected
     ? Math.max(0, Math.ceil((state.kingFeastReadyAt ?? 0) - state.time - 1e-9))
     : 0;
-  const signature = JSON.stringify([model, paused, patrolArmed, rallyArmed, queueArmed, kingSelected, feastReason, feastRemaining, Sim.cookDishBlockReason(state, player, player === 1 ? 'festin' : 'ragout')], (key, value) =>
+  const signature = JSON.stringify([model, paused, patrolArmed, rallyArmed, queueArmed, kingSelected, feastReason, feastRemaining, chefSelected, dishLocation, dishReason], (key, value) =>
     ['remaining', 'hp', 'status'].includes(key) ? undefined : value,
   );
   if (signature === panelSignature) return;
@@ -2771,6 +2868,12 @@ function renderContextPanel() {
       ability.disabled = paused;
       ability.title = feastReason || 'Les rats militaires à portée dévorent les cadavres proches.';
       ability.onclick = () => panelCommand({ kind: 'kingFeast' });
+    } else if (chefSelected) {
+      ability.id = 'fieldKitchenAction';
+      ability.textContent = `Cuisine de campagne · ${Sim.FIELD_KITCHEN_COST}`;
+      ability.setAttribute('aria-label', `Cuisine de campagne · ${Sim.FIELD_KITCHEN_COST} rubis`);
+      ability.disabled = paused;
+      ability.onclick = () => panelCommand({ kind: 'fieldKitchen' });
     } else {
       ability.innerHTML = iconSvg('special') + ' Compétence spéciale';
       ability.disabled = true;
@@ -2802,7 +2905,7 @@ function renderContextPanel() {
     actions.append($('#hold'), patrol, queue, ability, $('#retreat'));
   } else {
     const opened = openedRallyBuilding();
-    if (opened?.id === 'main_' + player) {
+    if (opened?.id === 'main_' + player || model.mode === 'fieldKitchen') {
       const dish = player === 1 ? 'festin' : 'ragout';
       const dishButton = document.createElement('button');
       dishButton.id = dish + 'Action';
@@ -2812,12 +2915,14 @@ function renderContextPanel() {
       dishButton.setAttribute('aria-label', dishName + ' · 40 Viande');
       dishButton.style.minHeight = '44px';
       dishButton.style.minWidth = '44px';
-      const reason = Sim.cookDishBlockReason(state, player, dish);
+      const reason = dishReason;
       dishButton.setAttribute('aria-disabled', String(Boolean(reason)));
       dishButton.style.opacity = reason ? '0.5' : '1';
-      dishButton.title = reason || (player === 1 ? '15 s de préparation · 4 Rats-Éboueurs' : '20 s de cuisson · +15 % de dégâts pendant 45 s');
-      dishButton.onclick = () => panelCommand({ kind: 'cookDish', dish });
+      dishButton.title = reason || (player === 1 ? '15 s de préparation · 4 Rats-Éboueurs' : '20 s de cuisson · unités à 350 px · +15 % de dégâts pendant 45 s');
+      dishButton.onclick = () => panelCommand({ kind: 'cookDish', dish, at: dishLocation });
       actions.append(dishButton);
+    }
+    if (opened?.id === 'main_' + player) {
       const heroButton = document.createElement('button');
       heroButton.id = 'heroAction';
       heroButton.textContent = Sim.stats('hero', player).name + ' · 150';

@@ -49,7 +49,8 @@ function advance(state, seconds) {
 }
 for (const alive of [true, false]) {
   const state = fresh();
-  const chef = spawn(state, 'hero', 0);
+  const tower = state.bases[0];
+  const chef = spawn(state, 'hero', 0, tower.x + 100, tower.y);
   chef.hp = alive ? chef.max : 0;
   state.ingredients[0].viande = 120;
   for (let meal = 0; meal < 3; meal++) {

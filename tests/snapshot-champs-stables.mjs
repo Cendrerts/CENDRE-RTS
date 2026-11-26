@@ -4,7 +4,7 @@ import { Match } from '../server/match-do.js';
 import { RealtimeClient } from '../public/game/realtime.js';
 import { CendreSim as Sim } from '../public/game/sim.js';
 
-const stableFields = ['camps', 'watchtowers', 'braises', 'bases', 'corpses', 'ragout', 'festin', 'fumets', 'pantries'];
+const stableFields = ['camps', 'watchtowers', 'braises', 'bases', 'corpses', 'ragout', 'festin', 'fieldKitchens', 'fumets', 'pantries'];
 
 class Socket {
   messages = [];
@@ -292,7 +292,7 @@ function checkDishes(serverSocket, realtimeClient, team, latestState, sentFields
   const wireState = JSON.parse(snapshot).state;
   const serverView = view(match.sim, team);
   realtimeClient.socket.receive(snapshot);
-  for (const field of ['ragout', 'festin', 'fumets']) {
+  for (const field of ['ragout', 'festin', 'fumets', 'fieldKitchens']) {
     assert.equal(Object.hasOwn(wireState, field), sentFields.includes(field), field);
     if (sentFields.includes(field)) {
       assert.deepEqual(wireState[field], serverView[field], field);
@@ -307,7 +307,7 @@ const checkPlayer = (sentFields) => checkDishes(
 const checkOpponent = (sentFields) => checkDishes(
   opponentSocket, opponentClient, opponent.team, () => opponentState, sentFields,
 );
-checkOpponent(['ragout', 'festin', 'fumets']);
+checkOpponent(['ragout', 'festin', 'fumets', 'fieldKitchens']);
 await opponentConnected;
 
 match.sim.ingredients[0].viande = 80;
@@ -359,3 +359,18 @@ assert.deepEqual(view(match.sim, player.team).shots, [
 ]);
 
 console.log(`Snapshot stable : ${complete.length} → ${reduced.length} caractères (−${savings}).`);
+
+Sim.spawn(match.sim, 'hero', player.team);
+Object.assign(match.sim.units.at(-1), { x: 2000, y: 1100 });
+match.sim.rubies[player.team] = 60;
+command(match.sim, player.team, { kind: 'fieldKitchen' });
+match.sim.visible[opponent.team].fill(0);
+checkPlayer(['fieldKitchens']);
+checkOpponent([]);
+checkPlayer([]);
+match.sim.visible[opponent.team].fill(1);
+checkOpponent(['fieldKitchens']);
+checkOpponent([]);
+match.sim.visible[opponent.team].fill(0);
+checkOpponent(['fieldKitchens']);
+assert.deepEqual(opponentState.fieldKitchens, [null, null]);
