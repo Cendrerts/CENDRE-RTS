@@ -14,6 +14,7 @@ export function constructionBarBounds(slot, kind, scale) {
 
 // Bounds match the sprite dimensions in drawCook and the crystals in drawMine.
 export function unitHitbox(unit) {
+  if (unit.type === 'lezard') return { x: unit.x - 29, y: unit.y - 23, width: 58, height: 29 };
   const size = unit.type === 'commis' ? 34 : unit.type === 'archer' ? 52 : unit.type === 'mage' ? 49 : 46;
   return { x: unit.x - size / 2, y: unit.y - size + 5, width: size, height: size * 1.125 };
 }

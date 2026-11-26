@@ -24,11 +24,19 @@ const BOAR = {
   speed: TYPES.commis.speed * 0.9,
   name: 'Sanglier des cendres',
 };
+const LIZARD = {
+  hp: 90,
+  damage: 7,
+  range: BOAR.range,
+  rate: 0.8,
+  speed: TYPES.commis.speed * 1.1,
+  name: 'Lézard-Piment',
+};
 function unitLimit(team) {
   return (team === 1 ? RatsGout : BrigadeCuisine).unitLimit;
 }
 function stats(type, team) {
-  if (team === NEUTRAL) return BOAR;
+  if (team === NEUTRAL) return type === 'lezard' ? LIZARD : BOAR;
   return team === 1 ? RatsGout.unites[type] : TYPES[type];
 }
 const RULES = {
@@ -60,16 +68,16 @@ const passages = [
 const reservedSites = [
   { name: 'tour-nord', x: 1800, y: 650 },
   { name: 'tour-sud', x: 2200, y: 1550 },
-  { name: 'camp-nord-ouest', x: 450, y: 1300 },
-  { name: 'camp-sud-est', x: 3550, y: 900 },
-  { name: 'camp-nord-est', x: 1600, y: 200 },
-  { name: 'camp-sud-ouest', x: 2400, y: 2000 },
-  { name: 'camp-chemin-centre-ouest', x: 1540, y: 750 },
-  { name: 'camp-chemin-centre-est', x: 2460, y: 1450 },
-  { name: 'camp-chemin-nord', x: 1750, y: 450 },
-  { name: 'camp-chemin-sud', x: 2250, y: 1750 },
-  { name: 'camp-chemin-nord-est', x: 2450, y: 550 },
-  { name: 'camp-chemin-sud-ouest', x: 1550, y: 1650 },
+  { name: 'camp-nord-ouest', x: 450, y: 1300, espece: 'sanglier' },
+  { name: 'camp-sud-est', x: 3550, y: 900, espece: 'sanglier' },
+  { name: 'camp-nord-est', x: 1600, y: 200, espece: 'sanglier' },
+  { name: 'camp-sud-ouest', x: 2400, y: 2000, espece: 'sanglier' },
+  { name: 'camp-chemin-centre-ouest', x: 1540, y: 750, espece: 'sanglier' },
+  { name: 'camp-chemin-centre-est', x: 2460, y: 1450, espece: 'sanglier' },
+  { name: 'camp-chemin-nord', x: 1750, y: 450, espece: 'sanglier' },
+  { name: 'camp-chemin-sud', x: 2250, y: 1750, espece: 'sanglier' },
+  { name: 'camp-chemin-nord-est', x: 2450, y: 550, espece: 'lezard' },
+  { name: 'camp-chemin-sud-ouest', x: 1550, y: 1650, espece: 'lezard' },
   { name: 'braises-ouest', x: 950, y: 850 },
   { name: 'braises-est', x: 3050, y: 1350 },
 ];
@@ -424,17 +432,20 @@ function create() {
 }
 // Monsters use IDs, never object references, for targets across saved ticks.
 function spawnCamp(s, camp) {
-  for (const offset of [-24, 24]) {
+  const type = camp.espece;
+  const { hp } = stats(type, NEUTRAL);
+  const offsets = type === 'lezard' ? [-30, 0, 30] : [-24, 24];
+  for (const offset of offsets) {
     s.monsters.push({
       // Army IDs also determine collision ties; keep their sequence unchanged.
       id: --s.monsterId,
-      type: 'sanglier',
+      type,
       team: NEUTRAL,
       camp: camp.name,
       x: camp.x + offset,
       y: camp.y,
-      hp: BOAR.hp,
-      max: BOAR.hp,
+      hp,
+      max: hp,
       cool: 0,
       path: [],
       targetId: null,
@@ -454,6 +465,7 @@ function monstersTick(s, dt) {
   for (const monster of s.monsters) {
     if (monster.hp <= 0) continue;
     const camp = s.camps.find((camp) => camp.name === monster.camp);
+    const { speed, range, rate, damage } = stats(monster.type, NEUTRAL);
     monster.cool -= dt;
     if (Math.hypot(monster.x - camp.x, monster.y - camp.y) > 260) {
       returnMonster(monster, camp);
@@ -464,7 +476,7 @@ function monstersTick(s, dt) {
       if (!burning) monster.hp = monster.max;
       const point = monster.path[0] || camp;
       const distance = Math.hypot(point.x - monster.x, point.y - monster.y);
-      const step = Math.min(distance, BOAR.speed * dt);
+      const step = Math.min(distance, speed * dt);
       if (distance) moveSafely(monster, (point.x - monster.x) / distance * step, (point.y - monster.y) / distance * step);
       if (distance <= step) monster.path.shift();
       if (Math.hypot(monster.x - camp.x, monster.y - camp.y) < 2) monster.returning = false;
@@ -475,12 +487,12 @@ function monstersTick(s, dt) {
     monster.targetId = target?.id ?? null;
     if (!target) continue;
     const distance = Math.hypot(target.x - monster.x, target.y - monster.y);
-    if (distance <= BOAR.range) {
+    if (distance <= range) {
       if (monster.cool <= 0) {
-        monster.cool = BOAR.rate;
+        monster.cool = rate;
         monster.lastAttackTargetId = target.id;
         monster.lastAttackAt = s.time;
-        applyDamage(s, target, BOAR.damage);
+        applyDamage(s, target, damage);
       }
     } else {
       // Route around walls so the leash also works near the clearing edge.
@@ -491,7 +503,7 @@ function monstersTick(s, dt) {
       const point = monster.path[0];
       if (!point) continue;
       const length = Math.hypot(point.x - monster.x, point.y - monster.y);
-      const step = Math.min(length, BOAR.speed * dt);
+      const step = Math.min(length, speed * dt);
       if (length) moveSafely(monster, (point.x - monster.x) / length * step, (point.y - monster.y) / length * step);
       if (length <= step) monster.path.shift();
       if (Math.hypot(monster.x - camp.x, monster.y - camp.y) > 260) returnMonster(monster, camp);
@@ -606,7 +618,7 @@ function applyDamage(s, target, damage, attackerTeam = null, attackerId = null) 
   const wasAlive = target.hp > 0;
   target.hp -= damage;
   if (damage > 0 && target.devour?.startedAt != null) cancelDevour(target);
-  if (wasAlive && target.hp <= 0 && !target.base && !target.structure && target.type !== 'commis') {
+  if (wasAlive && target.hp <= 0 && !target.base && !target.structure && target.type !== 'commis' && target.type !== 'lezard') {
     s.corpses.push({ id: target.id, x: target.x, y: target.y, type: target.type, team: target.team, expiresAt: s.time + 30 });
   }
   recordDamageEvent(s, target);
@@ -614,8 +626,9 @@ function applyDamage(s, target, damage, attackerTeam = null, attackerId = null) 
     if (wasAlive && !target.returning && attackerTeam !== null) {
       target.targetId = attackerId;
     }
-    if (wasAlive && target.hp <= 0 && target.type === 'sanglier' && (attackerTeam === 0 || attackerTeam === 1)) {
-      s.ingredients[attackerTeam].viande += 15;
+    if (wasAlive && target.hp <= 0 && (attackerTeam === 0 || attackerTeam === 1)) {
+      if (target.type === 'sanglier') s.ingredients[attackerTeam].viande += 15;
+      if (target.type === 'lezard') s.ingredients[attackerTeam].epices += 8;
     }
     return;
   }
@@ -713,6 +726,7 @@ function migrateState(s) {
   s.corpses ??= [];
   s.devourEvents ??= [];
   s.camps ??= [];
+  for (const camp of s.camps) camp.espece ??= 'sanglier';
   if (!s.incomeMultiplier) s.incomeMultiplier = [1, 1];
   s.matchCounters ??= [emptyMatchCounters(), emptyMatchCounters()];
   if (Object.hasOwn(s, 'gold')) {

@@ -17,16 +17,19 @@ function hunter(state, team, x, y) {
 {
   const state = S.create();
   assert.equal(state.camps.length, 10);
-  assert.equal(state.monsters.length, 20);
+  const boars = state.monsters.filter((monster) => monster.type === 'sanglier');
+  assert.equal(boars.length, 16);
   assert.deepEqual(state.units.map((unit) => unit.id), [1, 2], 'Les monstres ne consomment pas les identifiants des armées');
   assert(state.monsters.every((monster) => monster.id < 0));
   for (const camp of state.camps) {
-    assert.equal(state.monsters.filter((monster) => monster.camp === camp.name).length, 2);
+    if (camp.espece === 'sanglier') {
+      assert.equal(boars.filter((monster) => monster.camp === camp.name).length, 2);
+    }
     assert(state.camps.some((other) => other.x === S.W - camp.x && other.y === S.H - camp.y));
   }
-  for (const monster of state.monsters) {
+  for (const monster of boars) {
     assert.equal(monster.hp, 220);
-    assert(state.monsters.some((other) => other.x === S.W - monster.x && other.y === S.H - monster.y));
+    assert(boars.some((other) => other.x === S.W - monster.x && other.y === S.H - monster.y));
   }
   assert.deepEqual(S.create(), state, 'Initialisation déterministe');
 }
