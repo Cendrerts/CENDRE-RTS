@@ -1093,6 +1093,30 @@ function drawLizard(x, y) {
   ctx.restore();
 }
 
+function drawGoinfre(x, y) {
+  ctx.save();
+  ctx.translate(x, y);
+  ellipse(0, 4, 39, 12, '#11171988');
+  line(-19, -18, -25, 5, '#433237', 14);
+  line(5, -15, 8, 6, '#433237', 15);
+  ctx.beginPath();
+  ctx.moveTo(-36, -10);
+  ctx.bezierCurveTo(-44, -28, -30, -53, -9, -52);
+  ctx.bezierCurveTo(10, -51, 21, -37, 24, -19);
+  ctx.bezierCurveTo(22, -8, -14, 0, -36, -10);
+  ctx.fillStyle = '#67464b';
+  ctx.fill();
+  ctx.strokeStyle = '#33252a';
+  ctx.lineWidth = 3;
+  ctx.stroke();
+  ellipse(-16, -32, 17, 12, '#8a6060');
+  line(7, -29, 17, 4, '#503539', 15);
+  ellipse(23, -21, 18, 12, '#9b7168');
+  poly([[28, -13], [39, -25], [37, -12]], '#ead0a0');
+  ellipse(29, -25, 3, 2, '#ffb263');
+  ctx.restore();
+}
+
 function bar(x, y, hp, max, w = 30) {
   ctx.fillStyle = '#071413';
   ctx.fillRect(x - w / 2, y, w, 4);
@@ -1462,6 +1486,8 @@ function draw() {
     const { x, y } = monster;
     if (monster.type === 'lezard') {
       drawLizard(x, y);
+    } else if (monster.type === 'goinfre') {
+      drawGoinfre(x, y);
     } else {
       ellipse(x, y + 3, 23, 9, '#11171988');
       ellipse(x, y - 13, 23, 14, '#796e62');
@@ -1478,7 +1504,8 @@ function draw() {
       ctx.fillStyle = '#161719';
       ctx.fillRect(x + 20, y - 15, 3, 3);
     }
-    bar(x, y - 35, monster.hp, monster.max, 44);
+    if (monster.type === 'goinfre') bar(x, y - 61, monster.hp, monster.max, 70);
+    else bar(x, y - 35, monster.hp, monster.max, 44);
   }
   for (let b of state.bases)
     if (Sim.canSee(state, player, b)) {

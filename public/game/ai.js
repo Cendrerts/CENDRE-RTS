@@ -210,6 +210,8 @@ export function createAI(team, difficulty = 'normal', state = null) {
         owner: mine.owner === team ? team : Sim.visibleAt(state, team, mine.x, mine.y) ? mine.owner : null,
         depot: mine.owner === team && mine.depot,
       }));
+      const veinGuarded = state.monsters.some((monster) => monster.camp === 'camp-veine' && monster.hp > 0);
+      const canExpandTo = (mine) => !mine.boost || !veinGuarded;
       const owned = mines.filter((mine) => mine.owner === team);
       const populationLimit = Sim.unitLimit?.(team) ?? 30;
       const saturated = Sim.populationUsed(state, team) >= populationLimit;
@@ -271,7 +273,7 @@ export function createAI(team, difficulty = 'normal', state = null) {
         else remembered.delete(mine.index);
       }
       for (const mine of remembered.values()) {
-        if (Sim.build(state, team, mine.index)) {
+        if (canExpandTo(mine) && Sim.build(state, team, mine.index)) {
           remembered.delete(mine.index);
           actions++;
         }
@@ -317,7 +319,7 @@ export function createAI(team, difficulty = 'normal', state = null) {
           }
         }
         const needsProductionSite = state.rubies[team] >= Sim.RULES.mineCost && state.slots[team].every((slot) => slot.occupe);
-        const lostMine = mines.find((mine) => established.has(mine.index) &&
+        const lostMine = mines.find((mine) => canExpandTo(mine) && established.has(mine.index) &&
           state.mines[mine.index].owner === null &&
           !enemies.some((enemy) => distance(enemy, mine) < 95));
         const canExpand = (needsProductionSite || !brutal || !emergency && army.length >= (team ? 12 : 8)) &&
@@ -327,7 +329,7 @@ export function createAI(team, difficulty = 'normal', state = null) {
           const natural = mines.filter((mine) => mine.index >= 2)
             .sort((a, b) => distance(a, state.bases[team]) - distance(b, state.bases[team]))[0];
           const priority = (mine) => mine.index === natural.index ? -1 : distance(mine, state.bases[team]) * (established.has(mine.index) ? 0.1 : 1);
-          const destination = lostMine || mines.filter((mine) => mine.index >= 2 && mine.owner !== team)
+          const destination = lostMine || mines.filter((mine) => mine.index >= 2 && mine.owner !== team && canExpandTo(mine))
             .sort((a, b) => (needsProductionSite ? Number(a.owner === 1 - team) - Number(b.owner === 1 - team) : 0) || priority(a) - priority(b))[0];
           const availableWorkers = workers.filter((worker) => worker.id !== scout && !evacuated.get(worker.id));
           if (lostMine) availableWorkers.sort((first, second) => distance(first, lostMine) - distance(second, lostMine));
@@ -342,7 +344,7 @@ export function createAI(team, difficulty = 'normal', state = null) {
         if (expedition) {
           const worker = workers.find((unit) => unit.id === expedition.worker);
           const mine = mines[expedition.index];
-          if (!worker || mine.owner === team && mine.depot) expedition = null;
+          if (!worker || !canExpandTo(mine) || mine.owner === team && mine.depot) expedition = null;
           else if (Sim.build(state, team, mine.index)) {
             actions++;
             established.add(mine.index);

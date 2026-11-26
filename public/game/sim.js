@@ -32,11 +32,21 @@ const LIZARD = {
   speed: TYPES.commis.speed * 1.1,
   name: 'Lézard-Piment',
 };
+const GOINFRE = {
+  hp: 900,
+  damage: 28,
+  range: 30,
+  rate: 1.5,
+  speed: TYPES.commis.speed * 0.7,
+  aggro: 110,
+  name: 'Goinfre des Cendres',
+};
+const NEUTRAL_STATS = { sanglier: BOAR, lezard: LIZARD, goinfre: GOINFRE };
 function unitLimit(team) {
   return (team === 1 ? RatsGout : BrigadeCuisine).unitLimit;
 }
 function stats(type, team) {
-  if (team === NEUTRAL) return type === 'lezard' ? LIZARD : BOAR;
+  if (team === NEUTRAL) return NEUTRAL_STATS[type] ?? BOAR;
   return team === 1 ? RatsGout.unites[type] : TYPES[type];
 }
 const RULES = {
@@ -81,6 +91,17 @@ const reservedSites = [
   { name: 'braises-ouest', x: 950, y: 850 },
   { name: 'braises-est', x: 3050, y: 1350 },
 ];
+const veinCamp = {
+  name: 'camp-veine',
+  x: 2000,
+  y: 1100,
+  respawnDelay: 240,
+  members: [
+    { type: 'goinfre', dx: 0, dy: -70 },
+    { type: 'sanglier', dx: -70, dy: 0 },
+    { type: 'sanglier', dx: 70, dy: 0 },
+  ],
+};
 function segmentDistance(x, y, a, b) {
   const dx = b[0] - a[0];
   const dy = b[1] - a[1];
@@ -393,7 +414,8 @@ function create() {
     monsters: [],
     corpses: [],
     devourEvents: [],
-    camps: reservedSites.filter((site) => site.name.startsWith('camp-')).map((site) => ({ ...site, respawnAt: null })),
+    camps: [...reservedSites.filter((site) => site.name.startsWith('camp-')), structuredClone(veinCamp)]
+      .map((camp) => ({ ...camp, respawnAt: null })),
     incomeMultiplier: [1, 1],
     units: [],
     shots: [],
@@ -432,18 +454,18 @@ function create() {
 }
 // Monsters use IDs, never object references, for targets across saved ticks.
 function spawnCamp(s, camp) {
-  const type = camp.espece;
-  const { hp } = stats(type, NEUTRAL);
-  const offsets = type === 'lezard' ? [-30, 0, 30] : [-24, 24];
-  for (const offset of offsets) {
+  const offsets = camp.espece === 'lezard' ? [-30, 0, 30] : [-24, 24];
+  const members = camp.members ?? offsets.map((dx) => ({ type: camp.espece, dx, dy: 0 }));
+  for (const { type, dx, dy } of members) {
+    const { hp } = stats(type, NEUTRAL);
     s.monsters.push({
       // Army IDs also determine collision ties; keep their sequence unchanged.
       id: --s.monsterId,
       type,
       team: NEUTRAL,
       camp: camp.name,
-      x: camp.x + offset,
-      y: camp.y,
+      x: camp.x + dx,
+      y: camp.y + dy,
       hp,
       max: hp,
       cool: 0,
@@ -465,7 +487,7 @@ function monstersTick(s, dt) {
   for (const monster of s.monsters) {
     if (monster.hp <= 0) continue;
     const camp = s.camps.find((camp) => camp.name === monster.camp);
-    const { speed, range, rate, damage } = stats(monster.type, NEUTRAL);
+    const { speed, range, rate, damage, aggro = 90 } = stats(monster.type, NEUTRAL);
     monster.cool -= dt;
     if (Math.hypot(monster.x - camp.x, monster.y - camp.y) > 260) {
       returnMonster(monster, camp);
@@ -483,7 +505,7 @@ function monstersTick(s, dt) {
       continue;
     }
     let target = s.units.find((unit) => unit.id === monster.targetId && unit.hp > 0);
-    if (!target) target = s.units.find((unit) => unit.hp > 0 && Math.hypot(unit.x - camp.x, unit.y - camp.y) < 90);
+    if (!target) target = s.units.find((unit) => unit.hp > 0 && Math.hypot(unit.x - camp.x, unit.y - camp.y) < aggro);
     monster.targetId = target?.id ?? null;
     if (!target) continue;
     const distance = Math.hypot(target.x - monster.x, target.y - monster.y);
@@ -512,7 +534,7 @@ function monstersTick(s, dt) {
   s.monsters = s.monsters.filter((monster) => monster.hp > 0);
   for (const camp of s.camps) {
     if (s.monsters.some((monster) => monster.camp === camp.name)) continue;
-    if (camp.respawnAt === null) camp.respawnAt = s.time + 120;
+    if (camp.respawnAt === null) camp.respawnAt = s.time + (camp.respawnDelay ?? 120);
     if (s.time >= camp.respawnAt) spawnCamp(s, camp);
   }
 }
@@ -629,6 +651,10 @@ function applyDamage(s, target, damage, attackerTeam = null, attackerId = null) 
     if (wasAlive && target.hp <= 0 && (attackerTeam === 0 || attackerTeam === 1)) {
       if (target.type === 'sanglier') s.ingredients[attackerTeam].viande += 15;
       if (target.type === 'lezard') s.ingredients[attackerTeam].epices += 8;
+      if (target.type === 'goinfre') {
+        s.ingredients[attackerTeam].viande += 30;
+        s.ingredients[attackerTeam].conserves += 20;
+      }
     }
     return;
   }
@@ -726,7 +752,9 @@ function migrateState(s) {
   s.corpses ??= [];
   s.devourEvents ??= [];
   s.camps ??= [];
-  for (const camp of s.camps) camp.espece ??= 'sanglier';
+  for (const camp of s.camps) {
+    if (!camp.members) camp.espece ??= 'sanglier';
+  }
   if (!s.incomeMultiplier) s.incomeMultiplier = [1, 1];
   s.matchCounters ??= [emptyMatchCounters(), emptyMatchCounters()];
   if (Object.hasOwn(s, 'gold')) {
@@ -1430,7 +1458,7 @@ function devourTick(s, unit, dt) {
   }
   const duration = unit.type === 'hero' ? 3 : 4;
   if (s.time - unit.devour.startedAt + 1e-9 < duration) return;
-  const amount = corpse.type === 'sanglier' ? 10 : 6;
+  const amount = corpse.type === 'sanglier' || corpse.type === 'goinfre' ? 10 : 6;
   s.ingredients[unit.team].viande += amount;
   unit.hp = Math.min(unit.max, unit.hp + unit.max * 0.3);
   s.devourEvents.push({ x: unit.x, y: unit.y, team: unit.team, amount, time: s.time });
@@ -1807,7 +1835,9 @@ function tick(s, dt) {
     }
   }
   for (const camp of s.camps) {
-    if (camp.respawnAt === null && !s.monsters.some((monster) => monster.camp === camp.name && monster.hp > 0)) camp.respawnAt = s.time + 120;
+    if (camp.respawnAt === null && !s.monsters.some((monster) => monster.camp === camp.name && monster.hp > 0)) {
+      camp.respawnAt = s.time + (camp.respawnDelay ?? 120);
+    }
   }
   separate(s.units, fighting, dt);
   for (const u of s.units) {

@@ -138,7 +138,8 @@ for (const site of Sim.reservedSites.filter((site) =>
 }
 assert.equal(Sim.passages.length, 4);
 assert.deepEqual(
-  state.camps.map(({ name, x, y, espece }) => ({ name, x, y, espece })),
+  state.camps.filter(({ name }) => name !== 'camp-veine')
+    .map(({ name, x, y, espece }) => ({ name, x, y, espece })),
   Sim.reservedSites.filter((site) => site.name.startsWith('camp-')),
 );
 console.log(`PASS disposition : forêt ${(forest * 100).toFixed(1)} %, trajets ${lengths.map(Math.round).join('/')} px, goulets, passages, camps, symétrie et accès.`);
