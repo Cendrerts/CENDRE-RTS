@@ -1140,24 +1140,27 @@ function order(s, ids, x, y, target = null, retreat = !target, queue = false) {
       }
       return;
     }
-    u.orderQueue = [];
-    u.queueActive = false;
-    u.followId = null;
-    u.patrol = null;
-    u.manual = null;
-    u.harvest = null;
+    resetUnitOrder(u, target, retreat, !retreat && !target ? destination : null);
     u.path = route(u.x, u.y, destination.x, destination.y);
     if (!u.path.length) u.path = [{ x: destination.x, y: destination.y }];
-    u.attackDestination = !retreat && !target ? destination : null;
-    u.chasing = false;
-    u.target = target;
-    u.autoTargetId = null;
-    u.lastRetargetAt = null;
-    u.hold = false;
-    u.retreat = retreat;
-    u.repath = 0;
-    u.stuck = null;
   });
+}
+function resetUnitOrder(unit, target, retreat, attackDestination) {
+  unit.orderQueue = [];
+  unit.queueActive = false;
+  unit.followId = null;
+  unit.patrol = null;
+  unit.manual = null;
+  unit.harvest = null;
+  unit.attackDestination = attackDestination;
+  unit.chasing = false;
+  unit.target = target;
+  unit.autoTargetId = null;
+  unit.lastRetargetAt = null;
+  unit.hold = false;
+  unit.retreat = retreat;
+  unit.repath = 0;
+  unit.stuck = null;
 }
 function cancelDevour(unit) {
   if (!unit.devour) return;
@@ -1193,9 +1196,55 @@ function devour(s, team, ids, corpseId) {
   if (!eater) return false;
   const companions = units.filter((unit) => unit !== eater).map((unit) => unit.id);
   order(s, companions, corpse.x + 48, corpse.y);
-  eater.devour = { corpseId, startedAt: null };
-  eater.path = route(eater.x, eater.y, corpse.x, corpse.y);
+  startDevour(eater, corpse);
   return true;
+}
+function startDevour(eater, corpse) {
+  eater.devour = { corpseId: corpse.id, startedAt: null };
+  eater.path = route(eater.x, eater.y, corpse.x, corpse.y);
+}
+const KING_FEAST_RADIUS = 200;
+const KING_FEAST_COOLDOWN = 30;
+
+function distanceSquared(a, b) {
+  return (a.x - b.x) ** 2 + (a.y - b.y) ** 2;
+}
+function nearestTo(origin) {
+  return (a, b) => distanceSquared(origin, a) - distanceSquared(origin, b) || a.id - b.id;
+}
+function kingFeastPlan(s, team) {
+  if (s.winner !== null) return { reason: 'La partie est terminée.' };
+  if (team !== 1) return { reason: 'Seuls les Rats-Goût ont la Curée.' };
+  const king = s.units.find((unit) => unit.team === team && unit.type === 'hero' && unit.hp > 0);
+  if (!king) return { reason: 'Roi-Rat absent.' };
+  const remaining = Math.ceil((s.kingFeastReadyAt ?? 0) - s.time - 1e-9);
+  if (remaining > 0) return { reason: `Curée prête dans ${remaining} s.` };
+  const inRange = (item) => distanceSquared(king, item) <= KING_FEAST_RADIUS ** 2;
+  const reserved = new Set(s.units.filter((unit) => unit.hp > 0 && unit.devour)
+    .map((unit) => unit.devour.corpseId));
+  const corpses = s.corpses.filter((corpse) =>
+    corpse.expiresAt > s.time && inRange(corpse) && !reserved.has(corpse.id));
+  const rats = s.units.filter((unit) =>
+    unit.team === team && unit.hp > 0 && unit.type !== 'commis' && !unit.devour && inRange(unit));
+  if (!corpses.length || !rats.length) return { reason: 'Aucun cadavre à portée.' };
+  return { reason: null, king, corpses, rats };
+}
+function kingFeastBlockReason(s, team) {
+  return kingFeastPlan(s, team).reason;
+}
+function kingFeast(s, team) {
+  const { reason, king, corpses, rats } = kingFeastPlan(s, team);
+  if (reason) return { ok: false, reason };
+  corpses.sort(nearestTo(king));
+  for (const corpse of corpses) {
+    if (!rats.length) break;
+    rats.sort(nearestTo(corpse));
+    const eater = rats.shift();
+    resetUnitOrder(eater, null, true, null);
+    startDevour(eater, corpse);
+  }
+  s.kingFeastReadyAt = s.time + KING_FEAST_COOLDOWN;
+  return { ok: true };
 }
 function devourTick(s, unit, dt) {
   const corpse = s.corpses.find((item) => item.id === unit.devour.corpseId);
@@ -2030,6 +2079,8 @@ export const CendreSim = {
   targetReference,
   resolveTarget,
   devour,
+  kingFeast,
+  kingFeastBlockReason,
   cancelDevour,
   hold,
   cookDish,
