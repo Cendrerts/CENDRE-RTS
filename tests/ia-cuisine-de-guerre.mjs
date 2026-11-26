@@ -221,9 +221,11 @@ for (let game = 0; game < 3; game++) {
   for (let step = 0; step < 7200 && state.winner === null; step++) {
     for (const team of game % 2 ? [1, 0] : [0, 1]) {
       if (state.time < team * game) continue;
-      const readyAt = state.ragout.readyAt;
+      const availableDishes = team === 0
+        ? ['ragout', 'roti', 'banquet'].filter((dish) => state[dish].readyAt === null)
+        : [];
       controllers[team].update(state);
-      if (readyAt === null && state.ragout.readyAt !== null) cooked++;
+      cooked += availableDishes.filter((dish) => state[dish].readyAt !== null).length;
     }
     const monsters = state.monsters.filter((monster) => monster.hp > 0);
     const ingredients = state.ingredients.map((stock) => stock.viande);
@@ -242,8 +244,8 @@ for (let game = 0; game < 3; game++) {
       }
     }
   }
-  console.log(`Partie ${game + 1} : ${state.time.toFixed(1)} s, Sangliers ${kills}, Ragoûts ${cooked}, dévorations ${eaten}`);
+  console.log(`Partie ${game + 1} : ${state.time.toFixed(1)} s, Sangliers ${kills}, plats cuisinés ${cooked}, dévorations ${eaten}`);
   assert(kills.every((count) => count >= 1), 'Chaque IA tue un Sanglier');
-  assert(cooked >= 1, 'Les Cuistots lancent le Ragoût');
+  assert(cooked >= 1, 'Les Cuistots lancent un plat de cuisine de guerre');
   assert(eaten >= 1, 'Les Rats dévorent un cadavre');
 }
