@@ -398,11 +398,12 @@ function createPantryTimers(time) {
     raidTime: {},
   }));
 }
-function pantryRaiders(s, owner, pantry) {
+function pantryRaiders(s, owner, pantry, fighting) {
   if (pantry.stock <= 0) return [];
   const raiders = [];
   for (const unit of s.units) {
     if (unit.team !== 1 - owner || unit.hp <= 0 || unit.type === 'commis' || unit.type === 'sanglier') continue;
+    if (fighting.has(unit.id)) continue;
     if (Math.hypot(unit.x - pantry.x, unit.y - pantry.y) >= PANTRY_RAID_RADIUS) continue;
     raiders.push(unit);
     if (raiders.length === 3) break;
@@ -418,14 +419,14 @@ function refillPantries(s) {
     }
   }
 }
-function pantriesTick(s, dt) {
+function pantriesTick(s, dt, fighting) {
   for (const [owner, pantry] of s.pantries.entries()) {
     const timers = s.pantryTimers[owner];
     const previousRaidTime = timers.raidTime;
     timers.raidTime = {};
 
     let stolen = 0;
-    for (const unit of pantryRaiders(s, owner, pantry)) {
+    for (const unit of pantryRaiders(s, owner, pantry, fighting)) {
       const elapsed = (previousRaidTime[unit.id] || 0) + dt;
       const seconds = Math.floor(elapsed + 1e-9);
       timers.raidTime[unit.id] = elapsed - seconds;
@@ -1738,7 +1739,6 @@ function tick(s, dt) {
   monstersTick(s, dt);
   braisesTick(s, dt);
   refillPantries(s);
-  const raiders = new Set(s.pantries.flatMap((pantry, owner) => pantryRaiders(s, owner, pantry)));
   const fighting = new Set();
   const entities = new Map([...s.units, ...s.monsters].map((unit) => [unit.id, unit]));
   const structures = s.bases.map((base, team) => [
@@ -1799,15 +1799,7 @@ function tick(s, dt) {
         u.hold = false;
       }
     }
-    const raiding = raiders.has(u);
-    if (!target && raiding && u.autoTargetId) {
-      u.autoTargetId = null;
-      if (u.chasing && !u.attackDestination) {
-        u.path = [];
-        u.chasing = false;
-      }
-    }
-    if (!target && !u.retreat && !targetedWaypoint && !raiding) {
+    if (!target && !u.retreat && !targetedWaypoint) {
       target = entities.get(u.autoTargetId);
       if (target && (target.returning || target.hp <= 0 || !canSee(s, u.team, target) ||
           Math.hypot(target.x - u.x, target.y - u.y) > cfg.range + 75 + (target.base ? 45 : 0))) {
@@ -1966,7 +1958,7 @@ function tick(s, dt) {
   }
   if (structures.flat().some((structure) => structure.structure === 'depot' && structure.hp <= 0)) ensureSlots(s);
   s.units = s.units.filter((u) => u.hp > 0);
-  pantriesTick(s, dt);
+  pantriesTick(s, dt, fighting);
   s.shots = s.shots.filter((p) => (p.life -= dt) > 0);
 }
 

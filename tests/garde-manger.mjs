@@ -75,25 +75,58 @@ for (const [team, count, expected] of [[0, 1, 10], [1, 1, 10], [1, 3, 30], [1, 5
 
 const guarded = create();
 guarded.pantries[0].stock = 40;
-add(guarded, 1, guarded.pantries[0], 0);
-add(guarded, 0, guarded.pantries[0], 100);
+const guardedRaider = add(guarded, 1, guarded.pantries[0], 0);
+const distantGuard = add(guarded, 0, guarded.pantries[0], 100);
+guardedRaider.cool = 0;
+distantGuard.cool = 0;
+Sim.visibility(guarded);
 advance(guarded, 5);
 assert.deepEqual(guarded.ingredients.map(({ conserves }) => conserves), [0, 10]);
 assert.equal(guarded.pantries[0].stock, 30);
+assert.equal(guardedRaider.hp, guardedRaider.max);
+assert.equal(distantGuard.hp, distantGuard.max);
 
 const combat = create();
 combat.pantries[0].stock = 40;
 const raider = add(combat, 1, combat.pantries[0], 0);
+advance(combat, 0.5);
+assert(combat.pantryTimers[0].raidTime[raider.id] > 0);
 const guard = add(combat, 0, combat.pantries[0], 20);
 raider.cool = 0;
 guard.cool = 0;
 Sim.visibility(combat);
 advance(combat, 1);
 assert(raider.hp < raider.max);
-assert.equal(guard.hp, guard.max);
+assert(guard.hp < guard.max);
+assert.equal(combat.ingredients[1].conserves, 0);
+assert.equal(combat.pantryTimers[0].raidTime[raider.id], undefined);
+guard.hp = 0;
+advance(combat, 0.5);
+assert.equal(combat.ingredients[1].conserves, 0);
+advance(combat, 0.5);
 assert.equal(combat.ingredients[1].conserves, 2);
-advance(combat, 30);
-assert(!combat.units.includes(raider));
+
+const attackMove = create();
+const attackMovePantry = attackMove.pantries[0];
+attackMovePantry.stock = 40;
+const attackers = [-24, 0, 24].map((dy) => add(attackMove, 1, attackMovePantry, 60, dy));
+const enemy = add(attackMove, 0, attackMovePantry, 0);
+for (const attacker of attackers) attacker.cool = 0;
+command(attackMove, 1, {
+  kind: 'attackMove',
+  ids: attackers.map(({ id }) => id),
+  x: attackMovePantry.x - 60,
+  y: attackMovePantry.y,
+});
+Sim.visibility(attackMove);
+advance(attackMove, 1);
+const stoppedPositions = attackers.map(({ x, y }) => ({ x, y }));
+for (const attacker of attackers) {
+  assert.equal(attacker.lastAttackTargetId, enemy.id);
+  assert(attacker.x < attackMovePantry.x + 60);
+}
+advance(attackMove, 0.05);
+assert.deepEqual(attackers.map(({ x, y }) => ({ x, y })), stoppedPositions);
 
 const limited = create();
 const pantry = limited.pantries[0];
