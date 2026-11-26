@@ -1015,6 +1015,22 @@ function ragoutActive(s, unit) {
   return unit.team === 0 && unit.type !== 'commis' && unit.hp > 0 &&
     (unit.ragoutUntil || 0) > s.time + 1e-9;
 }
+const dishEffectNames = ['ragout', 'roti', 'bouillon', 'banquet', 'peste'];
+// Share immutable lists so the renderer can query every visible unit without allocating.
+const dishEffectLists = Array.from({ length: 1 << dishEffectNames.length }, (_, mask) =>
+  Object.freeze(dishEffectNames.filter((_, index) => mask & (1 << index))),
+);
+function activeDishEffects(state, unit) {
+  if (!(unit.hp > 0)) return dishEffectLists[0];
+  const threshold = state.time + 1e-9;
+  let mask = 0;
+  if (ragoutActive(state, unit)) mask |= 1;
+  if (unit.rotiUntil > threshold) mask |= 2;
+  if (unit.bouillonUntil > threshold) mask |= 4;
+  if (unit.banquetUntil > threshold) mask |= 8;
+  if (unit.pesteUntil > threshold) mask |= 16;
+  return dishEffectLists[mask];
+}
 function dishDamageMultiplier(s, unit) {
   if (unit.banquetUntil > s.time + 1e-9) return 1.25;
   if (!ragoutActive(s, unit)) return 1;
@@ -2357,6 +2373,7 @@ export const CendreSim = {
   fumets,
   cookDishBlockReason,
   ragoutActive,
+  activeDishEffects,
   idleWorkers,
   leastLoadedProducer,
   setRally,

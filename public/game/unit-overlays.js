@@ -1,10 +1,11 @@
 // Coordinates use world units; scale converts them to CSS screen pixels.
 export const TEAM_COLORS = ['#74b9ff', '#b6ed63'];
+export const HEALTH_BAR_TOP_OFFSET = 8;
 
 export function healthBarBounds(x, headY, scale, width = 24) {
   return {
     x: x - width / 2 / scale,
-    y: headY - 8 / scale,
+    y: headY - HEALTH_BAR_TOP_OFFSET / scale,
     width: width / scale,
     height: 4 / scale,
   };

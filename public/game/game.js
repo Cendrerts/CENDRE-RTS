@@ -27,7 +27,7 @@ import { ratSVG, ratSprites } from './rats.js';
 import { cookSVG, cookSprites } from './cooks.js';
 import { drawMinimap, exploredCamps } from './minimap.js';
 import { createSkirmishTerrain } from './terrain.js';
-import { TEAM_COLORS, drawHealthBar, selectionRing, unitFeet, drawCargoRuby, drawMine } from './unit-overlays.js';
+import { TEAM_COLORS, HEALTH_BAR_TOP_OFFSET, drawHealthBar, selectionRing, unitFeet, drawCargoRuby, drawMine } from './unit-overlays.js';
 import { createRenderCache, prepareDrawList } from './render-cache.js';
 import { CendreSim as Sim } from './sim.js';
 import { createAI } from './ai.js';
@@ -1197,6 +1197,52 @@ function building(b) {
   }
   bar(x, y - 150, b.hp, b.max, 100);
 }
+// Each outline fits in a 10 CSS pixel square, including its 1 pixel stroke.
+const dishIcons = {
+  roti: {
+    color: '#ff9a3c',
+    path: new Path2D('M -4.5 -4.5 H -1.6 L 0.9 0 L -1.6 4.5 H -4.5 L -2 0 Z M -0.9 -4.5 H 2 L 4.5 0 L 2 4.5 H -0.9 L 1.6 0 Z'),
+  },
+  bouillon: {
+    color: '#7be07b',
+    path: new Path2D('M -1.5 -4.5 H 1.5 V -1.5 H 4.5 V 1.5 H 1.5 V 4.5 H -1.5 V 1.5 H -4.5 V -1.5 H -1.5 Z'),
+  },
+  banquet: {
+    color: '#ffd34d',
+    path: new Path2D('M 0 -4.5 L 1.3 -1.5 L 4.5 -1 L 2.1 1.2 L 2.8 4.5 L 0 2.8 L -2.8 4.5 L -2.1 1.2 L -4.5 -1 L -1.3 -1.5 Z'),
+  },
+  peste: {
+    color: '#b06ad8',
+    path: new Path2D('M 0 -4.5 C 1.5 -2.4 4.5 -0.2 4.5 1.5 C 4.5 5.5 -4.5 5.5 -4.5 1.5 C -4.5 -0.2 -1.5 -2.4 0 -4.5 Z'),
+  },
+};
+function drawDishIcons(unit, x, headY) {
+  const effects = Sim.activeDishEffects(state, unit);
+  const hasRagout = effects[0] === 'ragout';
+  const firstIcon = hasRagout ? 1 : 0;
+  const count = effects.length - firstIcon;
+  if (!count) return;
+
+  let overlayTop = headY - HEALTH_BAR_TOP_OFFSET / scale;
+  if (unit.devour?.startedAt != null) overlayTop = Math.min(overlayTop, headY - 16);
+  if (unit.type === 'commis' && unit.cargo > 0) overlayTop = Math.min(overlayTop, headY - 20.5 / scale);
+  if (hasRagout) overlayTop = Math.min(overlayTop, unit.y - 76 - 1 / scale);
+
+  ctx.save();
+  ctx.translate(x - (count - 1) * 6 / scale, overlayTop - 7 / scale);
+  ctx.scale(1 / scale, 1 / scale);
+  ctx.strokeStyle = '#091215';
+  ctx.lineWidth = 1;
+  ctx.lineJoin = 'round';
+  for (let index = firstIcon; index < effects.length; index++) {
+    const icon = dishIcons[effects[index]];
+    ctx.fillStyle = icon.color;
+    ctx.fill(icon.path);
+    ctx.stroke(icon.path);
+    ctx.translate(12, 0);
+  }
+  ctx.restore();
+}
 function unit(u) {
   if (u.type === 'hero' && u.team === 0 && u.team === player && u.hp > 0 &&
       (state.ragout?.expiresAt || 0) > state.time + 1e-9) {
@@ -2004,6 +2050,7 @@ function drawCook(u) {
   if (u.devour?.startedAt != null) bar(x, headY - 16, state.time - u.devour.startedAt, u.type === 'hero' ? 3 : 4, 44);
   drawCargoRuby(ctx, x, headY, scale, u);
   drawHealthBar(ctx, u, x, headY, scale, player, selected.has(u.id));
+  drawDishIcons(u, x, headY);
 }
 
 function openedRallyBuilding() {
