@@ -1,5 +1,6 @@
 import { unitLabel, selectedProducers } from './selection.js';
 import { CendreSim as Sim } from './sim.js';
+import { dishOptions, fieldKitchenCard } from './action-cards.js';
 
 export function panelCapacity(width = 844) {
   const columns = Math.max(1, Math.floor((width - 200 - 180 - 32) / 60));
@@ -77,15 +78,14 @@ export function panelModel(state, player, selection, context = {}) {
         : `Production ${queue.length}/${8 * Math.max(1, producers.length)}`,
   };
   if (mode === 'fieldKitchen') {
-    left.name = 'Cuisine de campagne';
+    left.name = fieldKitchenCard.name;
     left.type = 'fieldKitchen';
     left.max = kitchen.maxHp;
     left.hp = kitchen.hp;
-    const cookingRagout = state.ragout?.at === 'campagne' && state.ragout.readyAt != null;
-    const cookingRoti = state.roti?.at === 'campagne' && state.roti.readyAt != null;
-    const cookingBanquet = state.banquet?.at === 'campagne' && state.banquet.readyAt != null;
-    const dishes = [cookingRagout ? 'Ragoût' : '', cookingRoti ? 'Rôti' : '', cookingBanquet ? 'Grand Banquet' : '']
-      .filter(Boolean).join(' et ');
+    const dishes = dishOptions[player]
+      .filter(({ dish }) => state[dish]?.at === 'campagne' && state[dish].readyAt != null)
+      .map(({ name, shortName }) => shortName || name)
+      .join(' et ');
     left.status = dishes ? dishes + ' en cuisson' : 'Prête';
   }
   const mainSelected = !context.slotId && (context.baseId || context.producerId) === 'main_' + player;

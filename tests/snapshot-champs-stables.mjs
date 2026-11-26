@@ -2,12 +2,14 @@ import assert from 'node:assert/strict';
 import { command, view } from '../lib/match.mjs';
 import { Match } from '../server/match-do.js';
 import { RealtimeClient } from '../public/game/realtime.js';
+import { resourceChanges, resourceStock } from '../public/game/resource-feedback.js';
 import { CendreSim as Sim } from '../public/game/sim.js';
 
-const stableFields = ['camps', 'watchtowers', 'caches', 'cacheCollectedAt', 'braises', 'bases', 'corpses', 'ragout', 'festin', 'roti', 'fieldKitchens', 'fumets', 'pantries'];
+const stableFields = ['camps', 'watchtowers', 'caches', 'cacheCollectedAt', 'braises', 'bases', 'corpses', 'resourceSpent', 'ragout', 'festin', 'roti', 'fieldKitchens', 'fumets', 'pantries'];
 
 class Socket {
   messages = [];
+  readyState = 1;
 
   send(raw) {
     this.messages.push(raw);
@@ -133,11 +135,11 @@ assert.deepEqual(received[1].visible, received[0].visible);
 
 clock.time = match.room.startAt;
 match.sim.rubies[player.team] = 100;
-match.webSocketMessage(socket, JSON.stringify({
-  type: 'cmd',
-  seq: 1,
-  cmd: { kind: 'construct', type: 'garde_manger', baseId: 'main_0' },
-}));
+match.snapshot(socket);
+client.socket.receive(socket.messages.at(-1));
+const beforePurchase = received.at(-1);
+assert(client.command({ kind: 'construct', type: 'garde_manger', baseId: 'main_0' }, 1));
+match.webSocketMessage(socket, client.socket.messages.at(-1));
 match.snapshot(socket);
 const constructed = socket.messages.at(-1);
 const builtState = JSON.parse(constructed).state;
@@ -146,6 +148,24 @@ assert(!Object.hasOwn(builtState, 'explored'));
 client.socket.receive(constructed);
 assert.deepEqual(received.at(-1).slots, builtState.slots);
 assert.deepEqual(received.at(-1).explored, expectedExplored);
+
+const expectedSpent = [{ rubies: 100 }, {}];
+assert.deepEqual(builtState.resourceSpent, expectedSpent);
+for (let snapshot = 0; snapshot < 3; snapshot++) {
+  match.snapshot(socket);
+  const unchanged = socket.messages.at(-1);
+  assert(!Object.hasOwn(JSON.parse(unchanged).state, 'resourceSpent'));
+  client.socket.receive(unchanged);
+  assert.deepEqual(received.at(-1).resourceSpent, expectedSpent);
+}
+const purchaseSnapshots = received.slice(received.indexOf(beforePurchase)).map((state) => ({
+  stock: resourceStock(state, player.team),
+  spent: state.resourceSpent[player.team],
+}));
+const spending = purchaseSnapshots.slice(1).map((current, index) =>
+  resourceChanges(purchaseSnapshots[index], current).filter(({ amount }) => amount < 0),
+);
+assert.deepEqual(spending, [[{ resource: 'rubies', amount: -100 }], [], [], []]);
 
 const explored = match.sim.explored[player.team];
 const newCell = explored.indexOf(0);

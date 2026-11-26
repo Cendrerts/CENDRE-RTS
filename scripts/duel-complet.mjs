@@ -13,7 +13,7 @@ const MINUTE = 60_000;
 const TICKS_PAR_SECONDE = 20;
 const GRAINE = 42;
 const CHAMPS_STABLES = [
-  'slots', 'mines', 'camps', 'watchtowers', 'caches', 'cacheCollectedAt', 'braises', 'bases', 'corpses',
+  'slots', 'mines', 'camps', 'watchtowers', 'caches', 'cacheCollectedAt', 'braises', 'bases', 'corpses', 'resourceSpent',
   'ragout', 'festin', 'roti', 'bouillon', 'banquet', 'peste', 'fieldKitchens', 'pantries', 'ingredients', 'kingFeastReadyAt', 'kingFeastReason',
 ];
 
