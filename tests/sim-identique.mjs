@@ -45,7 +45,14 @@ try {
     // Aligner la représentation des stocks quand origin/main précède D68.
     const ingredients = expected.ingredients.map((stock) =>
       typeof stock === 'number' ? { viande: stock, epices: 0, conserves: 0 } : stock);
-    assert.equal(pack(actual), pack({ ...expected, ingredients }), label);
+    // Comparer les cuissons au repos quand origin/main précède les plats combinés.
+    const { roti, bouillon, ...actualState } = actual;
+    const { roti: expectedRoti = { readyAt: null }, bouillon: expectedBouillon = { readyAt: null }, ...expectedState } = expected;
+    assert.equal(
+      pack({ ...actualState, roti, bouillon }),
+      pack({ ...expectedState, ingredients, roti: expectedRoti, bouillon: expectedBouillon }),
+      label,
+    );
   };
   identical(loaded, referenceLoaded, 'loadedScenario initial');
   for (let tick = 1; tick <= 1200; tick++) {

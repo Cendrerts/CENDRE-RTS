@@ -4,7 +4,7 @@ import { Match } from '../server/match-do.js';
 import { RealtimeClient } from '../public/game/realtime.js';
 import { CendreSim as Sim } from '../public/game/sim.js';
 
-const stableFields = ['camps', 'watchtowers', 'braises', 'bases', 'corpses', 'ragout', 'festin', 'fieldKitchens', 'fumets', 'pantries'];
+const stableFields = ['camps', 'watchtowers', 'braises', 'bases', 'corpses', 'ragout', 'festin', 'roti', 'fieldKitchens', 'fumets', 'pantries'];
 
 class Socket {
   messages = [];
@@ -292,7 +292,7 @@ function checkDishes(serverSocket, realtimeClient, team, latestState, sentFields
   const wireState = JSON.parse(snapshot).state;
   const serverView = view(match.sim, team);
   realtimeClient.socket.receive(snapshot);
-  for (const field of ['ragout', 'festin', 'fumets', 'fieldKitchens']) {
+  for (const field of ['ragout', 'festin', 'roti', 'bouillon', 'fumets', 'fieldKitchens']) {
     assert.equal(Object.hasOwn(wireState, field), sentFields.includes(field), field);
     if (sentFields.includes(field)) {
       assert.deepEqual(wireState[field], serverView[field], field);
@@ -307,7 +307,7 @@ const checkPlayer = (sentFields) => checkDishes(
 const checkOpponent = (sentFields) => checkDishes(
   opponentSocket, opponentClient, opponent.team, () => opponentState, sentFields,
 );
-checkOpponent(['ragout', 'festin', 'fumets', 'fieldKitchens']);
+checkOpponent(['ragout', 'festin', 'bouillon', 'fumets', 'fieldKitchens']);
 await opponentConnected;
 
 match.sim.ingredients[0].viande = 80;
@@ -333,6 +333,30 @@ assert.deepEqual(opponentState.ragout, { readyAt: null, expiresAt: 0 });
 assert.deepEqual(received.at(-1).festin, { readyAt: null });
 checkPlayer([]);
 checkOpponent([]);
+
+for (const team of [player.team, opponent.team]) {
+  match.sim.bases[team].niveau = 2;
+  match.sim.ingredients[team].epices = 20;
+}
+command(match.sim, player.team, { kind: 'cookDish', dish: 'roti' });
+command(match.sim, opponent.team, { kind: 'cookDish', dish: 'bouillon' });
+checkPlayer(['roti', 'fumets']);
+checkOpponent(['bouillon', 'fumets']);
+assert.equal(received.at(-1).roti.readyAt, match.sim.time + 20);
+assert.equal(opponentState.bouillon.readyAt, match.sim.time + 15);
+assert(!Object.hasOwn(received.at(-1), 'bouillon'));
+assert(!Object.hasOwn(opponentState, 'roti'));
+checkPlayer([]);
+checkOpponent([]);
+
+Sim.tick(match.sim, 15);
+checkPlayer(['fumets']);
+checkOpponent(['bouillon', 'fumets']);
+assert.equal(opponentState.bouillon.readyAt, null);
+Sim.tick(match.sim, 5);
+checkPlayer(['roti', 'fumets']);
+checkOpponent(['fumets']);
+assert.equal(received.at(-1).roti.readyAt, null);
 
 match.sim.pantries[player.team].stock++;
 match.snapshot(replacement);

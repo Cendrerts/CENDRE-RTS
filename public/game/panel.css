@@ -541,3 +541,13 @@ button svg[data-icon='selection'] {
 #contextPanel:has(#mainUpgradeAction, #mainUpgrade) #panelChevron {
   right: 76px;
 }
+
+#contextPanel .combined-dish {
+  width: 122px;
+  line-height: 1.15;
+}
+#contextPanel .combined-dish .dish-cost {
+  display: flex;
+  justify-content: center;
+  margin-top: 2px;
+}
