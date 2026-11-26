@@ -49,6 +49,18 @@ function stats(type, team) {
   if (team === NEUTRAL) return NEUTRAL_STATS[type] ?? BOAR;
   return team === 1 ? RatsGout.unites[type] : TYPES[type];
 }
+function neutralReward(type) {
+  switch (type) {
+    case 'sanglier':
+      return { viande: 15, epices: 0, conserves: 0 };
+    case 'lezard':
+      return { viande: 0, epices: 8, conserves: 0 };
+    case 'goinfre':
+      return { viande: 30, epices: 0, conserves: 20 };
+    default:
+      return { viande: 0, epices: 0, conserves: 0 };
+  }
+}
 const RULES = {
   towerRadius: 90,
   towerCapture: 4,
@@ -691,12 +703,11 @@ function applyDamage(s, target, damage, attacker = null) {
       target.targetId = attackerId;
     }
     if (wasAlive && target.hp <= 0 && (attackerTeam === 0 || attackerTeam === 1)) {
-      if (target.type === 'sanglier') s.ingredients[attackerTeam].viande += 15;
-      if (target.type === 'lezard') s.ingredients[attackerTeam].epices += 8;
-      if (target.type === 'goinfre') {
-        s.ingredients[attackerTeam].viande += 30;
-        s.ingredients[attackerTeam].conserves += 20;
-      }
+      const reward = neutralReward(target.type);
+      const stock = s.ingredients[attackerTeam];
+      stock.viande += reward.viande;
+      stock.epices += reward.epices;
+      stock.conserves += reward.conserves;
     }
     return;
   }
@@ -2378,6 +2389,7 @@ export const CendreSim = {
   TYPES,
   RULES,
   stats,
+  neutralReward,
   walk,
   lanes,
   passages,

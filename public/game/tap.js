@@ -1,5 +1,15 @@
 import { CendreSim as Sim } from './sim.js';
 
+export function neutralInfoText(monster) {
+  const { name } = Sim.stats(monster.type, monster.team);
+  const { viande, epices, conserves } = Sim.neutralReward(monster.type);
+  const ingredients = [];
+  if (viande) ingredients.push(`+${viande} Viande`);
+  if (epices) ingredients.push(`+${epices} Épices`);
+  if (conserves) ingredients.push(`+${conserves} Conserves`);
+  return `${name} · ${Math.round(monster.hp)}/${monster.max} PV · ${ingredients.join(', ')}`;
+}
+
 // Bounds follow building() and drawFactionBuilding() in game.js, in world units.
 export function buildingBounds(target, size = 1, main = false, team = target.team, kind = 3) {
   if (main) return { x: target.x - 80, y: target.y - 117, width: 160, height: 177 };
@@ -87,7 +97,12 @@ export function resolveTap(state, player, selection, point, scale = 1, onTarget 
       if (ownKitchen && unit.type === 'hero' && selection.has(unit.id) &&
           Math.hypot(unit.x - ownKitchen.target.x, unit.y - ownKitchen.target.y) <= Sim.CELL) continue;
       add(unit, 'unit', 26, { kind: 'select', id: unit.id }, unitHitbox(unit), true);
-    } else add(unit, combat && !workers.length ? 'enemy' : 'unit', 26, selected.length ? { kind: 'attack', target: unit } : { kind: 'none' }, unitHitbox(unit), true);
+    } else {
+      const action = selected.length
+        ? { kind: 'attack', target: unit }
+        : unit.team === -1 ? { kind: 'neutral', id: unit.id } : { kind: 'none' };
+      add(unit, combat && !workers.length ? 'enemy' : 'unit', 26, action, unitHitbox(unit), true);
+    }
   }
   for (const corpse of state.corpses || []) {
     if (!ratMilitary) continue;
