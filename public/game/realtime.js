@@ -144,7 +144,7 @@ export class RealtimeClient {
             }
           }
           delete state.exploredAdded;
-          for (const field of ['slots', 'visible', 'explored', 'camps', 'watchtowers', 'caches', 'cacheCollectedAt', 'braises', 'bases', 'corpses', 'ragout', 'festin', 'roti', 'bouillon', 'banquet', 'peste', 'fieldKitchens', 'fumets', 'pantries']) {
+          for (const field of ['slots', 'visible', 'explored', 'camps', 'watchtowers', 'caches', 'cacheCollectedAt', 'braises', 'bases', 'corpses', 'resourceSpent', 'ragout', 'festin', 'roti', 'bouillon', 'banquet', 'peste', 'fieldKitchens', 'fumets', 'pantries']) {
             if (Object.hasOwn(state, field)) {
               snapshotFields[field] = state[field];
             } else if (Object.hasOwn(snapshotFields, field)) {
