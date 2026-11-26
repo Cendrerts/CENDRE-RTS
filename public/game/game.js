@@ -64,6 +64,21 @@ const fog = document.createElement('canvas');
 fog.width = COLS;
 fog.height = ROWS;
 const fc = fog.getContext('2d');
+const smokePuff = document.createElement('canvas');
+smokePuff.width = 48;
+smokePuff.height = 48;
+const smokeCtx = smokePuff.getContext('2d');
+const smokeGradient = smokeCtx.createRadialGradient(24, 24, 0, 24, 24, 24);
+smokeGradient.addColorStop(0, '#d8d4cc');
+smokeGradient.addColorStop(0.5, '#b4aea4d9');
+smokeGradient.addColorStop(1, '#88888800');
+smokeCtx.fillStyle = smokeGradient;
+smokeCtx.fillRect(0, 0, 48, 48);
+const noFumets = [];
+let soloFumets = noFumets;
+let fumetState;
+let ragoutCooking;
+let festinCooking;
 let state = Sim.create(),
   selected = new Set(),
   player = 0,
@@ -1110,7 +1125,37 @@ function drawFog() {
   ctx.imageSmoothingEnabled = true;
   ctx.drawImage(fog, 0, 0, W, H);
 }
-function drawMini() {
+function activeFumets() {
+  if (net) return state.fumets ?? noFumets;
+  const hasRagout = state.ragout?.readyAt != null;
+  const hasFestin = state.festin?.readyAt != null;
+  if (fumetState !== state || ragoutCooking !== hasRagout || festinCooking !== hasFestin) {
+    fumetState = state;
+    ragoutCooking = hasRagout;
+    festinCooking = hasFestin;
+    soloFumets = Sim.fumets(state);
+  }
+  return soloFumets;
+}
+function drawFumets(fumets, now) {
+  if (!fumets.length) return;
+  ctx.save();
+  for (let index = 0; index < fumets.length; index++) {
+    const { x, y, team } = fumets[index];
+    const roofY = y - (team === 0 ? 80 : 178);
+    for (let puff = 0; puff < 5; puff++) {
+      const phase = (now / 2200 + puff / 5) % 1;
+      const width = (24 + phase * 28) / scale;
+      const height = width * 0.75;
+      const drift = Math.sin(phase * 7) * phase * 15 / scale;
+      const rise = (4 + phase * 80) / scale;
+      ctx.globalAlpha = 0.9 * Math.min(phase * 12, 1, (1 - phase) * 4);
+      ctx.drawImage(smokePuff, x + drift - width / 2, roofY - rise - height / 2, width, height);
+    }
+  }
+  ctx.restore();
+}
+function drawMini(fumets, now) {
   drawMinimap(mc, {
     terrain,
     fog,
@@ -1129,6 +1174,25 @@ function drawMini() {
     worldWidth: W,
     worldHeight: H,
   });
+  if (fumets.length) {
+    const width = mini.clientWidth;
+    const height = mini.clientHeight;
+    const pulse = Math.sin(now * 2 * Math.PI / 1200);
+    const radius = 4.5 + pulse * (pulse < 0 ? 0.5 : 1.5);
+    mc.save();
+    mc.scale(mini.width / width, mini.height / height);
+    mc.fillStyle = '#efe9dc';
+    mc.strokeStyle = '#1a1a1a';
+    mc.lineWidth = 1.5;
+    for (let index = 0; index < fumets.length; index++) {
+      const { x, y } = fumets[index];
+      mc.beginPath();
+      mc.arc(x / W * width, y / H * height - 6, radius, 0, Math.PI * 2);
+      mc.fill();
+      mc.stroke();
+    }
+    mc.restore();
+  }
   if (marker?.minimap) {
     mc.save();
     mc.strokeStyle = marker.color;
@@ -1284,6 +1348,9 @@ function draw() {
     if (Sim.visibleAt(state, player, s.x, s.y) && Sim.visibleAt(state, player, s.tx, s.ty))
       line(s.x, s.y, s.tx, s.ty, s.team ? '#8ef1ce' : '#ffd388', 2);
   drawFog();
+  const fumets = activeFumets();
+  const fumetTime = performance.now();
+  drawFumets(fumets, fumetTime);
   drawConstructionBars();
   drawBuildingHealthBars();
   drawOrderQueues();
@@ -1317,7 +1384,7 @@ function draw() {
     }
   }
   drawBuildGhost();
-  drawMini();
+  drawMini(fumets, fumetTime);
   if (holdIndicator) {
     ctx.save();
     ctx.setTransform(canvas.width / viewWidth, 0, 0, canvas.height / viewHeight, 0, 0);
