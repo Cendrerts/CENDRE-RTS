@@ -1060,6 +1060,39 @@ function line(x, y, xx, yy, color, width = 2) {
   ctx.lineTo(xx, yy);
   ctx.stroke();
 }
+function drawLizard(x, y) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = '#2d1818';
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(-9, -8);
+  ctx.lineTo(-14, 1);
+  ctx.lineTo(-19, 2);
+  ctx.moveTo(5, -8);
+  ctx.lineTo(10, 1);
+  ctx.lineTo(15, 2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(-27, -3);
+  ctx.bezierCurveTo(-20, -7, -17, -17, -4, -17);
+  ctx.quadraticCurveTo(5, -18, 9, -14);
+  ctx.quadraticCurveTo(16, -22, 23, -14);
+  ctx.lineTo(27, -11);
+  ctx.quadraticCurveTo(23, -6, 13, -8);
+  ctx.quadraticCurveTo(5, -3, -7, -6);
+  ctx.quadraticCurveTo(-19, 2, -27, -3);
+  ctx.closePath();
+  ctx.fillStyle = '#ed592e';
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = '#ffd468';
+  ctx.fillRect(17, -15, 3, 3);
+  ctx.restore();
+}
+
 function bar(x, y, hp, max, w = 30) {
   ctx.fillStyle = '#071413';
   ctx.fillRect(x - w / 2, y, w, 4);
@@ -1427,20 +1460,24 @@ function draw() {
   for (const monster of state.monsters || []) {
     if (monster.hp <= 0 || !Sim.canSee(state, player, monster)) continue;
     const { x, y } = monster;
-    ellipse(x, y + 3, 23, 9, '#11171988');
-    ellipse(x, y - 13, 23, 14, '#796e62');
-    ellipse(x + 19, y - 10, 11, 9, '#9a8d7c');
-    ctx.fillStyle = '#4e4943';
-    ctx.fillRect(x - 15, y - 7, 6, 13);
-    ctx.fillRect(x + 7, y - 7, 6, 13);
-    ctx.fillStyle = '#eee0bf';
-    ctx.beginPath();
-    ctx.moveTo(x + 22, y - 7);
-    ctx.lineTo(x + 28, y - 19);
-    ctx.lineTo(x + 29, y - 5);
-    ctx.fill();
-    ctx.fillStyle = '#161719';
-    ctx.fillRect(x + 20, y - 15, 3, 3);
+    if (monster.type === 'lezard') {
+      drawLizard(x, y);
+    } else {
+      ellipse(x, y + 3, 23, 9, '#11171988');
+      ellipse(x, y - 13, 23, 14, '#796e62');
+      ellipse(x + 19, y - 10, 11, 9, '#9a8d7c');
+      ctx.fillStyle = '#4e4943';
+      ctx.fillRect(x - 15, y - 7, 6, 13);
+      ctx.fillRect(x + 7, y - 7, 6, 13);
+      ctx.fillStyle = '#eee0bf';
+      ctx.beginPath();
+      ctx.moveTo(x + 22, y - 7);
+      ctx.lineTo(x + 28, y - 19);
+      ctx.lineTo(x + 29, y - 5);
+      ctx.fill();
+      ctx.fillStyle = '#161719';
+      ctx.fillRect(x + 20, y - 15, 3, 3);
+    }
     bar(x, y - 35, monster.hp, monster.max, 44);
   }
   for (let b of state.bases)
