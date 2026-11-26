@@ -56,6 +56,9 @@ const heroes = state.units.filter((unit) => unit.type === 'hero');
 assert.equal(heroes.length, 2);
 assert.ok(state.corpses.length > 0);
 assert.ok(state.monsters.length > 0);
+// Garantir une cible à restaurer quelle que soit l'issue des combats avec les camps.
+const boar = state.monsters[0];
+Sim.order(state, [heroes[0].id], boar.x, boar.y, boar);
 console.log('À six minutes', {
   heroes: heroes.length,
   corpses: state.corpses.length,

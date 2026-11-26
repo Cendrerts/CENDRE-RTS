@@ -34,6 +34,9 @@ for (let team = 0; team < 2; team++) {
 {
   const s = S.create(),
     u = s.units[0];
+  // Isolate delivery after a change of ownership from neutral combat en route.
+  s.monsters = [];
+  s.camps = [];
   s.mines[4].owner = 0;
   const m = s.mines[4],
     cell = S.nearest(m.x, m.y);

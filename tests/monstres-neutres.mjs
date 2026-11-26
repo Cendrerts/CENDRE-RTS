@@ -16,8 +16,8 @@ function hunter(state, team, x, y) {
 }
 {
   const state = S.create();
-  assert.equal(state.camps.length, 4);
-  assert.equal(state.monsters.length, 8);
+  assert.equal(state.camps.length, 10);
+  assert.equal(state.monsters.length, 20);
   assert.deepEqual(state.units.map((unit) => unit.id), [1, 2], 'Les monstres ne consomment pas les identifiants des armées');
   assert(state.monsters.every((monster) => monster.id < 0));
   for (const camp of state.camps) {
