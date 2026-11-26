@@ -81,14 +81,18 @@ let fumetRagoutReadyAt;
 let festinCooking;
 let fumetRotiReadyAt;
 let fumetBouillonReadyAt;
+let fumetBanquetReadyAt;
+let fumetPesteReadyAt;
 const dishOptions = [
   [
     { dish: 'ragout', name: 'Ragoût', icon: 'ragout', viande: 40, details: '20 s de cuisson · unités à 350 px · +15 % de dégâts pendant 45 s' },
     { dish: 'roti', name: 'Rôti aux épices', icon: 'ragout', viande: 30, epices: 20, details: '20 s de cuisson · unités à 350 px · +20 % de vitesse pendant 40 s' },
+    { dish: 'banquet', name: 'Grand Banquet', viande: 30, epices: 20, conserves: 15, details: '30 s de cuisson · unités à 350 px · soin complet et +25 % de dégâts pendant 30 s' },
   ],
   [
     { dish: 'festin', name: 'Festin', icon: 'festin', viande: 40, details: '15 s de préparation · 4 Rats-Éboueurs' },
     { dish: 'bouillon', name: 'Bouillon de la Décharge', icon: 'festin', viande: 30, epices: 20, details: '15 s de cuisson · unités à 350 px · +3 PV/s pendant 20 s' },
+    { dish: 'peste', name: 'Marmite de la Peste', viande: 30, epices: 20, conserves: 15, details: '25 s de cuisson · unités à 350 px · 30 % de vol de vie pendant 30 s' },
   ],
 ];
 let state = Sim.create(),
@@ -323,12 +327,12 @@ function updateUI() {
   if (player === 1 && state.festin?.readyAt != null) {
     dishCountdown = 'Festin ' + Math.max(0, Math.ceil(state.festin.readyAt - state.time)) + ' s';
   }
-  const combinedDish = dishOptions[player][1];
-  const combinedReadyAt = state[combinedDish.dish]?.readyAt;
-  if (combinedReadyAt != null) {
-    const seconds = Math.max(0, Math.ceil(combinedReadyAt - state.time - 1e-9));
-    const countdown = (player === 0 ? 'Rôti' : 'Bouillon') + ' ' + seconds + ' s';
-    dishCountdown = [dishCountdown, countdown].filter(Boolean).join(' · ');
+  for (const { dish, name } of dishOptions[player].slice(1)) {
+    const readyAt = state[dish]?.readyAt;
+    if (readyAt == null) continue;
+    const seconds = Math.max(0, Math.ceil(readyAt - state.time - 1e-9));
+    const countdownName = dish === 'roti' ? 'Rôti' : dish === 'bouillon' ? 'Bouillon' : name;
+    dishCountdown = [dishCountdown, countdownName + ' ' + seconds + ' s'].filter(Boolean).join(' · ');
   }
   dishStatus.textContent = dishCountdown;
   dishStatus.hidden = !dishCountdown;
@@ -1216,13 +1220,18 @@ function activeFumets() {
   const hasFestin = state.festin?.readyAt != null;
   const rotiReadyAt = state.roti?.readyAt;
   const bouillonReadyAt = state.bouillon?.readyAt;
+  const banquetReadyAt = state.banquet?.readyAt;
+  const pesteReadyAt = state.peste?.readyAt;
   if (fumetState !== state || fumetRagoutReadyAt !== ragoutReadyAt || festinCooking !== hasFestin ||
-      fumetRotiReadyAt !== rotiReadyAt || fumetBouillonReadyAt !== bouillonReadyAt) {
+      fumetRotiReadyAt !== rotiReadyAt || fumetBouillonReadyAt !== bouillonReadyAt ||
+      fumetBanquetReadyAt !== banquetReadyAt || fumetPesteReadyAt !== pesteReadyAt) {
     fumetState = state;
     fumetRagoutReadyAt = ragoutReadyAt;
     festinCooking = hasFestin;
     fumetRotiReadyAt = rotiReadyAt;
     fumetBouillonReadyAt = bouillonReadyAt;
+    fumetBanquetReadyAt = banquetReadyAt;
+    fumetPesteReadyAt = pesteReadyAt;
     soloFumets = Sim.fumets(state);
   }
   return soloFumets;
@@ -1254,7 +1263,7 @@ function drawFieldKitchens() {
   for (const kitchen of visibleFieldKitchens()) {
     const { x, y, hp, maxHp, team } = kitchen;
     const readyAt = team === player
-      ? [state.ragout, state.roti].find((dish) => dish?.at === 'campagne' && dish.readyAt != null)?.readyAt
+      ? [state.ragout, state.roti, state.banquet].find((dish) => dish?.at === 'campagne' && dish.readyAt != null)?.readyAt
       : null;
     const cooking = readyAt != null;
     ctx.save();
@@ -2998,15 +3007,17 @@ function renderContextPanel() {
   } else {
     const opened = openedRallyBuilding();
     if (opened?.id === 'main_' + player || model.mode === 'fieldKitchen') {
-      for (const [index, { dish, name, icon, viande, epices, details }] of dishOptions[player].entries()) {
+      for (const [index, { dish, name, icon, viande, epices, conserves, details }] of dishOptions[player].entries()) {
         const dishButton = document.createElement('button');
         dishButton.id = dish + 'Action';
-        dishButton.className = epices ? 'combined-dish' : '';
+        dishButton.className = epices ? 'dish-action combined-dish' : 'dish-action';
         const costIcon = (ingredient) =>
           `<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><use href="#${ingredient}-icon"/></svg>`;
+        const costs = [[viande, 'viande', 'Viande'], [epices, 'epices', 'Épices'], [conserves, 'conserves', 'Conserves']]
+          .filter(([amount]) => amount);
         dishButton.innerHTML = (epices ? '' : iconSvg(icon) + ' ') + name +
-          ` <span class="dish-cost">${costIcon('viande')} ${viande}${epices ? ' ' + costIcon('epices') + ' ' + epices : ''}</span>`;
-        dishButton.setAttribute('aria-label', name + ' · ' + viande + ' Viande' + (epices ? ' · ' + epices + ' Épices' : ''));
+          ` <span class="dish-cost">${costs.map(([amount, ingredient]) => costIcon(ingredient) + ' ' + amount).join(' ')}</span>`;
+        dishButton.setAttribute('aria-label', [name, ...costs.map(([amount, , label]) => amount + ' ' + label)].join(' · '));
         const reason = dishReasons[index];
         dishButton.setAttribute('aria-disabled', String(Boolean(reason)));
         dishButton.style.opacity = reason ? '0.5' : '1';

@@ -292,7 +292,7 @@ function checkDishes(serverSocket, realtimeClient, team, latestState, sentFields
   const wireState = JSON.parse(snapshot).state;
   const serverView = view(match.sim, team);
   realtimeClient.socket.receive(snapshot);
-  for (const field of ['ragout', 'festin', 'roti', 'bouillon', 'fumets', 'fieldKitchens']) {
+  for (const field of ['ragout', 'festin', 'roti', 'bouillon', 'banquet', 'peste', 'fumets', 'fieldKitchens']) {
     assert.equal(Object.hasOwn(wireState, field), sentFields.includes(field), field);
     if (sentFields.includes(field)) {
       assert.deepEqual(wireState[field], serverView[field], field);
@@ -307,7 +307,7 @@ const checkPlayer = (sentFields) => checkDishes(
 const checkOpponent = (sentFields) => checkDishes(
   opponentSocket, opponentClient, opponent.team, () => opponentState, sentFields,
 );
-checkOpponent(['ragout', 'festin', 'bouillon', 'fumets', 'fieldKitchens']);
+checkOpponent(['ragout', 'festin', 'bouillon', 'peste', 'fumets', 'fieldKitchens']);
 await opponentConnected;
 
 match.sim.ingredients[0].viande = 80;
@@ -398,3 +398,16 @@ checkOpponent([]);
 match.sim.visible[opponent.team].fill(0);
 checkOpponent(['fieldKitchens']);
 assert.deepEqual(opponentState.fieldKitchens, [null, null]);
+
+for (const base of match.sim.bases) base.niveau = 3;
+for (const stock of match.sim.ingredients) {
+  Object.assign(stock, { viande: 30, epices: 20, conserves: 15 });
+}
+command(match.sim, player.team, { kind: 'cookDish', dish: 'banquet' });
+command(match.sim, opponent.team, { kind: 'cookDish', dish: 'peste' });
+checkPlayer(['banquet', 'fumets']);
+checkOpponent(['peste', 'fumets']);
+assert.equal(received.at(-1).banquet.readyAt, match.sim.time + 30);
+assert.equal(opponentState.peste.readyAt, match.sim.time + 25);
+checkPlayer([]);
+checkOpponent([]);

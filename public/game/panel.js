@@ -83,7 +83,8 @@ export function panelModel(state, player, selection, context = {}) {
     left.hp = kitchen.hp;
     const cookingRagout = state.ragout?.at === 'campagne' && state.ragout.readyAt != null;
     const cookingRoti = state.roti?.at === 'campagne' && state.roti.readyAt != null;
-    const dishes = [cookingRagout ? 'Ragoût' : '', cookingRoti ? 'Rôti' : '']
+    const cookingBanquet = state.banquet?.at === 'campagne' && state.banquet.readyAt != null;
+    const dishes = [cookingRagout ? 'Ragoût' : '', cookingRoti ? 'Rôti' : '', cookingBanquet ? 'Grand Banquet' : '']
       .filter(Boolean).join(' et ');
     left.status = dishes ? dishes + ' en cuisson' : 'Prête';
   }
