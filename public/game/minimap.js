@@ -1,10 +1,25 @@
 import { TEAM_COLORS } from './unit-overlays.js';
+import { CendreSim as Sim } from './sim.js';
+
+const campColors = {
+  sanglier: '#c0604a',
+  lezard: '#ff9a3c',
+  veine: '#ffd477',
+};
+
+export function exploredCamps(state, player) {
+  const { CELL, COLS } = Sim;
+  const explored = state.explored[player];
+  return (state.camps ?? [])
+    .filter(({ x, y }) => explored[Math.floor(y / CELL) * COLS + Math.floor(x / CELL)])
+    .map(({ x, y, name, espece }) => ({ x, y, espece: name === 'camp-veine' ? 'veine' : espece }));
+}
 
 export function minimapPoint(x, y, width, height, worldWidth, worldHeight) {
   return { x: x * width / worldWidth, y: y * height / worldHeight };
 }
 
-export function drawMinimap(ctx, { terrain, fog, units, mines, bases = [], watchtowers = [], caches = [], braises = [], pantries = [], fieldKitchens = [], camera, player, worldWidth, worldHeight }) {
+export function drawMinimap(ctx, { terrain, fog, units, mines, camps = [], bases = [], watchtowers = [], caches = [], braises = [], pantries = [], fieldKitchens = [], camera, player, worldWidth, worldHeight }) {
   const { width, height } = ctx.canvas;
   const point = (x, y) => minimapPoint(x, y, width, height, worldWidth, worldHeight);
   ctx.save();
@@ -12,6 +27,23 @@ export function drawMinimap(ctx, { terrain, fog, units, mines, bases = [], watch
   ctx.fillRect(0, 0, width, height);
   if (terrain.complete && terrain.naturalWidth) ctx.drawImage(terrain, 0, 0, width, height);
   ctx.drawImage(fog, 0, 0, width, height);
+  for (const camp of camps) {
+    const position = point(camp.x, camp.y);
+    const radius = camp.espece === 'veine' ? 3.5 : 2.5;
+    // La mine centrale et le camp de la Veine partagent les mêmes coordonnées.
+    if (mines.some((mine) => mine.x === camp.x && mine.y === camp.y)) {
+      position.x += 8;
+    }
+    ctx.strokeStyle = campColors[camp.espece];
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(position.x, position.y - radius);
+    ctx.lineTo(position.x + radius, position.y);
+    ctx.lineTo(position.x, position.y + radius);
+    ctx.lineTo(position.x - radius, position.y);
+    ctx.closePath();
+    ctx.stroke();
+  }
   for (const mine of mines) {
     const position = point(mine.x, mine.y);
     ctx.fillStyle = '#ffd477';

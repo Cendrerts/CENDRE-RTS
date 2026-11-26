@@ -25,7 +25,7 @@ import { decodeSnapshotFog } from './snapshot-fog.js';
 let realtime = null;
 import { ratSVG, ratSprites } from './rats.js';
 import { cookSVG, cookSprites } from './cooks.js';
-import { drawMinimap } from './minimap.js';
+import { drawMinimap, exploredCamps } from './minimap.js';
 import { createSkirmishTerrain } from './terrain.js';
 import { TEAM_COLORS, drawHealthBar, selectionRing, unitFeet, drawCargoRuby, drawMine } from './unit-overlays.js';
 import { createRenderCache, prepareDrawList } from './render-cache.js';
@@ -1357,6 +1357,7 @@ function drawMini(fumets, now) {
     ),
     braises: visibleBraises(),
     units: preparedUnits,
+    camps: exploredCamps(state, player),
     mines: state.mines.filter((mine) => state.explored[player][Math.floor(mine.y / CELL) * COLS + Math.floor(mine.x / CELL)]),
     bases: state.bases.filter((base) => Sim.canSee(state, player, base)),
     camera: { x: -ox / scale, y: -oy / scale, width: viewWidth / scale, height: viewHeight / scale },
