@@ -19,9 +19,9 @@ function spawnKnight(state, x, y) {
 
 {
   const state = Sim.create();
-  assert.equal(state.camps.length, 10);
+  assert.equal(state.camps.length, 11);
   assert.deepEqual(state.camps.filter((camp) => camp.espece === 'lezard').map((camp) => camp.name), lizardCamps);
-  for (const camp of state.camps) {
+  for (const camp of state.camps.filter((camp) => camp.name !== 'camp-veine')) {
     const lizards = lizardCamps.includes(camp.name);
     const type = lizards ? 'lezard' : 'sanglier';
     const offsets = lizards ? [-30, 0, 30] : [-24, 24];
@@ -37,8 +37,9 @@ function spawnKnight(state, x, y) {
 
   // Reproduire un camp de Sangliers de #273 qui attend sa réapparition.
   const legacyCamp = restored.camps.find((camp) => camp.name === lizardCamps[0]);
+  restored.camps = restored.camps.filter((camp) => camp.name !== 'camp-veine');
   for (const camp of restored.camps) delete camp.espece;
-  restored.monsters = restored.monsters.filter((monster) => monster.type === 'sanglier');
+  restored.monsters = restored.monsters.filter((monster) => monster.type === 'sanglier' && monster.camp !== 'camp-veine');
   legacyCamp.respawnAt = restored.time + step;
   const legacy = Sim.restore(Sim.serialize(restored));
   assert(legacy.camps.every((camp) => camp.espece === 'sanglier'));

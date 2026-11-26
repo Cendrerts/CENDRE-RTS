@@ -12,7 +12,7 @@ function distanceToSegment(x, y, [ax, ay], [bx, by]) {
 }
 
 const { camps } = Sim.create();
-assert.equal(camps.length, 10);
+assert.equal(camps.length, 11);
 assert.equal(camps.filter(({ name }) => name.startsWith('camp-chemin-')).length, 6);
 const campPairs = [
   ['centre-ouest', 'centre-est', 1540, 750, 'centre', 'centre'],
