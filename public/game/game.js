@@ -15,7 +15,7 @@ import { UnitVoices, selectionVoice } from './unit-voices.js';
 import { createRadialMenu } from './radial.js';
 import { unitLabel, buildingSelectionVisuals, buildingsOfType, selectedProducers, selectedRecruitCommand, selectedRallyCommands, armyUnits, armyToastText, groupToastText, filterSelection, cameraBounds, unitsOfType, createFieldDoubleTap, createPortraitTap, unitsInBox, boxSelection } from './selection.js';
 import { createGestures } from './gestures.js';
-import { buildingBounds, constructionBarBounds, resolveTap, isEmptyTap } from './tap.js';
+import { buildingBounds, constructionBarBounds, resolveTap, isEmptyTap, neutralInfoText } from './tap.js';
 import { installMobileDisplay } from './mobile-display.js';
 import { initTouchUI } from './mobile.js';
 import { createControlGroups, groupUnits, assignGroup, initControlGroups } from './control-groups.js';
@@ -797,6 +797,11 @@ function handleFieldTap(e, duration) {
   }
   if (action.kind === 'enemyPantry') {
     notify('Garde-manger adverse');
+    return;
+  }
+  if (action.kind === 'neutral') {
+    const monster = state.monsters.find((candidate) => candidate.id === action.id);
+    notify(neutralInfoText(monster));
     return;
   }
   if (action.kind === 'enemyBase') {
