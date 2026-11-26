@@ -26,6 +26,7 @@ let realtime = null;
 import { ratSVG, ratSprites } from './rats.js';
 import { cookSVG, cookSprites } from './cooks.js';
 import { drawMinimap, exploredCamps } from './minimap.js';
+import { mettreAJourCachesConnues } from './caches-connues.js';
 import { createSkirmishTerrain } from './terrain.js';
 import { TEAM_COLORS, HEALTH_BAR_TOP_OFFSET, drawHealthBar, selectionRing, unitFeet, drawCargoRuby, drawMine } from './unit-overlays.js';
 import { createRenderCache, prepareDrawList } from './render-cache.js';
@@ -304,6 +305,7 @@ let productionUI = null;
 const observedTowerLosses = new Map();
 let observedCacheCollection;
 const knownBraises = new Map();
+const knownCaches = new Map();
 let observedBraisesCycle = -1;
 function visibleBraises() {
   for (const foyer of state.braises || []) {
@@ -434,6 +436,7 @@ function beginSolo(save, startPaused) {
   observedTowerLosses.clear();
   observedCacheCollection = undefined;
   knownBraises.clear();
+  knownCaches.clear();
   observedBraisesCycle = -1;
   controlGroupsUI?.reset();
   selected.clear();
@@ -1387,14 +1390,12 @@ function drawFieldKitchens() {
   }
 }
 
-function drawMini(fumets, now) {
+function drawMini(fumets, now, caches) {
   drawMinimap(mc, {
     terrain,
     fog,
     watchtowers: state.watchtowers,
-    caches: (state.caches || []).filter((cache) =>
-      state.time >= cache.readyAt && state.explored[player][Math.floor(cache.y / CELL) * COLS + Math.floor(cache.x / CELL)],
-    ),
+    caches: caches.filter((cache) => cache.pleine),
     fieldKitchens: visibleFieldKitchens(),
     pantries: (state.pantries || []).flatMap(({ x, y }, team) =>
       team === player || state.explored[player][Math.floor(y / CELL) * COLS + Math.floor(x / CELL)]
@@ -1503,24 +1504,32 @@ function draw() {
       ctx.stroke();
     }
   }
-  for (const { x, y, readyAt, progress, capturingTeam } of state.caches || []) {
-    if (!Sim.visibleAt(state, player, x, y)) continue;
-    const full = state.time >= readyAt;
+  const caches = mettreAJourCachesConnues(
+    knownCaches,
+    state.caches || [],
+    (x, y) => Sim.visibleAt(state, player, x, y),
+    state.time,
+  );
+  for (const { name, x, y, pleine, vue, progress, capturingTeam } of caches) {
+    if (vue) knownCaches.set(name, { name, x, y, pleine });
+    ctx.save();
+    if (!vue) ctx.globalAlpha = 0.6;
     ellipse(x, y + 7, 28, 9, '#11171988');
-    ctx.fillStyle = full ? '#8d5936' : '#53565a';
+    ctx.fillStyle = pleine ? '#8d5936' : '#53565a';
     ctx.fillRect(x - 24, y - 18, 48, 26);
-    ctx.fillStyle = full ? '#c28b53' : '#696d70';
+    ctx.fillStyle = pleine ? '#c28b53' : '#696d70';
     ctx.fillRect(x - 27, y - 27, 54, 11);
-    line(x - 25, y - 26, x + 25, y - 26, full ? '#fff2bd' : '#939596', 3);
-    line(x - 17, y - 14, x - 17, y + 6, full ? '#593421' : '#404448', 4);
-    line(x + 17, y - 14, x + 17, y + 6, full ? '#593421' : '#404448', 4);
-    if (progress > 0) {
+    line(x - 25, y - 26, x + 25, y - 26, pleine ? '#fff2bd' : '#939596', 3);
+    line(x - 17, y - 14, x - 17, y + 6, pleine ? '#593421' : '#404448', 4);
+    line(x + 17, y - 14, x + 17, y + 6, pleine ? '#593421' : '#404448', 4);
+    if (vue && progress > 0) {
       ctx.strokeStyle = TEAM_COLORS[capturingTeam];
       ctx.lineWidth = 4 / scale;
       ctx.beginPath();
       ctx.arc(x, y - 9, 38, -Math.PI / 2, -Math.PI / 2 + progress / RULES.cacheCapture * Math.PI * 2);
       ctx.stroke();
     }
+    ctx.restore();
   }
   for (const [team, { x, y, stock }] of (state.pantries || []).entries()) {
     if (team !== player && !Sim.visibleAt(state, player, x, y)) continue;
@@ -1648,7 +1657,7 @@ function draw() {
     }
   }
   drawBuildGhost();
-  drawMini(fumets, fumetTime);
+  drawMini(fumets, fumetTime, caches);
   if (holdIndicator) {
     ctx.save();
     ctx.setTransform(canvas.width / viewWidth, 0, 0, canvas.height / viewHeight, 0, 0);
@@ -1764,6 +1773,7 @@ function resetNetwork() {
   observedTowerLosses.clear();
   observedCacheCollection = undefined;
   knownBraises.clear();
+  knownCaches.clear();
   observedBraisesCycle = -1;
   closePauseMenu();
   clearTimeout(netTimer);
@@ -1949,6 +1959,7 @@ async function enterRoom(action) {
       data = await requestMatch(parameters);
     }
     knownBraises.clear();
+    knownCaches.clear();
     observedBraisesCycle = -1;
     net = { code: data.code, token: data.token, team: data.team, begun: false, finished: false };
     seq = 0;
