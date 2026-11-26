@@ -14,7 +14,7 @@ const TICKS_PAR_SECONDE = 20;
 const GRAINE = 42;
 const CHAMPS_STABLES = [
   'slots', 'mines', 'camps', 'watchtowers', 'braises', 'bases', 'corpses',
-  'ragout', 'festin', 'fieldKitchens', 'pantries', 'ingredients', 'kingFeastReadyAt', 'kingFeastReason',
+  'ragout', 'festin', 'roti', 'bouillon', 'fieldKitchens', 'pantries', 'ingredients', 'kingFeastReadyAt', 'kingFeastReason',
 ];
 
 function creerSocket(match, horloge, sockets, joueurs) {

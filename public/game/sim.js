@@ -371,6 +371,8 @@ function create() {
     fieldKitchens: [null, null],
     fieldKitchenReadyAt: 0,
     festin: { readyAt: null },
+    roti: { readyAt: null },
+    bouillon: { readyAt: null },
     monsterId: 0,
     monsters: [],
     corpses: [],
@@ -627,6 +629,7 @@ function initStructure(entity, structure, id, team, max) {
 function removeFieldKitchen(s, team) {
   s.fieldKitchens[team] = null;
   if (s.ragout.at === 'campagne') s.ragout.readyAt = null;
+  if (s.roti.at === 'campagne') s.roti.readyAt = null;
 }
 
 function destroyStructure(s, target) {
@@ -695,6 +698,8 @@ function migrateState(s) {
   s.fieldKitchens ??= [null, null];
   s.fieldKitchenReadyAt ??= 0;
   s.festin ??= { readyAt: null };
+  s.roti ??= { readyAt: null };
+  s.bouillon ??= { readyAt: null };
   s.monsterId ??= 0;
   s.monsters ??= [];
   s.corpses ??= [];
@@ -762,7 +767,14 @@ function fieldKitchen(s, team) {
   return { ok: true, reason: null };
 }
 
+const COMBINED_DISHES = {
+  roti: { team: 0, duration: 20, effect: 40, name: 'Rôti aux épices' },
+  bouillon: { team: 1, duration: 15, effect: 20, name: 'Bouillon de la Décharge' },
+};
+const COMBINED_DISH_COST = { viande: 30, epices: 20 };
+
 function cookDishBlockReason(s, team, dish = 'ragout', { at } = {}) {
+  if (typeof dish !== 'string') return 'Plat inconnu.';
   if (dish === 'festin') {
     if (team !== 1) return 'Seuls les Rats-Goût peuvent préparer le Festin.';
     if (s.winner !== null) return RAGOUT_REASONS.ended;
@@ -770,6 +782,23 @@ function cookDishBlockReason(s, team, dish = 'ragout', { at } = {}) {
     if (festinFreePlaces(s) < 4) return 'Population insuffisante : 4 places libres nécessaires.';
     if (s.festin?.readyAt != null) return 'Festin déjà en préparation.';
     if ((s.ingredients?.[team]?.viande || 0) < 40) return RAGOUT_REASONS.ingredients;
+    return null;
+  }
+  if (Object.hasOwn(COMBINED_DISHES, dish)) {
+    const recipe = COMBINED_DISHES[dish];
+    if (team !== recipe.team) {
+      const faction = recipe.team === 0 ? 'Cuistots-Furieux' : 'Rats-Goût';
+      return `Seuls les ${faction} peuvent préparer le ${recipe.name}.`;
+    }
+    if (s.winner !== null) return RAGOUT_REASONS.ended;
+    const base = s.bases[team];
+    if (!(base?.hp > 0)) return team === 0 ? RAGOUT_REASONS.tower : 'Grande Décharge indisponible.';
+    if ((base.niveau ?? 1) < 2) return 'Tour de niveau 2 nécessaire.';
+    if (dish === 'roti' && at === 'campagne' && !s.fieldKitchens?.[team]) return 'Aucune cuisine de campagne.';
+    if (s[dish]?.readyAt != null) return `${recipe.name} déjà en préparation.`;
+    const ingredients = s.ingredients?.[team];
+    if ((ingredients?.viande ?? 0) < COMBINED_DISH_COST.viande) return 'Viande insuffisante : 30 nécessaires.';
+    if ((ingredients?.epices ?? 0) < COMBINED_DISH_COST.epices) return 'Épices insuffisantes : 20 nécessaires.';
     return null;
   }
   if (dish !== 'ragout') return 'Plat inconnu.';
@@ -786,6 +815,15 @@ function cookDish(s, team, dish = 'ragout', { at = 'tour' } = {}) {
   const reason = cookDishBlockReason(s, team, dish, { at });
   if (reason) return { ok: false, reason };
   migrateState(s);
+  if (Object.hasOwn(COMBINED_DISHES, dish)) {
+    const recipe = COMBINED_DISHES[dish];
+    const location = dish === 'roti' && at === 'campagne' ? s.fieldKitchens[team] : s.bases[team];
+    s.ingredients[team].viande -= COMBINED_DISH_COST.viande;
+    s.ingredients[team].epices -= COMBINED_DISH_COST.epices;
+    s[dish] = { readyAt: s.time + recipe.duration, x: location.x, y: location.y };
+    if (location === s.fieldKitchens[team]) s[dish].at = 'campagne';
+    return { ok: true, reason: null };
+  }
   s.ingredients[team].viande -= 40;
   if (dish === 'festin') s.festin.readyAt = s.time + 15;
   else {
@@ -801,15 +839,47 @@ function cookDish(s, team, dish = 'ragout', { at = 'tour' } = {}) {
 }
 function fumets(s) {
   const active = [];
-  if (s.ragout?.readyAt != null) {
-    const { x, y } = s.ragout.at ? s.ragout : s.bases[0];
-    active.push({ team: 0, x, y });
+  for (const [dish, team] of [['ragout', 0], ['festin', 1], ['roti', 0], ['bouillon', 1]]) {
+    const cooking = s[dish];
+    if (cooking?.readyAt == null) continue;
+    const campaign = cooking.at === 'campagne';
+    const { x, y } = cooking.x == null ? s.bases[team] : cooking;
+    if (active.some((fumet) => fumet.team === team && fumet.x === x && fumet.y === y &&
+        fumet.at === (campaign ? 'campagne' : undefined))) continue;
+    active.push(campaign ? { team, x, y, at: 'campagne' } : { team, x, y });
   }
-  if (s.festin?.readyAt != null) {
-    const { x, y } = s.bases[1];
-    active.push({ team: 1, x, y });
+  return active.sort((first, second) =>
+    first.team - second.team || first.x - second.x || first.y - second.y ||
+    Number(Boolean(first.at)) - Number(Boolean(second.at)));
+}
+function finishCombinedDish(s, dish, dt) {
+  const cooking = s[dish];
+  if (cooking.readyAt == null || s.time + 1e-9 < cooking.readyAt) return;
+  const readyAt = cooking.readyAt;
+  cooking.readyAt = null;
+  const recipe = COMBINED_DISHES[dish];
+  if (!(s.bases[recipe.team].hp > 0)) return;
+  for (const unit of s.units) {
+    if (unit.team !== recipe.team || unit.type === 'commis' || unit.hp <= 0 ||
+        Math.hypot(unit.x - cooking.x, unit.y - cooking.y) > RAGOUT_RADIUS) continue;
+    if (dish === 'roti') {
+      unit.rotiUntil = readyAt + recipe.effect;
+    } else {
+      // Preserve healing earned before a refresh within this tick.
+      healFromBouillon(unit, s.time - dt, readyAt);
+      unit.bouillonUntil = readyAt + recipe.effect;
+    }
   }
-  return active;
+}
+function healFromBouillon(unit, start, end) {
+  if (unit.bouillonUntil == null) return;
+  const activeFrom = unit.bouillonUntil - COMBINED_DISHES.bouillon.effect;
+  const seconds = Math.min(end, unit.bouillonUntil) - Math.max(start, activeFrom);
+  if (seconds > 0) unit.hp = Math.min(unit.max, unit.hp + 3 * seconds);
+}
+function movementSpeed(s, unit) {
+  const speed = stats(unit.type, unit.team).speed;
+  return unit.rotiUntil > s.time + 1e-9 ? speed * 1.2 : speed;
 }
 function festinTick(s) {
   if (s.festin.readyAt === null || s.time + 1e-9 < s.festin.readyAt) return;
@@ -1506,6 +1576,8 @@ function tick(s, dt) {
   }
   ragoutTick(s);
   festinTick(s);
+  finishCombinedDish(s, 'roti', dt);
+  finishCombinedDish(s, 'bouillon', dt);
   s.corpses = s.corpses.filter((corpse) => corpse.expiresAt > s.time + 1e-9);
   s.devourEvents = s.devourEvents.filter((event) => s.time - event.time < 1.5);
   s.damageEvents = (s.damageEvents || []).filter((event) => s.time - event.time < 5).slice(-24);
@@ -1529,6 +1601,7 @@ function tick(s, dt) {
   for (const structure of structures.flat()) entities.set(targetKey(structure), structure);
   for (let u of s.units) {
     if (u.hp <= 0) continue;
+    healFromBouillon(u, s.time - dt, s.time);
     u.cool -= dt;
     u.repath -= dt;
     if (forest(u)) {
@@ -1541,7 +1614,7 @@ function tick(s, dt) {
       continue;
     }
     if (u.manual) {
-      manualTick(u, dt);
+      manualTick(s, u, dt);
       continue;
     }
     if (u.harvest) {
@@ -1695,7 +1768,7 @@ function tick(s, dt) {
           if (Math.hypot(probe.x - next.x, probe.y - next.y) > 0.01) break;
           u.path.shift();
         }
-        let remaining = cfg.speed * dt;
+        let remaining = movementSpeed(s, u) * dt;
         while (remaining > 0 && u.path.length) {
           const point = u.path[0];
           const dx = point.x - u.x;
@@ -2009,13 +2082,13 @@ function predictMotion(state, unit, command, dt) {
   if (command.kind === 'steer') {
     const length = Math.hypot(command.dx, command.dy);
     if (length) {
-      const distance = stats(unit.type, unit.team).speed * dt;
+      const distance = movementSpeed(state, unit) * dt;
       moveSafely(unit, command.dx / length * distance, command.dy / length * distance);
     }
     return;
   }
   if (!unit.path?.length) return;
-  let distance = stats(unit.type, unit.team).speed * dt;
+  let distance = movementSpeed(state, unit) * dt;
   while (distance > 0 && unit.path.length) {
     const point = unit.path[0];
     const dx = point.x - unit.x;
@@ -2239,9 +2312,9 @@ function steer(s, ids, dx, dy) {
       u.manual = length > 0.08 ? { dx: dx / divisor, dy: dy / divisor, left: 0.65 } : null;
     }
 }
-function manualTick(u, dt) {
+function manualTick(s, u, dt) {
   const m = u.manual,
-    step = stats(u.type, u.team).speed * Math.min(dt, m.left);
+    step = movementSpeed(s, u) * Math.min(dt, m.left);
   const valid = (x, y) =>
     x >= 0 && x < W && y >= 0 && y < H && walk[Math.floor(y / CELL) * COLS + Math.floor(x / CELL)];
   const dx = m.dx * step,
