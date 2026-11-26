@@ -566,6 +566,17 @@ export function createAI(team, difficulty = 'normal', state = null) {
         }
       }
       if (difficulty !== 'facile') {
+        const nearbyMilitary = own.filter((unit) => unit.type !== 'commis' && distance(unit, base) <= 300);
+        if (nearbyMilitary.length >= 6) {
+          const combinedDishes = team === 0 ? ['banquet', 'roti'] : ['peste', 'bouillon'];
+          for (const dish of combinedDishes) {
+            if (own.some((unit) => Sim.activeDishEffects(state, unit).includes(dish))) continue;
+            if (Sim.cookDish(state, team, dish).ok) {
+              actions++;
+              break;
+            }
+          }
+        }
         if (team === 1 && preservesWorkerCapacity(4) && Sim.cookDish(state, team, 'festin').ok) actions++;
         if (team === 0 && state.ingredients[team].viande >= 40 &&
           state.ragout.readyAt === null && state.ragout.expiresAt <= state.time) {
