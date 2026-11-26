@@ -26,7 +26,8 @@ try {
   const { CendreSim: Reference } = await import(pathToFileURL(join(directory, 'sim.js')));
   const probe = Reference.create();
   const referenceHasSimpleHeroes = !Object.hasOwn(probe, 'heroProgress');
-  const referenceHasPantries = Object.hasOwn(probe, 'pantries');
+  const referenceHasRaidPlacement = Sim.create().pantries.every(({ x, y }, team) =>
+    probe.pantries?.[team]?.x === x && probe.pantries[team].y === y);
   const referenceHasFieldKitchens = Object.hasOwn(probe, 'fieldKitchens');
   const referenceHasRoadCamps = probe.camps.some((camp) => camp.name.startsWith('camp-chemin-'));
   const referenceHasLizardCamps = probe.camps.some((camp) => camp.espece === 'lezard');
@@ -34,7 +35,7 @@ try {
   const referenceHasGuardedVein = probe.camps.some((camp) => camp.name === 'camp-veine');
   // Les héros, les garde-manger et la cuisine de campagne modifient l’état initial.
   // Les camps des neutres modifient aussi le déroulement du duel.
-  const loadedReferenceSim = referenceHasSimpleHeroes && referenceHasPantries &&
+  const loadedReferenceSim = referenceHasSimpleHeroes && referenceHasRaidPlacement &&
     referenceHasFieldKitchens && referenceHasRoadCamps && referenceHasLizardCamps && referenceHasGuardedVein
     ? Reference : Sim;
   // Les rangs sont débloqués pour comparer le scénario chargé avec une référence antérieure à D67.

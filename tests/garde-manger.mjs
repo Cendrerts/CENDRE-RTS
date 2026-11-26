@@ -28,14 +28,25 @@ function add(state, team, pantry, dx, dy = 0, type = 'knight') {
 const empty = create();
 const [first, second] = empty.pantries;
 assert.deepEqual(second, { x: Sim.W - first.x, y: Sim.H - first.y, stock: 0 });
+const raidStarts = [];
 for (const [team, pantry] of empty.pantries.entries()) {
   assert.equal(pantry.stock, 0);
   assert.equal(Sim.walk[cellAt(pantry.x, pantry.y)], 1);
   assert.equal(Sim.resolveTarget(empty, Sim.targetReference(pantry)), null);
   assert(Sim.visibleAt(empty, team, pantry.x, pantry.y));
-  assert(shortestPath(empty.bases[1 - team], pantry).length > 0);
-  assert(Math.abs(Math.hypot(pantry.x - empty.bases[team].x, pantry.y - empty.bases[team].y) - 200) < 20);
-  for (const point of [...empty.slots.flat(), ...empty.mines]) {
+  const distance = ({ x, y }) => Math.hypot(x - pantry.x, y - pantry.y);
+  assert(distance(empty.bases[team]) < 500);
+  const outsideWaypoints = Sim.lanes.flatMap(({ points }) => points.slice(2, -2));
+  const approach = outsideWaypoints.map(([x, y]) => ({ x, y })).sort((a, b) => distance(a) - distance(b))[0];
+  const choke = (x, y) => {
+    if (team === 1) [x, y] = [Sim.W - x, Sim.H - y];
+    return x >= 720 && x < 740 && y >= 1660 && y < 1840;
+  };
+  const path = shortestPath(approach, pantry);
+  assert(path.length > 0);
+  assert.equal(shortestPath(approach, pantry, choke).length, path.length);
+  raidStarts[team] = approach;
+  for (const point of [...empty.slots.flat(), ...empty.mines, empty.mines[2 + team].site]) {
     assert(Math.hypot(point.x - pantry.x, point.y - pantry.y) >= 75);
   }
 }
@@ -44,11 +55,12 @@ assert.deepEqual(empty.pantries.map(({ stock }) => stock), [10, 10]);
 advance(empty, 240);
 assert.deepEqual(empty.pantries.map(({ stock }) => stock), [40, 40]);
 
-for (const [team, count, expected] of [[0, 1, 5], [1, 3, 30], [1, 5, 30]]) {
+for (const [team, count, expected] of [[0, 1, 10], [1, 1, 10], [1, 3, 30], [1, 5, 30]]) {
   const state = create();
   const pantry = state.pantries[1 - team];
   pantry.stock = 40;
-  const offsets = [[0, 0], [40, 0], [-40, 0], [0, 40], [0, -40]];
+  const direction = team === 1 ? 1 : -1;
+  const offsets = [[100 * direction, 0], [0, -100 * direction], [0, 100 * direction], [40, 0], [0, 0]];
   for (const [dx, dy] of offsets.slice(0, count)) add(state, team, pantry, dx, dy);
   advance(state, 5);
   assert.equal(state.ingredients[team].conserves, expected);
@@ -63,11 +75,58 @@ for (const [team, count, expected] of [[0, 1, 5], [1, 3, 30], [1, 5, 30]]) {
 
 const guarded = create();
 guarded.pantries[0].stock = 40;
-add(guarded, 1, guarded.pantries[0], 0);
-add(guarded, 0, guarded.pantries[0], 100);
+const guardedRaider = add(guarded, 1, guarded.pantries[0], 0);
+const distantGuard = add(guarded, 0, guarded.pantries[0], 100);
+guardedRaider.cool = 0;
+distantGuard.cool = 0;
+Sim.visibility(guarded);
 advance(guarded, 5);
-assert.deepEqual(guarded.ingredients.map(({ conserves }) => conserves), [0, 0]);
-assert.equal(guarded.pantries[0].stock, 40);
+assert.deepEqual(guarded.ingredients.map(({ conserves }) => conserves), [0, 10]);
+assert.equal(guarded.pantries[0].stock, 30);
+assert.equal(guardedRaider.hp, guardedRaider.max);
+assert.equal(distantGuard.hp, distantGuard.max);
+
+const combat = create();
+combat.pantries[0].stock = 40;
+const raider = add(combat, 1, combat.pantries[0], 0);
+advance(combat, 0.5);
+assert(combat.pantryTimers[0].raidTime[raider.id] > 0);
+const guard = add(combat, 0, combat.pantries[0], 20);
+raider.cool = 0;
+guard.cool = 0;
+Sim.visibility(combat);
+advance(combat, 1);
+assert(raider.hp < raider.max);
+assert(guard.hp < guard.max);
+assert.equal(combat.ingredients[1].conserves, 0);
+assert.equal(combat.pantryTimers[0].raidTime[raider.id], undefined);
+guard.hp = 0;
+advance(combat, 0.5);
+assert.equal(combat.ingredients[1].conserves, 0);
+advance(combat, 0.5);
+assert.equal(combat.ingredients[1].conserves, 2);
+
+const attackMove = create();
+const attackMovePantry = attackMove.pantries[0];
+attackMovePantry.stock = 40;
+const attackers = [-24, 0, 24].map((dy) => add(attackMove, 1, attackMovePantry, 60, dy));
+const enemy = add(attackMove, 0, attackMovePantry, 0);
+for (const attacker of attackers) attacker.cool = 0;
+command(attackMove, 1, {
+  kind: 'attackMove',
+  ids: attackers.map(({ id }) => id),
+  x: attackMovePantry.x - 60,
+  y: attackMovePantry.y,
+});
+Sim.visibility(attackMove);
+advance(attackMove, 1);
+const stoppedPositions = attackers.map(({ x, y }) => ({ x, y }));
+for (const attacker of attackers) {
+  assert.equal(attacker.lastAttackTargetId, enemy.id);
+  assert(attacker.x < attackMovePantry.x + 60);
+}
+advance(attackMove, 0.05);
+assert.deepEqual(attackers.map(({ x, y }) => ({ x, y })), stoppedPositions);
 
 const limited = create();
 const pantry = limited.pantries[0];
@@ -87,6 +146,7 @@ assert.equal(pantry.stock, 0);
 const workers = create();
 workers.pantries[0].stock = 40;
 add(workers, 1, workers.pantries[0], 0, 0, 'commis');
+add(workers, 1, workers.pantries[0], 110);
 advance(workers, 5);
 assert.equal(workers.pantries[0].stock, 40);
 assert.equal(workers.ingredients[1].conserves, 0);
@@ -94,10 +154,34 @@ assert.equal(workers.ingredients[1].conserves, 0);
 const alertCooldown = create();
 alertCooldown.pantries[0].stock = 40;
 add(alertCooldown, 1, alertCooldown.pantries[0], 0);
-advance(alertCooldown, 10);
-assert.equal(alertCooldown.damageEvents.some(({ kind }) => kind === 'pantryRaid'), false);
 advance(alertCooldown, 1);
+const firstAlertAt = alertCooldown.pantryTimers[0].lastAlertAt;
+assert.equal(firstAlertAt, alertCooldown.time);
+for (let second = 2; second <= 10; second++) {
+  advance(alertCooldown, 1);
+  assert.equal(alertCooldown.pantryTimers[0].lastAlertAt, firstAlertAt);
+}
+advance(alertCooldown, 1);
+assert.equal(alertCooldown.pantryTimers[0].lastAlertAt, alertCooldown.time);
 assert.equal(alertCooldown.damageEvents.filter(({ kind }) => kind === 'pantryRaid').length, 1);
+
+for (const [team, dish] of [[0, 'banquet'], [1, 'peste']]) {
+  const state = create();
+  Sim.tick(state, 84);
+  const target = state.pantries[1 - team];
+  assert.equal(target.stock, 14);
+  assert.equal(state.ingredients[team].conserves, 0);
+  const approach = raidStarts[1 - team];
+  const unit = add(state, team, approach, 0);
+  command(state, team, { kind: 'attackMove', ids: [unit.id], x: target.x, y: target.y });
+  advance(state, 11);
+  assert.equal(state.ingredients[team].conserves, 15);
+  state.bases[team].niveau = 3;
+  Object.assign(state.ingredients[team], { viande: 30, epices: 20 });
+  command(state, team, { kind: 'cookDish', dish });
+  assert(state[dish].readyAt > state.time);
+  assert.equal(state.ingredients[team].conserves, 0);
+}
 
 const restored = Sim.restore(Sim.serialize(limited));
 assert.deepEqual(restored.pantries, limited.pantries);
@@ -106,6 +190,12 @@ assert.deepEqual(unpack(pack(limited)).pantryTimers, limited.pantryTimers);
 const [own, opponent] = view(limited, 0).pantries;
 assert.deepEqual(own, pantry);
 assert.deepEqual(opponent, { ...limited.pantries[1], stock: null });
+Object.assign(restored.pantries[0], { x: 650, y: 1750, stock: 9 });
+Object.assign(restored.pantries[1], { x: 3350, y: 450 });
+restored.pantryTimers[0].raidTime = { 1: 0.5 };
+const migrated = Sim.restore(Sim.serialize(restored));
+assert.deepEqual(migrated.pantries, [{ ...first, stock: 9 }, { ...second, stock: 0 }]);
+assert.deepEqual(migrated.pantryTimers[0], { ...limited.pantryTimers[0], raidTime: {} });
 delete restored.pantries;
 delete restored.pantryTimers;
 assert.deepEqual(Sim.restore(Sim.serialize(restored)).pantries, create().pantries);

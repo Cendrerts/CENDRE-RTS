@@ -383,10 +383,12 @@ function cachesTick(s, dt) {
 }
 const PANTRY_CAPACITY = 40;
 const PANTRY_REFILL_PERIOD = 6;
+const PANTRY_RAID_RADIUS = 110;
+const PANTRY_RAID_RATE = 2;
 
 function createPantries() {
-  const x = 650;
-  const y = 1750;
+  const x = 870;
+  const y = 1630;
   return [{ x, y, stock: 0 }, { x: W - x, y: H - y, stock: 0 }];
 }
 function createPantryTimers(time) {
@@ -396,37 +398,39 @@ function createPantryTimers(time) {
     raidTime: {},
   }));
 }
-function pantriesTick(s, dt) {
+function pantryRaiders(s, owner, pantry, fighting) {
+  if (pantry.stock <= 0) return [];
+  const raiders = [];
+  for (const unit of s.units) {
+    if (unit.team !== 1 - owner || unit.hp <= 0 || unit.type === 'commis' || unit.type === 'sanglier') continue;
+    if (fighting.has(unit.id)) continue;
+    if (Math.hypot(unit.x - pantry.x, unit.y - pantry.y) >= PANTRY_RAID_RADIUS) continue;
+    raiders.push(unit);
+    if (raiders.length === 3) break;
+  }
+  return raiders;
+}
+function refillPantries(s) {
   for (const [owner, pantry] of s.pantries.entries()) {
     const timers = s.pantryTimers[owner];
     while (s.time + 1e-9 >= timers.refillAt) {
       pantry.stock = Math.min(PANTRY_CAPACITY, pantry.stock + 1);
       timers.refillAt += PANTRY_REFILL_PERIOD;
     }
-
-    const raiders = [];
-    let guarded = false;
-    for (const unit of s.units) {
-      if (unit.hp <= 0 || unit.type === 'commis' || unit.type === 'sanglier') continue;
-      const distance = Math.hypot(unit.x - pantry.x, unit.y - pantry.y);
-      if (unit.team === owner && distance < 120) {
-        guarded = true;
-        break;
-      }
-      if (unit.team === 1 - owner && distance < 70 && raiders.length < 3) {
-        raiders.push(unit);
-      }
-    }
+  }
+}
+function pantriesTick(s, dt, fighting) {
+  for (const [owner, pantry] of s.pantries.entries()) {
+    const timers = s.pantryTimers[owner];
     const previousRaidTime = timers.raidTime;
     timers.raidTime = {};
-    if (guarded || !pantry.stock) continue;
 
     let stolen = 0;
-    for (const unit of raiders) {
+    for (const unit of pantryRaiders(s, owner, pantry, fighting)) {
       const elapsed = (previousRaidTime[unit.id] || 0) + dt;
       const seconds = Math.floor(elapsed + 1e-9);
       timers.raidTime[unit.id] = elapsed - seconds;
-      const amount = Math.min(pantry.stock, seconds * (unit.team === 1 ? 2 : 1));
+      const amount = Math.min(pantry.stock, seconds * PANTRY_RAID_RATE);
       pantry.stock -= amount;
       s.ingredients[unit.team].conserves += amount;
       stolen += amount;
@@ -792,6 +796,9 @@ function migrateState(s) {
   if (!s.pantries) {
     s.pantries = createPantries();
     s.pantryTimers = createPantryTimers(s.time);
+  } else if (s.pantries[0].x === 650 && s.pantries[0].y === 1750) {
+    s.pantries = createPantries().map((pantry, team) => ({ ...pantry, stock: s.pantries[team].stock }));
+    for (const timers of s.pantryTimers ?? []) timers.raidTime = {};
   }
   s.pantryTimers ??= createPantryTimers(s.time);
   s.ragout ??= { readyAt: null, expiresAt: 0 };
@@ -1731,6 +1738,7 @@ function tick(s, dt) {
   }
   monstersTick(s, dt);
   braisesTick(s, dt);
+  refillPantries(s);
   const fighting = new Set();
   const entities = new Map([...s.units, ...s.monsters].map((unit) => [unit.id, unit]));
   const structures = s.bases.map((base, team) => [
@@ -1950,7 +1958,7 @@ function tick(s, dt) {
   }
   if (structures.flat().some((structure) => structure.structure === 'depot' && structure.hp <= 0)) ensureSlots(s);
   s.units = s.units.filter((u) => u.hp > 0);
-  pantriesTick(s, dt);
+  pantriesTick(s, dt, fighting);
   s.shots = s.shots.filter((p) => (p.life -= dt) > 0);
 }
 
