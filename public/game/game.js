@@ -302,6 +302,7 @@ let queueSelection = '';
 let productionUI = null;
 
 const observedTowerLosses = new Map();
+let observedCacheCollection;
 const knownBraises = new Map();
 let observedBraisesCycle = -1;
 function visibleBraises() {
@@ -311,6 +312,11 @@ function visibleBraises() {
   return [...knownBraises.values()];
 }
 function updateUI() {
+  const collectedAt = state.cacheCollectedAt?.[player];
+  if (observedCacheCollection !== undefined && collectedAt != null && collectedAt !== observedCacheCollection) {
+    notify('Conserves récupérées : +10');
+  }
+  observedCacheCollection = collectedAt;
   const braisesCycle = state.time >= 240 ? Math.floor((state.time - 240 + 1e-9) / 150) : -1;
   if (braisesCycle > observedBraisesCycle && state.braises?.some((foyer) => foyer.lit)) notify('Braises allumées');
   observedBraisesCycle = braisesCycle;
@@ -426,6 +432,7 @@ function beginSolo(save, startPaused) {
   $('#veil').classList.remove('match-ended');
   state = save.state;
   observedTowerLosses.clear();
+  observedCacheCollection = undefined;
   knownBraises.clear();
   observedBraisesCycle = -1;
   controlGroupsUI?.reset();
@@ -1334,6 +1341,9 @@ function drawMini(fumets, now) {
     terrain,
     fog,
     watchtowers: state.watchtowers,
+    caches: (state.caches || []).filter((cache) =>
+      state.time >= cache.readyAt && state.explored[player][Math.floor(cache.y / CELL) * COLS + Math.floor(cache.x / CELL)],
+    ),
     fieldKitchens: visibleFieldKitchens(),
     pantries: (state.pantries || []).flatMap(({ x, y }, team) =>
       team === player || state.explored[player][Math.floor(y / CELL) * COLS + Math.floor(x / CELL)]
@@ -1438,6 +1448,25 @@ function draw() {
       ctx.lineWidth = 4 / scale;
       ctx.beginPath();
       ctx.arc(tower.x, tower.y, 43, -Math.PI / 2, -Math.PI / 2 + tower.progress / Sim.RULES.towerCapture * Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+  for (const { x, y, readyAt, progress, capturingTeam } of state.caches || []) {
+    if (!Sim.visibleAt(state, player, x, y)) continue;
+    const full = state.time >= readyAt;
+    ellipse(x, y + 7, 28, 9, '#11171988');
+    ctx.fillStyle = full ? '#8d5936' : '#53565a';
+    ctx.fillRect(x - 24, y - 18, 48, 26);
+    ctx.fillStyle = full ? '#c28b53' : '#696d70';
+    ctx.fillRect(x - 27, y - 27, 54, 11);
+    line(x - 25, y - 26, x + 25, y - 26, full ? '#fff2bd' : '#939596', 3);
+    line(x - 17, y - 14, x - 17, y + 6, full ? '#593421' : '#404448', 4);
+    line(x + 17, y - 14, x + 17, y + 6, full ? '#593421' : '#404448', 4);
+    if (progress > 0) {
+      ctx.strokeStyle = TEAM_COLORS[capturingTeam];
+      ctx.lineWidth = 4 / scale;
+      ctx.beginPath();
+      ctx.arc(x, y - 9, 38, -Math.PI / 2, -Math.PI / 2 + progress / RULES.cacheCapture * Math.PI * 2);
       ctx.stroke();
     }
   }
@@ -1681,6 +1710,7 @@ function lobbyControls(connected) {
 }
 function resetNetwork() {
   observedTowerLosses.clear();
+  observedCacheCollection = undefined;
   knownBraises.clear();
   observedBraisesCycle = -1;
   closePauseMenu();

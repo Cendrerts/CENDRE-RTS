@@ -4,7 +4,7 @@ export function minimapPoint(x, y, width, height, worldWidth, worldHeight) {
   return { x: x * width / worldWidth, y: y * height / worldHeight };
 }
 
-export function drawMinimap(ctx, { terrain, fog, units, mines, bases = [], watchtowers = [], braises = [], pantries = [], fieldKitchens = [], camera, player, worldWidth, worldHeight }) {
+export function drawMinimap(ctx, { terrain, fog, units, mines, bases = [], watchtowers = [], caches = [], braises = [], pantries = [], fieldKitchens = [], camera, player, worldWidth, worldHeight }) {
   const { width, height } = ctx.canvas;
   const point = (x, y) => minimapPoint(x, y, width, height, worldWidth, worldHeight);
   ctx.save();
@@ -29,6 +29,16 @@ export function drawMinimap(ctx, { terrain, fog, units, mines, bases = [], watch
     ctx.beginPath();
     ctx.arc(position.x, position.y, 3, 0, Math.PI * 2);
     ctx.fill();
+  }
+  for (const cache of caches) {
+    const position = point(cache.x, cache.y);
+    ctx.fillStyle = '#fff2bd';
+    ctx.strokeStyle = '#38251b';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(position.x, position.y, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
   }
   for (const foyer of braises) {
     if (!foyer.lit) continue;

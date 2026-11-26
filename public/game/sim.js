@@ -53,6 +53,7 @@ const RULES = {
   towerRadius: 90,
   towerCapture: 4,
   towerVision: 420,
+  cacheCapture: 5,
   forestDamage: 2,
   forestReveal: 80,
   mineCost: 120,
@@ -337,6 +338,37 @@ function watchtowersTick(s, dt) {
     }
   }
 }
+function createCaches() {
+  return [
+    { name: 'cache-nord', x: 2000, y: 250 },
+    { name: 'cache-sud', x: 2000, y: 1950 },
+  ].map((site) => ({ ...site, readyAt: 180, capturingTeam: NEUTRAL, progress: 0 }));
+}
+
+function cachesTick(s, dt) {
+  for (const cache of s.caches) {
+    const elapsed = Math.min(dt, s.time - cache.readyAt);
+    if (elapsed <= 0) continue;
+    const present = [false, false];
+    for (const unit of s.units) {
+      if (unit.hp <= 0 || unit.type === 'commis' || (unit.team !== 0 && unit.team !== 1)) continue;
+      if (Math.hypot(unit.x - cache.x, unit.y - cache.y) < 70) present[unit.team] = true;
+      if (present[0] && present[1]) break;
+    }
+    let team = NEUTRAL;
+    if (present[0] !== present[1]) team = present[0] ? 0 : 1;
+    if (team !== cache.capturingTeam || team === NEUTRAL) cache.progress = 0;
+    cache.capturingTeam = team;
+    if (team === NEUTRAL) continue;
+    cache.progress += elapsed;
+    if (cache.progress + 1e-9 < RULES.cacheCapture) continue;
+    s.ingredients[team].conserves += 10;
+    s.cacheCollectedAt[team] = s.time;
+    cache.readyAt = s.time + 150;
+    cache.capturingTeam = NEUTRAL;
+    cache.progress = 0;
+  }
+}
 const PANTRY_CAPACITY = 40;
 const PANTRY_REFILL_PERIOD = 6;
 
@@ -430,6 +462,8 @@ function create() {
       { x: 3550, y: 450, team: 1, hp: 1500, max: 1500, base: true, niveau: 1 },
     ],
     watchtowers: createWatchtowers(),
+    caches: createCaches(),
+    cacheCollectedAt: [null, null],
     braises: createBraises(),
     braisesNextAt: 240,
     mines: [
@@ -734,6 +768,8 @@ function migrateState(s) {
   }
   for (const base of s.bases) base.niveau ??= 1;
   s.watchtowers ??= createWatchtowers();
+  s.caches ??= createCaches();
+  s.cacheCollectedAt ??= [null, null];
   s.braises ??= createBraises();
   s.braisesNextAt ??= 240;
   delete s.tower;
@@ -1661,6 +1697,7 @@ function tick(s, dt) {
   s.fogClock += dt;
   s.aiClock += dt;
   watchtowersTick(s, dt);
+  cachesTick(s, dt);
   if (s.fogClock > 0.18) {
     visibility(s);
     s.fogClock = 0;
@@ -2273,9 +2310,10 @@ function restore(texte) {
     }
 
     const state = objects[0];
+    if (!Object.hasOwn(state, 'caches')) state.caches = createCaches();
     const collections = [
       'units', 'monsters', 'bases', 'mines', 'slots', 'camps', 'corpses', 'watchtowers',
-      'braises', 'queues', 'shots', 'damageEvents', 'devourEvents',
+      'braises', 'caches', 'queues', 'shots', 'damageEvents', 'devourEvents',
       'matchCounters', 'controlGroups', 'rubies', 'ingredients', 'incomeMultiplier',
     ];
     if (nodes[0][0] !== 'object' || !collections.every((key) => Array.isArray(state[key]))) return null;
