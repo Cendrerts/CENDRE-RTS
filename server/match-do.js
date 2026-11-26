@@ -397,7 +397,9 @@ export class Match {
         socket.serializeAttachment(attachment);
         if (!message.cmd || typeof message.cmd !== 'object' || Array.isArray(message.cmd))
           throw new MatchError('Commande incorrecte.');
-        if (!['playing', 'disconnected'].includes(this.status()))
+        const status = this.status();
+        if (!['playing', 'disconnected'].includes(status) &&
+            !(status === 'ended' && message.cmd.kind === 'kingFeast'))
           throw new MatchError('Attendez que les deux joueurs soient connectés.');
         command(this.sim, team, message.cmd);
       } else if (message?.type === 'leave') {

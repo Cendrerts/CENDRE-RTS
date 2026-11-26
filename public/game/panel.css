@@ -503,6 +503,10 @@ button svg[data-icon='selection'] {
   gap: 2px;
 }
 
+#kingFeastAction[aria-disabled='true'] {
+  opacity: 0.65;
+}
+
 #contextActions:has(#heroAction) {
   display: flex;
   width: 230px;

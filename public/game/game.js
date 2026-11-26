@@ -2457,6 +2457,16 @@ function requestRecruit(command, count = 1, producerIds = null) {
 }
 function panelCommand(command) {
   if (!running || paused) return;
+  if (command.kind === 'kingFeast') {
+    if (net) {
+      sendCommand(command);
+    } else {
+      const result = Sim.kingFeast(state, player);
+      if (!result.ok) notify(result.reason);
+    }
+    updateUI();
+    return;
+  }
   if (command.kind === 'cookDish') {
     const reason = Sim.cookDishBlockReason(state, player, command.dish);
     if (reason) notify(reason);
@@ -2529,7 +2539,17 @@ function renderContextPanel() {
     upgradeProgress.value = model.upgrade.duration - upgradeRemaining;
     $('#mainUpgrade small').textContent = `${Math.ceil(upgradeRemaining - 1e-9)} s restantes`;
   }
-  const signature = JSON.stringify([model, paused, patrolArmed, rallyArmed, queueArmed, Sim.cookDishBlockReason(state, player, player === 1 ? 'festin' : 'ragout')], (key, value) =>
+  const kingSelected = player === 1 && model.mode === 'units' && state.units.some((unit) =>
+    unit.team === player && unit.type === 'hero' && unit.hp > 0 && selected.has(unit.id));
+  const feastReason = kingSelected
+    ? net && Object.hasOwn(state, 'kingFeastReason')
+      ? state.kingFeastReason
+      : Sim.kingFeastBlockReason(state, player)
+    : null;
+  const feastRemaining = kingSelected
+    ? Math.max(0, Math.ceil((state.kingFeastReadyAt ?? 0) - state.time - 1e-9))
+    : 0;
+  const signature = JSON.stringify([model, paused, patrolArmed, rallyArmed, queueArmed, kingSelected, feastReason, feastRemaining, Sim.cookDishBlockReason(state, player, player === 1 ? 'festin' : 'ragout')], (key, value) =>
     ['remaining', 'hp', 'status'].includes(key) ? undefined : value,
   );
   if (signature === panelSignature) return;
@@ -2744,9 +2764,18 @@ function renderContextPanel() {
     actions.append(cancel);
   } else if (model.mode === 'units') {
     const ability = document.createElement('button');
-    ability.innerHTML = iconSvg('special') + ' Compétence spéciale';
-    ability.disabled = true;
-    ability.title = 'Aucune compétence disponible';
+    if (kingSelected) {
+      ability.id = 'kingFeastAction';
+      ability.innerHTML = iconSvg('curee') + (feastRemaining > 0 ? ` Curée · ${feastRemaining} s` : ' Curée');
+      ability.setAttribute('aria-disabled', String(Boolean(feastReason)));
+      ability.disabled = paused;
+      ability.title = feastReason || 'Les rats militaires à portée dévorent les cadavres proches.';
+      ability.onclick = () => panelCommand({ kind: 'kingFeast' });
+    } else {
+      ability.innerHTML = iconSvg('special') + ' Compétence spéciale';
+      ability.disabled = true;
+      ability.title = 'Aucune compétence disponible';
+    }
     const patrol = document.createElement('button');
     patrol.innerHTML = iconSvg('patrol') + ' Patrouiller';
     patrol.setAttribute('aria-pressed', String(patrolArmed));
