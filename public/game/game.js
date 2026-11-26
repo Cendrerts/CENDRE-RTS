@@ -1,3 +1,5 @@
+import { bindActionCard, costText, dishOptions, fieldKitchenCard, kingFeastCard, rankCard } from './action-cards.js';
+import { initResourceFeedback, trackResourceSpend } from './resource-feedback.js';
 import { iconSvg } from './icons.js';
 import { initProduction, recruitToastText } from './production.js';
 import { panelModel, panelVisibility } from './panel.js';
@@ -84,18 +86,7 @@ let fumetRotiReadyAt;
 let fumetBouillonReadyAt;
 let fumetBanquetReadyAt;
 let fumetPesteReadyAt;
-const dishOptions = [
-  [
-    { dish: 'ragout', name: 'Ragoût', icon: 'ragout', viande: 40, details: '20 s de cuisson · unités à 350 px · +15 % de dégâts pendant 45 s' },
-    { dish: 'roti', name: 'Rôti aux épices', icon: 'ragout', viande: 30, epices: 20, details: '20 s de cuisson · unités à 350 px · +20 % de vitesse pendant 40 s' },
-    { dish: 'banquet', name: 'Grand Banquet', viande: 30, epices: 20, conserves: 15, details: '30 s de cuisson · unités à 350 px · soin complet et +25 % de dégâts pendant 30 s' },
-  ],
-  [
-    { dish: 'festin', name: 'Festin', icon: 'festin', viande: 40, details: '15 s de préparation · 4 Rats-Éboueurs' },
-    { dish: 'bouillon', name: 'Bouillon de la Décharge', icon: 'festin', viande: 30, epices: 20, details: '15 s de cuisson · unités à 350 px · +3 PV/s pendant 20 s' },
-    { dish: 'peste', name: 'Marmite de la Peste', viande: 30, epices: 20, conserves: 15, details: '25 s de cuisson · unités à 350 px · 30 % de vol de vie pendant 30 s' },
-  ],
-];
+const refreshResourceFeedback = initResourceFeedback(document);
 let state = Sim.create(),
   selected = new Set(),
   player = 0,
@@ -314,6 +305,8 @@ function visibleBraises() {
   return [...knownBraises.values()];
 }
 function updateUI() {
+  document.body.classList.toggle('resource-feedback-active', running);
+  refreshResourceFeedback(state, player, running ? net || state : null);
   const collectedAt = state.cacheCollectedAt?.[player];
   if (observedCacheCollection !== undefined && collectedAt != null && collectedAt !== observedCacheCollection) {
     notify('Conserves récupérées : +10');
@@ -331,16 +324,15 @@ function updateUI() {
   }
   const dishStatus = $('#dishStatus');
   let dishCountdown = '';
-  if (player === 0 && ragoutSeconds > 0) dishCountdown = 'Ragoût ' + ragoutSeconds + ' s';
+  if (player === 0 && ragoutSeconds > 0) dishCountdown = dishOptions[0][0].name + ' ' + ragoutSeconds + ' s';
   if (player === 1 && state.festin?.readyAt != null) {
-    dishCountdown = 'Festin ' + Math.max(0, Math.ceil(state.festin.readyAt - state.time)) + ' s';
+    dishCountdown = dishOptions[1][0].name + ' ' + Math.max(0, Math.ceil(state.festin.readyAt - state.time)) + ' s';
   }
-  for (const { dish, name } of dishOptions[player].slice(1)) {
+  for (const { dish, name, shortName } of dishOptions[player].slice(1)) {
     const readyAt = state[dish]?.readyAt;
     if (readyAt == null) continue;
     const seconds = Math.max(0, Math.ceil(readyAt - state.time - 1e-9));
-    const countdownName = dish === 'roti' ? 'Rôti' : dish === 'bouillon' ? 'Bouillon' : name;
-    dishCountdown = [dishCountdown, countdownName + ' ' + seconds + ' s'].filter(Boolean).join(' · ');
+    dishCountdown = [dishCountdown, (shortName || name) + ' ' + seconds + ' s'].filter(Boolean).join(' · ');
   }
   dishStatus.textContent = dishCountdown;
   dishStatus.hidden = !dishCountdown;
@@ -2592,10 +2584,9 @@ radial = createRadialMenu({
       if (sent) notify('Construction envoyée au serveur');
       return !!sent;
     }
-    const ok =
-      option.kind === 'depot'
-        ? Sim.build(state, player, context.mine)
-        : Sim.construct(state, player, option.id, context.baseId, slotId);
+    const ok = trackResourceSpend(state, player, () => option.kind === 'depot'
+      ? Sim.build(state, player, context.mine)
+      : Sim.construct(state, player, option.id, context.baseId, slotId));
     const successMessage = option.kind === 'depot' ? 'Construction terminée' : 'Construction lancée';
     notify(ok ? successMessage : 'Construction impossible : emplacement indisponible.');
     updateUI();
@@ -2612,6 +2603,45 @@ panelRoot.innerHTML =
 document.body.append(panelRoot);
 $('#contextGroups').append($('#controlGroups'), $('#all'));
 $('#combatActions').append($('#baseAction'), selectionToggle, $('#attackAction'));
+const actionCard = document.createElement('div');
+actionCard.id = 'actionCard';
+actionCard.setAttribute('role', 'tooltip');
+actionCard.hidden = true;
+document.body.append(actionCard);
+
+function closeActionCard() {
+  actionCard.hidden = true;
+}
+
+document.addEventListener('pointerdown', closeActionCard, true);
+window.addEventListener('blur', closeActionCard);
+
+function describeAction(button, card, refusal, activate) {
+  bindActionCard(button, () => {
+    const title = document.createElement('strong');
+    title.textContent = card.name;
+    const details = document.createElement('p');
+    details.className = 'action-card-details';
+    details.textContent = costText(card.cost) + ' · ' + card.duration;
+    const effect = document.createElement('p');
+    effect.textContent = card.effect;
+    actionCard.replaceChildren(title, details, effect);
+    const reason = refusal();
+    if (reason) {
+      const note = document.createElement('p');
+      note.className = 'action-card-refusal';
+      note.textContent = reason;
+      actionCard.append(note);
+    }
+    actionCard.hidden = false;
+  }, closeActionCard, activate);
+}
+
+function fieldKitchenReason() {
+  // The simulation only exposes the command. Preview it on a copy to keep the same refusal rules.
+  return Sim.fieldKitchen(structuredClone(state), player).reason;
+}
+
 const idleButton = document.createElement('button');
 idleButton.id = 'idleWorkers';
 idleButton.hidden = true;
@@ -2712,7 +2742,8 @@ function requestRecruit(command, count = 1, producerIds = null) {
     reason = Sim.recruitBlockReason(preview, player, command.type, command.producerId);
     if (reason) break;
     if (net && !sendCommand(command)) break;
-    if (!Sim.recruit(preview, command.type, player, command.producerId)) break;
+    const recruit = () => Sim.recruit(preview, command.type, player, command.producerId);
+    if (!(net ? recruit() : trackResourceSpend(state, player, recruit))) break;
     launched++;
   }
   if (reason) {
@@ -2748,7 +2779,7 @@ function panelCommand(command) {
     if (net) {
       sendCommand(command);
     } else {
-      const result = Sim.fieldKitchen(state, player);
+      const result = trackResourceSpend(state, player, () => Sim.fieldKitchen(state, player));
       if (!result.ok) notify(result.reason);
     }
     updateUI();
@@ -2758,7 +2789,7 @@ function panelCommand(command) {
     const reason = Sim.cookDishBlockReason(state, player, command.dish, command);
     if (reason) notify(reason);
     else if (net) sendCommand(command);
-    else Sim.cookDish(state, player, command.dish, command);
+    else trackResourceSpend(state, player, () => Sim.cookDish(state, player, command.dish, command));
     updateUI();
     return;
   }
@@ -2773,11 +2804,11 @@ function panelCommand(command) {
       : null;
   if (reason) notify(reason);
   else if (net) sendCommand(command);
-  else if (command.kind === 'upgradeMain') Sim.upgradeMain(state, player);
+  else if (command.kind === 'upgradeMain') trackResourceSpend(state, player, () => Sim.upgradeMain(state, player));
   else if (command.kind === 'setRally') Sim.setRally(state, player, command);
   else if (command.kind === 'construct')
-    Sim.construct(state, player, command.type, command.baseId, command.slotId);
-  else if (command.kind === 'build') Sim.build(state, player, command.index);
+    trackResourceSpend(state, player, () => Sim.construct(state, player, command.type, command.baseId, command.slotId));
+  else if (command.kind === 'build') trackResourceSpend(state, player, () => Sim.build(state, player, command.index));
   else if (command.kind === 'cancelConstruction')
     Sim.cancelConstruction(state, player, command.slotId);
   else if (command.kind === 'cancelProduction')
@@ -2845,6 +2876,8 @@ function renderContextPanel() {
     ['remaining', 'hp', 'status'].includes(key) ? undefined : value,
   );
   if (signature === panelSignature) return;
+  if (!paused && panelRoot.querySelector('.action-card-pressed')) return;
+  closeActionCard();
   panelSignature = signature;
   const identity = $('#contextIdentity');
   identity.replaceChildren();
@@ -3032,13 +3065,15 @@ function renderContextPanel() {
     } else {
       const button = document.createElement('button');
       button.id = 'mainUpgradeAction';
-      button.textContent = `Améliorer · ${upgrade.name}`;
-      label.textContent = `${upgrade.cost} rubis · ${upgrade.duration} s · Débloque rang ${upgrade.rank}`;
+      const card = rankCard(upgrade, player);
+      button.textContent = `Améliorer · ${card.name}`;
+      label.textContent = `${costText(card.cost)} · ${card.duration}`;
       button.append(label);
       button.disabled = paused;
       button.setAttribute('aria-disabled', String(!!upgrade.reason));
-      button.title = upgrade.reason || `Débloque les bâtiments de rang ${upgrade.rank}`;
-      button.onclick = () => panelCommand({ kind: 'upgradeMain' });
+      button.title = upgrade.reason || card.effect;
+      describeAction(button, card, () => Sim.upgradeMainBlockReason(state, player),
+        () => panelCommand({ kind: 'upgradeMain' }));
       grid.append(button);
     }
   }
@@ -3058,17 +3093,21 @@ function renderContextPanel() {
     const ability = document.createElement('button');
     if (kingSelected) {
       ability.id = 'kingFeastAction';
-      ability.innerHTML = iconSvg('curee') + (feastRemaining > 0 ? ` Curée · ${feastRemaining} s` : ' Curée');
+      ability.innerHTML = iconSvg('curee') + ' ' + kingFeastCard.name +
+        (feastRemaining > 0 ? ` · ${feastRemaining} s` : '');
       ability.setAttribute('aria-disabled', String(Boolean(feastReason)));
       ability.disabled = paused;
-      ability.title = feastReason || 'Les rats militaires à portée dévorent les cadavres proches.';
-      ability.onclick = () => panelCommand({ kind: 'kingFeast' });
+      ability.title = feastReason || kingFeastCard.effect;
+      describeAction(ability, kingFeastCard, () => net && Object.hasOwn(state, 'kingFeastReason')
+        ? state.kingFeastReason
+        : Sim.kingFeastBlockReason(state, player), () => panelCommand({ kind: 'kingFeast' }));
     } else if (chefSelected) {
       ability.id = 'fieldKitchenAction';
-      ability.textContent = `Cuisine de campagne · ${Sim.FIELD_KITCHEN_COST}`;
-      ability.setAttribute('aria-label', `Cuisine de campagne · ${Sim.FIELD_KITCHEN_COST} rubis`);
+      const card = fieldKitchenCard;
+      ability.textContent = `${card.name} · ${costText(card.cost)}`;
+      ability.title = card.effect;
       ability.disabled = paused;
-      ability.onclick = () => panelCommand({ kind: 'fieldKitchen' });
+      describeAction(ability, card, fieldKitchenReason, () => panelCommand({ kind: 'fieldKitchen' }));
     } else {
       ability.innerHTML = iconSvg('special') + ' Compétence spéciale';
       ability.disabled = true;
@@ -3101,22 +3140,24 @@ function renderContextPanel() {
   } else {
     const opened = openedRallyBuilding();
     if (opened?.id === 'main_' + player || model.mode === 'fieldKitchen') {
-      for (const [index, { dish, name, icon, viande, epices, conserves, details }] of dishOptions[player].entries()) {
+      for (const [index, card] of dishOptions[player].entries()) {
+        const { dish, name, icon, cost, effect } = card;
         const dishButton = document.createElement('button');
         dishButton.id = dish + 'Action';
-        dishButton.className = epices ? 'dish-action combined-dish' : 'dish-action';
+        dishButton.className = cost.epices ? 'dish-action combined-dish' : 'dish-action';
         const costIcon = (ingredient) =>
           `<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><use href="#${ingredient}-icon"/></svg>`;
-        const costs = [[viande, 'viande', 'Viande'], [epices, 'epices', 'Épices'], [conserves, 'conserves', 'Conserves']]
-          .filter(([amount]) => amount);
-        dishButton.innerHTML = (epices ? '' : iconSvg(icon) + ' ') + name +
-          ` <span class="dish-cost">${costs.map(([amount, ingredient]) => costIcon(ingredient) + ' ' + amount).join(' ')}</span>`;
-        dishButton.setAttribute('aria-label', [name, ...costs.map(([amount, , label]) => amount + ' ' + label)].join(' · '));
+        dishButton.innerHTML = (cost.epices ? '' : iconSvg(icon) + ' ') + name +
+          ` <span class="dish-cost">${Object.entries(cost).map(([ingredient, amount]) => costIcon(ingredient) + ' ' + amount).join(' ')}</span>`;
+        dishButton.setAttribute('aria-label', name + ' · ' + costText(cost));
         const reason = dishReasons[index];
+        dishButton.disabled = paused;
         dishButton.setAttribute('aria-disabled', String(Boolean(reason)));
         dishButton.style.opacity = reason ? '0.5' : '1';
-        dishButton.title = reason || details;
-        dishButton.onclick = () => panelCommand({ kind: 'cookDish', dish, at: dishLocation });
+        dishButton.title = reason || effect;
+        describeAction(dishButton, card,
+          () => Sim.cookDishBlockReason(state, player, dish, { at: dishLocation }),
+          () => panelCommand({ kind: 'cookDish', dish, at: dishLocation }));
         actions.append(dishButton);
       }
     }

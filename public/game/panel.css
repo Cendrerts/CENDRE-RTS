@@ -568,3 +568,112 @@ button svg[data-icon='selection'] {
   width: 14px;
   flex-shrink: 0;
 }
+
+.resource-feedback-active header .stats {
+  min-width: 0;
+  margin-top: 40px;
+}
+
+.resource-feedback-active #dishStatus {
+  min-width: 0;
+  white-space: normal;
+}
+
+.resource-feedback-active header #pause,
+.resource-feedback-active header #netBadge {
+  align-self: flex-start;
+  flex-shrink: 0;
+}
+
+.resource-feedback-active #minimap {
+  margin-top: 41px;
+}
+
+.resource-feedback-active #towerStatus {
+  margin-top: 41px;
+}
+
+header [data-resource] {
+  position: relative;
+}
+
+.resource-feedback-active header [data-resource] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: 62px;
+}
+
+header [data-resource='rubies'] { --resource-color: #ff8ba2; }
+header [data-resource='viande'] { --resource-color: #ffad9d; }
+header [data-resource='epices'] { --resource-color: #ffd18c; }
+header [data-resource='conserves'] { --resource-color: #aee7e3; }
+
+.resource-changes {
+  position: absolute;
+  bottom: calc(100% + 5px);
+  left: 50%;
+  pointer-events: none;
+}
+
+.resource-change {
+  position: absolute;
+  bottom: calc(var(--row) * 18px);
+  left: 0;
+  padding: 0 3px;
+  border-radius: 3px;
+  background: #101d22;
+  color: var(--resource-color);
+  font: 700 10px/12px Arial, sans-serif;
+  white-space: nowrap;
+  animation: resource-float 1s ease-out both;
+}
+
+@keyframes resource-float {
+  0% { transform: translate(-50%, 6px); }
+  25%, 70% { opacity: 1; }
+  100% { transform: translate(-50%, 0); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .resource-change { animation-name: resource-fade; }
+}
+
+@keyframes resource-fade {
+  0%, 70% { transform: translateX(-50%); opacity: 1; }
+  100% { transform: translateX(-50%); opacity: 0; }
+}
+
+#actionCard[hidden] {
+  display: none;
+}
+
+#actionCard {
+  display: block;
+  position: fixed;
+  z-index: 31;
+  top: calc(max(8px, env(safe-area-inset-top)) + 81px);
+  left: 50%;
+  width: min(360px, calc(100vw - 32px));
+  transform: translateX(-50%);
+  padding: 10px 13px;
+  border: 1px solid #bca574;
+  border-radius: 10px;
+  background: #101d22fa;
+  box-shadow: 0 4px 16px #0008;
+  color: #f7e7c8;
+  font: 13px/1.35 Arial, sans-serif;
+  pointer-events: none;
+}
+
+#actionCard strong {
+  font-size: 15px;
+}
+
+#actionCard p {
+  margin: 5px 0 0;
+}
+
+.action-card-details { color: #e1c58f; }
+.action-card-refusal { color: #ffad9d; }
