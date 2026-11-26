@@ -30,6 +30,7 @@ try {
   const referenceHasFieldKitchens = Object.hasOwn(probe, 'fieldKitchens');
   const referenceHasRoadCamps = probe.camps.some((camp) => camp.name.startsWith('camp-chemin-'));
   const referenceHasLizardCamps = probe.camps.some((camp) => camp.espece === 'lezard');
+  const referenceHasCaches = Array.isArray(probe.caches);
   const referenceHasGuardedVein = probe.camps.some((camp) => camp.name === 'camp-veine');
   // Les héros, les garde-manger et la cuisine de campagne modifient l’état initial.
   // Les camps des neutres modifient aussi le déroulement du duel.
@@ -44,6 +45,8 @@ try {
   const loaded = loadedScenario(Sim);
   unlockAllRanks(referenceLoaded);
   unlockAllRanks(loaded);
+  // Le scénario chargé s'arrête avant le premier remplissage à 180 s.
+  const initialCaches = { caches: Sim.create().caches, cacheCollectedAt: [null, null] };
   const identical = (actual, expected, label) => {
     // Compare the entire serializable state, including visibility, events,
     // target references, positions, resources and winner, without rounding.
@@ -60,8 +63,8 @@ try {
       ...expectedState
     } = expected;
     assert.equal(
-      pack({ ...actualState, roti, bouillon, banquet, peste }),
-      pack({ ...expectedState, ingredients, roti: expectedRoti, bouillon: expectedBouillon,
+      pack({ ...initialCaches, ...actualState, roti, bouillon, banquet, peste }),
+      pack({ ...initialCaches, ...expectedState, ingredients, roti: expectedRoti, bouillon: expectedBouillon,
         banquet: expectedBanquet, peste: expectedPeste }),
       label,
     );
@@ -90,7 +93,8 @@ try {
   // Comparer deux parties de la branche tant que main n'a pas les mêmes règles.
   const referenceHasD70 = Number.isFinite(slot.batiment.hp);
   const referenceHasD68 = typeof probe.ingredients[0]?.viande === 'number';
-  const sameRules = referenceHasD70 && referenceHasD68 && loadedReferenceSim === Reference;
+  // Les caches peuvent changer les gains après 180 s.
+  const sameRules = referenceHasD70 && referenceHasD68 && referenceHasCaches && loadedReferenceSim === Reference;
   const secondSim = sameRules ? Reference : Sim;
   const secondAI = sameRules
     ? (await import(pathToFileURL(join(directory, 'ai.js')))).createAI

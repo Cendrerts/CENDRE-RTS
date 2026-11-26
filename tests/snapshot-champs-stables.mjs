@@ -4,7 +4,7 @@ import { Match } from '../server/match-do.js';
 import { RealtimeClient } from '../public/game/realtime.js';
 import { CendreSim as Sim } from '../public/game/sim.js';
 
-const stableFields = ['camps', 'watchtowers', 'braises', 'bases', 'corpses', 'ragout', 'festin', 'roti', 'fieldKitchens', 'fumets', 'pantries'];
+const stableFields = ['camps', 'watchtowers', 'caches', 'cacheCollectedAt', 'braises', 'bases', 'corpses', 'ragout', 'festin', 'roti', 'fieldKitchens', 'fumets', 'pantries'];
 
 class Socket {
   messages = [];
@@ -411,3 +411,19 @@ assert.equal(received.at(-1).banquet.readyAt, match.sim.time + 30);
 assert.equal(opponentState.peste.readyAt, match.sim.time + 25);
 checkPlayer([]);
 checkOpponent([]);
+
+const cache = match.sim.caches[0];
+const cacheCell = Math.floor(cache.y / Sim.CELL) * Sim.COLS + Math.floor(cache.x / Sim.CELL);
+match.sim.visible[player.team][cacheCell] = 1;
+match.sim.visible[opponent.team][cacheCell] = 0;
+checkPlayer([]);
+checkOpponent([]);
+Object.assign(cache, { capturingTeam: player.team, progress: 2 });
+checkPlayer(['caches']);
+checkOpponent([]);
+assert.equal(received.at(-1).caches[0].progress, 2);
+assert.equal(opponentState.caches[0].progress, 0);
+checkPlayer([]);
+match.sim.visible[player.team][cacheCell] = 0;
+checkPlayer(['caches']);
+assert.equal(received.at(-1).caches[0].capturingTeam, -1);
