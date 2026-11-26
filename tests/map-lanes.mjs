@@ -9,8 +9,8 @@ assert.equal(S.W, 4000);
 assert.equal(S.H, 2200);
 assert.equal(initial.mines.length, 9);
 assert.equal(S.lanes.length, 3);
-assert.equal(S.reservedSites.length, 8);
-assert.equal(new Set(S.reservedSites.map((site) => site.name)).size, 8);
+assert.equal(S.reservedSites.length, 14);
+assert.equal(new Set(S.reservedSites.map((site) => site.name)).size, 14);
 assert.equal(initial.mines[4].x, S.W / 2);
 assert.equal(initial.mines[4].y, S.H / 2);
 for (let index = 0; index < S.walk.length; index++) {

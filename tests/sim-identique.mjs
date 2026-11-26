@@ -28,8 +28,11 @@ try {
   const referenceHasSimpleHeroes = !Object.hasOwn(probe, 'heroProgress');
   const referenceHasPantries = Object.hasOwn(probe, 'pantries');
   const referenceHasFieldKitchens = Object.hasOwn(probe, 'fieldKitchens');
+  const referenceHasRoadCamps = probe.camps.some((camp) => camp.name.startsWith('camp-chemin-'));
   // Les héros, les garde-manger et la cuisine de campagne modifient l’état initial.
-  const loadedReferenceSim = referenceHasSimpleHeroes && referenceHasPantries && referenceHasFieldKitchens
+  // Les camps sur les chemins modifient aussi l'état et le déroulement du duel.
+  const loadedReferenceSim = referenceHasSimpleHeroes && referenceHasPantries &&
+    referenceHasFieldKitchens && referenceHasRoadCamps
     ? Reference : Sim;
   // Les rangs sont débloqués pour comparer le scénario chargé avec une référence antérieure à D67.
   const unlockAllRanks = (state) => {

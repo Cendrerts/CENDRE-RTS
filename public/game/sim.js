@@ -64,6 +64,12 @@ const reservedSites = [
   { name: 'camp-sud-est', x: 3550, y: 900 },
   { name: 'camp-nord-est', x: 1600, y: 200 },
   { name: 'camp-sud-ouest', x: 2400, y: 2000 },
+  { name: 'camp-chemin-centre-ouest', x: 1540, y: 750 },
+  { name: 'camp-chemin-centre-est', x: 2460, y: 1450 },
+  { name: 'camp-chemin-nord', x: 1750, y: 450 },
+  { name: 'camp-chemin-sud', x: 2250, y: 1750 },
+  { name: 'camp-chemin-nord-est', x: 2450, y: 550 },
+  { name: 'camp-chemin-sud-ouest', x: 1550, y: 1650 },
   { name: 'braises-ouest', x: 950, y: 850 },
   { name: 'braises-est', x: 3050, y: 1350 },
 ];
@@ -121,7 +127,9 @@ function traversable(x, y) {
   if ((y < 300 && x < 2920) || (y > 1900 && x > 1080)) return true;
   if ((x > 760 && x < 1760 && y > 960 && y < 1240) ||
       (x < 3240 && x > 2240 && y < 1240 && y > 960)) return true;
-  if (reservedSites.some((site) => !site.name.startsWith('tour-') && Math.hypot(x - site.x, y - site.y) < 180)) return true;
+  if (reservedSites.some((site) => !site.name.startsWith('tour-') &&
+    !site.name.startsWith('camp-chemin-') &&
+    Math.hypot(x - site.x, y - site.y) < 180)) return true;
   return false;
 }
 // Concealing groves use the existing artwork and rules.

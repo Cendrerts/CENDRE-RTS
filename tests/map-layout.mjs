@@ -41,7 +41,7 @@ function section(x, y, dx, dy) {
 }
 const state = Sim.create();
 assert.equal(state.mines.length, 9);
-assert.equal(Sim.reservedSites.length, 8);
+assert.equal(Sim.reservedSites.length, 14);
 for (let cell = 0; cell < Sim.walk.length; cell++) {
   assert.equal(Sim.walk[cell], Sim.walk[Sim.walk.length - cell - 1], 'Rotation de 180°');
 }
@@ -128,7 +128,8 @@ for (const lane of Sim.lanes) {
     }
   }
 }
-for (const site of Sim.reservedSites.filter((site) => site.name.startsWith('camp-'))) {
+for (const site of Sim.reservedSites.filter((site) =>
+  site.name.startsWith('camp-') && !site.name.startsWith('camp-chemin-'))) {
   for (const lane of Sim.lanes) {
     for (let index = 1; index < lane.points.length; index++) {
       assert(distanceToSegment(site, lane.points[index - 1], lane.points[index]) >= 150, `${site.name} hors agression du chemin`);
