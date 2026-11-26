@@ -551,3 +551,20 @@ button svg[data-icon='selection'] {
   justify-content: center;
   margin-top: 2px;
 }
+
+#contextActions:has(#banquetAction, #pesteAction) {
+  width: 320px;
+  max-width: 320px;
+  flex-shrink: 0;
+}
+#contextActions:has(#banquetAction, #pesteAction) > .dish-action {
+  width: calc((100% - 8px) / 3);
+}
+#contextPanel:has(#banquetAction, #pesteAction) #panelChevron {
+  right: 76px;
+  top: -44px;
+}
+#contextPanel :is(#banquetAction, #pesteAction) .dish-cost svg {
+  width: 14px;
+  flex-shrink: 0;
+}

@@ -51,11 +51,18 @@ try {
     const ingredients = expected.ingredients.map((stock) =>
       typeof stock === 'number' ? { viande: stock, epices: 0, conserves: 0 } : stock);
     // Comparer les cuissons au repos quand origin/main précède les plats combinés.
-    const { roti, bouillon, ...actualState } = actual;
-    const { roti: expectedRoti = { readyAt: null }, bouillon: expectedBouillon = { readyAt: null }, ...expectedState } = expected;
+    const { roti, bouillon, banquet, peste, ...actualState } = actual;
+    const {
+      roti: expectedRoti = { readyAt: null },
+      bouillon: expectedBouillon = { readyAt: null },
+      banquet: expectedBanquet = { readyAt: null },
+      peste: expectedPeste = { readyAt: null },
+      ...expectedState
+    } = expected;
     assert.equal(
-      pack({ ...actualState, roti, bouillon }),
-      pack({ ...expectedState, ingredients, roti: expectedRoti, bouillon: expectedBouillon }),
+      pack({ ...actualState, roti, bouillon, banquet, peste }),
+      pack({ ...expectedState, ingredients, roti: expectedRoti, bouillon: expectedBouillon,
+        banquet: expectedBanquet, peste: expectedPeste }),
       label,
     );
   };

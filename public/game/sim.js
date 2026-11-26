@@ -410,6 +410,8 @@ function create() {
     festin: { readyAt: null },
     roti: { readyAt: null },
     bouillon: { readyAt: null },
+    banquet: { readyAt: null },
+    peste: { readyAt: null },
     monsterId: 0,
     monsters: [],
     corpses: [],
@@ -635,9 +637,15 @@ function matchStats(s) {
     duration: s.time,
   };
 }
-function applyDamage(s, target, damage, attackerTeam = null, attackerId = null) {
+function applyDamage(s, target, damage, attacker = null) {
+  const attackerTeam = attacker?.team ?? null;
+  const attackerId = attacker?.id ?? null;
   if (target.team === NEUTRAL && target.returning && attackerTeam !== null) return;
   const wasAlive = target.hp > 0;
+  if (wasAlive && damage > 0 && !target.base && !target.structure && attacker?.pesteUntil > s.time + 1e-9) {
+    const stolenHp = Math.min(target.hp, damage) * 0.3;
+    attacker.hp = Math.min(attacker.max, attacker.hp + stolenHp);
+  }
   target.hp -= damage;
   if (damage > 0 && target.devour?.startedAt != null) cancelDevour(target);
   if (wasAlive && target.hp <= 0 && !target.base && !target.structure && target.type !== 'commis' && target.type !== 'lezard') {
@@ -677,6 +685,7 @@ function removeFieldKitchen(s, team) {
   s.fieldKitchens[team] = null;
   if (s.ragout.at === 'campagne') s.ragout.readyAt = null;
   if (s.roti.at === 'campagne') s.roti.readyAt = null;
+  if (s.banquet.at === 'campagne') s.banquet.readyAt = null;
 }
 
 function destroyStructure(s, target) {
@@ -747,6 +756,8 @@ function migrateState(s) {
   s.festin ??= { readyAt: null };
   s.roti ??= { readyAt: null };
   s.bouillon ??= { readyAt: null };
+  s.banquet ??= { readyAt: null };
+  s.peste ??= { readyAt: null };
   s.monsterId ??= 0;
   s.monsters ??= [];
   s.corpses ??= [];
@@ -818,8 +829,10 @@ function fieldKitchen(s, team) {
 }
 
 const COMBINED_DISHES = {
-  roti: { team: 0, duration: 20, effect: 40, name: 'Rôti aux épices' },
-  bouillon: { team: 1, duration: 15, effect: 20, name: 'Bouillon de la Décharge' },
+  roti: { team: 0, level: 2, duration: 20, effect: 40, name: 'Rôti aux épices' },
+  bouillon: { team: 1, level: 2, duration: 15, effect: 20, name: 'Bouillon de la Décharge' },
+  banquet: { team: 0, level: 3, duration: 30, effect: 30, conserves: 15, name: 'Grand Banquet' },
+  peste: { team: 1, level: 3, duration: 25, effect: 30, conserves: 15, name: 'Marmite de la Peste' },
 };
 const COMBINED_DISH_COST = { viande: 30, epices: 20 };
 
@@ -838,17 +851,21 @@ function cookDishBlockReason(s, team, dish = 'ragout', { at } = {}) {
     const recipe = COMBINED_DISHES[dish];
     if (team !== recipe.team) {
       const faction = recipe.team === 0 ? 'Cuistots-Furieux' : 'Rats-Goût';
-      return `Seuls les ${faction} peuvent préparer le ${recipe.name}.`;
+      const article = dish === 'peste' ? 'la' : 'le';
+      return `Seuls les ${faction} peuvent préparer ${article} ${recipe.name}.`;
     }
     if (s.winner !== null) return RAGOUT_REASONS.ended;
     const base = s.bases[team];
     if (!(base?.hp > 0)) return team === 0 ? RAGOUT_REASONS.tower : 'Grande Décharge indisponible.';
-    if ((base.niveau ?? 1) < 2) return 'Tour de niveau 2 nécessaire.';
-    if (dish === 'roti' && at === 'campagne' && !s.fieldKitchens?.[team]) return 'Aucune cuisine de campagne.';
+    if ((base.niveau ?? 1) < recipe.level) return `Tour de niveau ${recipe.level} nécessaire.`;
+    if (recipe.team === 0 && at === 'campagne' && !s.fieldKitchens?.[team]) return 'Aucune cuisine de campagne.';
     if (s[dish]?.readyAt != null) return `${recipe.name} déjà en préparation.`;
     const ingredients = s.ingredients?.[team];
     if ((ingredients?.viande ?? 0) < COMBINED_DISH_COST.viande) return 'Viande insuffisante : 30 nécessaires.';
     if ((ingredients?.epices ?? 0) < COMBINED_DISH_COST.epices) return 'Épices insuffisantes : 20 nécessaires.';
+    if (recipe.conserves && (ingredients?.conserves ?? 0) < recipe.conserves) {
+      return `Conserves insuffisantes : ${recipe.conserves} nécessaires.`;
+    }
     return null;
   }
   if (dish !== 'ragout') return 'Plat inconnu.';
@@ -867,9 +884,10 @@ function cookDish(s, team, dish = 'ragout', { at = 'tour' } = {}) {
   migrateState(s);
   if (Object.hasOwn(COMBINED_DISHES, dish)) {
     const recipe = COMBINED_DISHES[dish];
-    const location = dish === 'roti' && at === 'campagne' ? s.fieldKitchens[team] : s.bases[team];
+    const location = recipe.team === 0 && at === 'campagne' ? s.fieldKitchens[team] : s.bases[team];
     s.ingredients[team].viande -= COMBINED_DISH_COST.viande;
     s.ingredients[team].epices -= COMBINED_DISH_COST.epices;
+    if (recipe.conserves) s.ingredients[team].conserves -= recipe.conserves;
     s[dish] = { readyAt: s.time + recipe.duration, x: location.x, y: location.y };
     if (location === s.fieldKitchens[team]) s[dish].at = 'campagne';
     return { ok: true, reason: null };
@@ -889,7 +907,8 @@ function cookDish(s, team, dish = 'ragout', { at = 'tour' } = {}) {
 }
 function fumets(s) {
   const active = [];
-  for (const [dish, team] of [['ragout', 0], ['festin', 1], ['roti', 0], ['bouillon', 1]]) {
+  const dishes = [['ragout', 0], ['festin', 1], ['roti', 0], ['bouillon', 1], ['banquet', 0], ['peste', 1]];
+  for (const [dish, team] of dishes) {
     const cooking = s[dish];
     if (cooking?.readyAt == null) continue;
     const campaign = cooking.at === 'campagne';
@@ -914,6 +933,11 @@ function finishCombinedDish(s, dish, dt) {
         Math.hypot(unit.x - cooking.x, unit.y - cooking.y) > RAGOUT_RADIUS) continue;
     if (dish === 'roti') {
       unit.rotiUntil = readyAt + recipe.effect;
+    } else if (dish === 'banquet') {
+      unit.hp = unit.max;
+      unit.banquetUntil = readyAt + recipe.effect;
+    } else if (dish === 'peste') {
+      unit.pesteUntil = readyAt + recipe.effect;
     } else {
       // Preserve healing earned before a refresh within this tick.
       healFromBouillon(unit, s.time - dt, readyAt);
@@ -944,7 +968,8 @@ function ragoutActive(s, unit) {
   return unit.team === 0 && unit.type !== 'commis' && unit.hp > 0 &&
     (unit.ragoutUntil || 0) > s.time + 1e-9;
 }
-function ragoutDamageMultiplier(s, unit) {
+function dishDamageMultiplier(s, unit) {
+  if (unit.banquetUntil > s.time + 1e-9) return 1.25;
   if (!ragoutActive(s, unit)) return 1;
   const chefNearby = s.units.some((hero) => hero.type === 'hero' &&
     hero.team === unit.team && hero.hp > 0 && Math.hypot(hero.x - unit.x, hero.y - unit.y) < 250);
@@ -1628,6 +1653,8 @@ function tick(s, dt) {
   festinTick(s);
   finishCombinedDish(s, 'roti', dt);
   finishCombinedDish(s, 'bouillon', dt);
+  finishCombinedDish(s, 'banquet', dt);
+  finishCombinedDish(s, 'peste', dt);
   s.corpses = s.corpses.filter((corpse) => corpse.expiresAt > s.time + 1e-9);
   s.devourEvents = s.devourEvents.filter((event) => s.time - event.time < 1.5);
   s.damageEvents = (s.damageEvents || []).filter((event) => s.time - event.time < 5).slice(-24);
@@ -1772,8 +1799,8 @@ function tick(s, dt) {
         u.cool = cfg.rate;
         u.lastAttackTargetId = target.id ?? null;
         u.lastAttackAt = s.time;
-        const damage = cfg.damage * ragoutDamageMultiplier(s, u);
-        applyDamage(s, target, damage, u.team, u.id);
+        const damage = cfg.damage * dishDamageMultiplier(s, u);
+        applyDamage(s, target, damage, u);
         if (cfg.splash) {
           for (const v of [...s.units, ...s.monsters])
             if (
@@ -1782,7 +1809,7 @@ function tick(s, dt) {
               v.hp > 0 &&
               Math.hypot(v.x - target.x, v.y - target.y) <= cfg.splash
             ) {
-              applyDamage(s, v, damage, u.team, u.id);
+              applyDamage(s, v, damage, u);
             }
         }
         s.shots.push({
