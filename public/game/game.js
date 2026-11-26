@@ -69,8 +69,8 @@ smokePuff.width = 48;
 smokePuff.height = 48;
 const smokeCtx = smokePuff.getContext('2d');
 const smokeGradient = smokeCtx.createRadialGradient(24, 24, 0, 24, 24, 24);
-smokeGradient.addColorStop(0, '#c8c8c8');
-smokeGradient.addColorStop(0.5, '#a3a3a3c9');
+smokeGradient.addColorStop(0, '#d8d4cc');
+smokeGradient.addColorStop(0.5, '#b4aea4d9');
 smokeGradient.addColorStop(1, '#88888800');
 smokeCtx.fillStyle = smokeGradient;
 smokeCtx.fillRect(0, 0, 48, 48);
@@ -1141,19 +1141,21 @@ function drawFumets(fumets, now) {
   if (!fumets.length) return;
   ctx.save();
   for (let index = 0; index < fumets.length; index++) {
-    const { x, y } = fumets[index];
-    for (let puff = 0; puff < 4; puff++) {
-      const phase = (now / 2200 + puff / 4) % 1;
-      const width = (16 + phase * 22) / scale;
-      const height = width * 0.7;
+    const { x, y, team } = fumets[index];
+    const roofY = y - (team === 0 ? 80 : 178);
+    for (let puff = 0; puff < 5; puff++) {
+      const phase = (now / 2200 + puff / 5) % 1;
+      const width = (24 + phase * 28) / scale;
+      const height = width * 0.75;
       const drift = Math.sin(phase * 7) * phase * 15 / scale;
-      ctx.globalAlpha = Math.min(phase * 12, 1) * (1 - phase);
-      ctx.drawImage(smokePuff, x + drift - width / 2, y - 70 - phase * 52 / scale - height / 2, width, height);
+      const rise = (4 + phase * 80) / scale;
+      ctx.globalAlpha = 0.9 * Math.min(phase * 12, 1, (1 - phase) * 4);
+      ctx.drawImage(smokePuff, x + drift - width / 2, roofY - rise - height / 2, width, height);
     }
   }
   ctx.restore();
 }
-function drawMini(fumets) {
+function drawMini(fumets, now) {
   drawMinimap(mc, {
     terrain,
     fog,
@@ -1172,12 +1174,24 @@ function drawMini(fumets) {
     worldWidth: W,
     worldHeight: H,
   });
-  mc.fillStyle = '#b0b0b0';
-  for (let index = 0; index < fumets.length; index++) {
-    const { x, y } = fumets[index];
-    mc.beginPath();
-    mc.arc(x / W * mini.width, y / H * mini.height, 3, 0, Math.PI * 2);
-    mc.fill();
+  if (fumets.length) {
+    const width = mini.clientWidth;
+    const height = mini.clientHeight;
+    const pulse = Math.sin(now * 2 * Math.PI / 1200);
+    const radius = 4.5 + pulse * (pulse < 0 ? 0.5 : 1.5);
+    mc.save();
+    mc.scale(mini.width / width, mini.height / height);
+    mc.fillStyle = '#efe9dc';
+    mc.strokeStyle = '#1a1a1a';
+    mc.lineWidth = 1.5;
+    for (let index = 0; index < fumets.length; index++) {
+      const { x, y } = fumets[index];
+      mc.beginPath();
+      mc.arc(x / W * width, y / H * height - 6, radius, 0, Math.PI * 2);
+      mc.fill();
+      mc.stroke();
+    }
+    mc.restore();
   }
   if (marker?.minimap) {
     mc.save();
@@ -1335,7 +1349,8 @@ function draw() {
       line(s.x, s.y, s.tx, s.ty, s.team ? '#8ef1ce' : '#ffd388', 2);
   drawFog();
   const fumets = activeFumets();
-  drawFumets(fumets, performance.now());
+  const fumetTime = performance.now();
+  drawFumets(fumets, fumetTime);
   drawConstructionBars();
   drawBuildingHealthBars();
   drawOrderQueues();
@@ -1369,7 +1384,7 @@ function draw() {
     }
   }
   drawBuildGhost();
-  drawMini(fumets);
+  drawMini(fumets, fumetTime);
   if (holdIndicator) {
     ctx.save();
     ctx.setTransform(canvas.width / viewWidth, 0, 0, canvas.height / viewHeight, 0, 0);
