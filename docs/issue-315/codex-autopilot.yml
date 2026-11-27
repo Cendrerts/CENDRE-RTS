@@ -1,0 +1,206 @@
+name: Codex Autopilot
+
+on:
+  workflow_run:
+    workflows: [Codex]
+    types: [completed]
+  schedule:
+    - cron: '0 6-20/2 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: codex-autopilot
+  cancel-in-progress: false
+
+permissions:
+  actions: read
+  contents: read
+  issues: read
+  pull-requests: read
+  statuses: write
+
+jobs:
+  autopilot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Tester les PR et lancer Codex
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AUTOPILOT_TOKEN: ${{ secrets.AUTOPILOT_TOKEN }}
+          COMPLETED_RUN: ${{ github.event.workflow_run.id }}
+          REPOSITORY_OWNER: ${{ github.repository_owner }}
+        run: |
+          repository="repos/$GITHUB_REPOSITORY"
+          repository_name="${GITHUB_REPOSITORY#*/}"
+          status_context="codex-autopilot/tests"
+          retry_prefix="/codex Les tests échouent"
+          # Les variables de cette requête sont résolues par GraphQL.
+          # shellcheck disable=SC2016
+          pr_query='query($owner: String!, $repo: String!, $number: Int!, $endCursor: String) {
+            repository(owner: $owner, name: $repo) {
+              pullRequest(number: $number) {
+                reviewDecision
+                closingIssuesReferences(first: 100, after: $endCursor) {
+                  nodes { number repository { nameWithOwner } }
+                  pageInfo { hasNextPage endCursor }
+                }
+              }
+            }
+          }'
+
+          codex_occupe() {
+            local status
+            local count
+            for status in in_progress queued; do
+              count=$(gh api "$repository/actions/workflows/codex.yml/runs?status=$status&per_page=1" --jq .total_count) || return 2
+              if (( count > 0 )); then
+                return 0
+              fi
+            done
+            return 1
+          }
+
+          arreter_si_codex_occupe() {
+            local result=0
+            codex_occupe || result=$?
+            case "$result" in
+              0) exit 0 ;;
+              1) return 0 ;;
+              *) exit "$result" ;;
+            esac
+          }
+
+          commenter() {
+            local number="$1"
+            local body="$2"
+            arreter_si_codex_occupe
+            GH_TOKEN="${AUTOPILOT_TOKEN:?Configurer le secret AUTOPILOT_TOKEN}" \
+              gh api "$repository/issues/$number/comments" -f body="$body" --silent
+          }
+
+          arreter_si_codex_occupe
+          if [[ -n "$COMPLETED_RUN" ]]; then
+            ran=$(gh api "$repository/actions/runs/$COMPLETED_RUN/jobs" \
+              --jq 'any(.jobs[]; .name == "codex" and .conclusion != "skipped")')
+            if [[ "$ran" != true ]]; then
+              exit 0
+            fi
+          fi
+
+          pulls=$(gh api --paginate --slurp "$repository/pulls?state=open&per_page=100" | jq 'add')
+          associated='[]'
+          waiting=0
+          while IFS=$'\t' read -r number branch; do
+            details=$(gh api graphql --paginate --slurp -f query="$pr_query" \
+              -f owner="$REPOSITORY_OWNER" -f repo="$repository_name" -F number="$number")
+            associated=$(jq -c --argjson previous "$associated" --arg repo "$GITHUB_REPOSITORY" \
+              '$previous + [.[].data.repository.pullRequest.closingIssuesReferences.nodes[]
+                | select(.repository.nameWithOwner == $repo) | .number]' <<< "$details")
+            if [[ "$branch" =~ ^codex/issue-([0-9]+)$ ]]; then
+              associated=$(jq -c --arg number "${BASH_REMATCH[1]}" '. + [$number | tonumber]' <<< "$associated")
+            fi
+            if [[ "$branch" == codex/* ]] && \
+              ! jq -e '.[0].data.repository.pullRequest.reviewDecision == "APPROVED"' <<< "$details" >/dev/null; then
+              waiting=$((waiting + 1))
+              if (( waiting >= 6 )); then
+                exit 0
+              fi
+            fi
+          done < <(jq -r '.[] | [.number, .head.ref] | @tsv' <<< "$pulls")
+
+          archive="$RUNNER_TEMP/autopilot.tar.gz"
+          log="$RUNNER_TEMP/autopilot-tests.log"
+          errors="$RUNNER_TEMP/autopilot-tests.err"
+          image_ready=false
+          while IFS=$'\t' read -r number sha; do
+            comments=$(gh api --paginate --slurp "$repository/issues/$number/comments?per_page=100" | jq 'add')
+            retries=$(jq --arg prefix "$retry_prefix" \
+              '[.[] | select(.author_association == "OWNER" and (.body | startswith($prefix)))]' <<< "$comments")
+            if [[ "$(jq 'length' <<< "$retries")" -ge 2 ]] || \
+              jq -e --arg marker "<!-- codex-autopilot:$sha -->" \
+                'any(.[]; .body | endswith($marker))' <<< "$retries" >/dev/null; then
+              continue
+            fi
+            passed=$(gh api --paginate --slurp "$repository/commits/$sha/statuses?per_page=100" | \
+              jq -r --arg context "$status_context" \
+                'any(.[][]; .context == $context and .state == "success" and .creator.login == "github-actions[bot]")')
+            if [[ "$passed" == true ]]; then
+              continue
+            fi
+
+            current_sha=$(gh api "$repository/pulls/$number" --jq 'select(.state == "open") | .head.sha')
+            if [[ "$current_sha" != "$sha" ]]; then
+              continue
+            fi
+            gh api "$repository/tarball/$sha" > "$archive"
+            if [[ "$image_ready" == false ]]; then
+              docker build -t cendre-autopilot-tests - <<'DOCKERFILE'
+          FROM node:22-bookworm
+          RUN apt-get update && apt-get install -y --no-install-recommends jq && rm -rf /var/lib/apt/lists/*
+          DOCKERFILE
+              image_ready=true
+            fi
+            # Le code de la PR tourne sans secret, avec l'archive seule en lecture.
+            result=0
+            docker run --rm --network none --cap-drop ALL --security-opt no-new-privileges \
+              --pids-limit 256 --mount "type=bind,src=$archive,dst=/source.tar.gz,readonly" \
+              cendre-autopilot-tests bash -euo pipefail -c '
+                mkdir /tmp/source
+                tar -xzf /source.tar.gz --no-same-owner --no-same-permissions --strip-components=1 -C /tmp/source
+                cd /tmp/source
+                for file in public/game/*.js; do
+                  if ! node --check "$file" > /tmp/test.log 2>&1; then
+                    printf "%s\n" "node --check $file"
+                    cat /tmp/test.log >&2
+                    exit 10
+                  fi
+                done
+                find tests -maxdepth 1 -type f -name "*.mjs" -print0 | sort -z > /tmp/test-files
+                test -s /tmp/test-files
+                while IFS= read -r -d "" file; do
+                  if ! node "$file" > /tmp/test.log 2>&1; then
+                    printf "%s\n" "$file"
+                    cat /tmp/test.log >&2
+                    exit 10
+                  fi
+                done < /tmp/test-files
+              ' > "$log" 2> "$errors" || result=$?
+            current_sha=$(gh api "$repository/pulls/$number" --jq 'select(.state == "open") | .head.sha')
+            if [[ "$current_sha" != "$sha" ]]; then
+              continue
+            fi
+
+            case "$result" in
+              0)
+                gh api "$repository/statuses/$sha" -f state=success -f context="$status_context" --silent
+                ;;
+              10)
+                test_name=$(head -n 1 "$log" | cut -c1-250)
+                ;;
+              *)
+                echo "Impossible d'exécuter les tests de la PR #$number (code $result)." >&2
+                exit 1
+                ;;
+            esac
+            if (( result != 0 )); then
+              error=$(head -n 5 "$errors" | cut -c1-300)
+              printf -v message '%s : %s\n%s\n<!-- codex-autopilot:%s -->' "$retry_prefix" "$test_name" "$error" "$sha"
+              commenter "$number" "$message"
+              exit 0
+            fi
+          done < <(jq -r '.[] | select(.head.ref | startswith("codex/")) | [.number, .head.sha] | @tsv' <<< "$pulls")
+
+          issues=$(gh api --paginate --slurp "$repository/issues?state=all&per_page=100" | jq 'add')
+          closed=$(jq '[.[] | select(.state == "closed" and (has("pull_request") | not)) | .number]' <<< "$issues")
+          next=$(jq -r --argjson associated "$associated" --argjson closed "$closed" \
+            -f scripts/autopilot-logic.jq <<< "$issues")
+          if [[ -n "$next" ]]; then
+            commenter "$next" /codex
+          fi
