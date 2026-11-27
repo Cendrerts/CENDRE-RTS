@@ -4,9 +4,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-// Référence quadratique de la séparation, avec la marge au repos de #296.
+// Référence quadratique de la séparation, avec les rayons au repos de #296.
 // Seul le module temporaire expose les fonctions privées.
 const reference = `function referenceSeparate(units, fighting, dt) {
+  const maximumPush = 30 * dt;
   const radius = (u) => u.type === 'knight' ? 12 : u.type === 'mage' ? 11 : 9;
   const atRest = (u) => !fighting.has(u.id) && !u.path.length && !u.target && !u.autoTargetId &&
     !u.attackDestination && !u.orderQueue?.length && !u.patrol && !u.followId && !u.hold &&
@@ -20,7 +21,10 @@ const reference = `function referenceSeparate(units, fighting, dt) {
       if (a.team === b.team && (a.harvest || b.harvest)) continue;
       let dx = b.x - a.x;
       let dy = b.y - a.y;
-      const combinedRadius = radius(a) + radius(b) + (atRest(a) && atRest(b) ? 3 : 0);
+      const bothSettled = atRest(a) && atRest(b);
+      const combinedRadius = bothSettled
+        ? RESTING_RADII[a.type] + RESTING_RADII[b.type]
+        : radius(a) + radius(b);
       const distanceSquared = dx * dx + dy * dy;
       if (distanceSquared >= combinedRadius * combinedRadius) continue;
       const distance = Math.hypot(dx, dy);
@@ -40,7 +44,7 @@ const reference = `function referenceSeparate(units, fighting, dt) {
       const movableB = !fighting.has(b.id) && (b.path.length > 0 || a.path.length === 0);
       const count = Number(movableA) + Number(movableB);
       if (!count) continue;
-      const push = Math.min(overlap / count, 30 * dt);
+      const push = Math.min(overlap / count, bothSettled ? 1.2 * maximumPush : maximumPush);
       if (movableA) moveSafely(a, -dx * push, -dy * push);
       if (movableB) moveSafely(b, dx * push, dy * push);
     }
@@ -56,7 +60,8 @@ try {
   const { CendreSim: Sim, separate, referenceSeparate } = await import(pathToFileURL(join(directory, 'sim.js')));
   Sim.create();
   for (const dt of [1 / 60, 0.1, 0.005, 0.5, 0]) {
-    const cellSize = 27 + 2 * 199 * (30 * dt);
+    const maximumRestingPush = 1.2 * (30 * dt);
+    const cellSize = 42 + 2 * 199 * maximumRestingPush;
     const units = Array.from({ length: 200 }, (_, index) => {
       // Interleave distant groups in array order; straddle grid boundaries.
       const group = index % 4;
@@ -65,7 +70,7 @@ try {
       const y = group < 2 ? 1750 + (Math.floor(pair / 7) % 5 - 2) * 7 : 450 + Math.floor(pair / 9) * 19;
       return {
         id: 1000 - index,
-        type: ['knight', 'mage', 'commis', 'archer'][index % 4],
+        type: ['knight', 'mage', 'commis', 'archer', 'hero'][index % 5],
         team: Math.floor(index / 3) % 2,
         hp: index % 23 === 0 ? 0 : 100,
         x: Math.min(Sim.W - 1, x),
@@ -79,7 +84,7 @@ try {
       units[index].x = 850;
       units[index].y = 1750;
     }
-    const fighting = new Set(units.filter((_, index) => index % 5 === 0).map((unit) => unit.id));
+    const fighting = new Set(units.filter((_, index) => index % 6 === 0).map((unit) => unit.id));
     const expected = structuredClone(units);
     const initial = structuredClone(units);
     for (let pass = 0; pass < 100; pass++) {

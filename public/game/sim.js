@@ -2038,13 +2038,23 @@ function isSettled(unit) {
     !unit.manual && !unit.harvest && !unit.devour;
 }
 
+// Resting radii are 35% of the sprite sizes in drawCook (game.js), rounded.
+const RESTING_RADII = Object.freeze({
+  commis: 12,
+  knight: 16,
+  mage: 17,
+  archer: 18,
+  hero: 21,
+});
+const maximumContact = 2 * Math.max(...Object.values(RESTING_RADII));
+
 function separate(units, fighting, dt) {
-  const restingClearance = 3;
-  const maximumContact = 24 + restingClearance;
   const maximumPush = 30 * dt;
+  // Idle pairs can clear the wider sprite spacing faster without pushing moving units harder.
+  const maximumRestingPush = 1.2 * maximumPush;
   // A unit moves at most once per pair. Allow both endpoints to move
   // throughout the pass, including pairs processed before this row.
-  const cellSize = maximumContact + 2 * Math.max(0, units.length - 1) * maximumPush;
+  const cellSize = maximumContact + 2 * Math.max(0, units.length - 1) * maximumRestingPush;
   const columns = Math.ceil(W / cellSize) + 2;
   const rows = Math.ceil(H / cellSize) + 2;
   const cache = separate.cache || (separate.cache = {
@@ -2054,7 +2064,7 @@ function separate(units, fighting, dt) {
     cellY: [],
     radii: [],
     fighting: [],
-    settled: [],
+    restingRadii: [],
   });
   const buckets = cache.buckets;
   const candidates = cache.candidates;
@@ -2071,7 +2081,9 @@ function separate(units, fighting, dt) {
     cache.cellY[index] = y;
     cache.radii[index] = unit.type === 'knight' ? 12 : unit.type === 'mage' ? 11 : 9;
     cache.fighting[index] = fighting.has(unit.id);
-    cache.settled[index] = !cache.fighting[index] && isSettled(unit);
+    cache.restingRadii[index] = !cache.fighting[index] && isSettled(unit)
+      ? RESTING_RADII[unit.type] ?? cache.radii[index]
+      : 0;
     if (unit.hp > 0) buckets[y * columns + x].push(index);
   }
   for (let i = 0; i < units.length; i++) {
@@ -2099,9 +2111,10 @@ function separate(units, fighting, dt) {
       let dx = b.x - a.x;
       let dy = b.y - a.y;
       if (dx <= -maximumContact || dx >= maximumContact || dy <= -maximumContact || dy >= maximumContact) continue;
-      // Open a small gap between idle units so adjacent sprites are easier to read.
-      const clearance = cache.settled[i] && cache.settled[j] ? restingClearance : 0;
-      const contact = cache.radii[i] + cache.radii[j] + clearance;
+      const bothSettled = cache.restingRadii[i] && cache.restingRadii[j];
+      const contact = bothSettled
+        ? cache.restingRadii[i] + cache.restingRadii[j]
+        : cache.radii[i] + cache.radii[j];
       const distanceSquared = dx * dx + dy * dy;
       if (distanceSquared >= contact * contact) continue;
       const distance = Math.hypot(dx, dy);
@@ -2121,7 +2134,7 @@ function separate(units, fighting, dt) {
       const movableB = !cache.fighting[j] && (b.path.length > 0 || a.path.length === 0);
       const count = Number(movableA) + Number(movableB);
       if (!count) continue;
-      const push = Math.min(overlap / count, maximumPush);
+      const push = Math.min(overlap / count, bothSettled ? maximumRestingPush : maximumPush);
       if (movableA) moveSafely(a, -dx * push, -dy * push);
       if (movableB) moveSafely(b, dx * push, dy * push);
     }
@@ -2429,6 +2442,7 @@ function restore(texte) {
 }
 
 export const CendreSim = {
+  RESTING_RADII,
   PANTRY_CAPACITY,
   FIELD_KITCHEN_COST,
   RAGOUT_RADIUS,

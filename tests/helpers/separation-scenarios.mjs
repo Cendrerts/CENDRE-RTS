@@ -10,15 +10,15 @@ function battlefield(Sim) {
   return state;
 }
 
-function spawn(Sim, state, team, x, y) {
-  Sim.spawn(state, 'knight', team);
+function spawn(Sim, state, team, x, y, type = 'knight') {
+  Sim.spawn(state, type, team);
   const unit = state.units.at(-1);
   unit.x = x;
   unit.y = y;
   return unit;
 }
 
-export function measurePairs(units) {
+export function measurePairs(units, contact = () => contactDistance) {
   let pairs = 0;
   let overlaps = 0;
   let minimumDistance = Infinity;
@@ -28,22 +28,21 @@ export function measurePairs(units) {
       const b = units[j];
       const distance = Math.hypot(a.x - b.x, a.y - b.y);
       pairs++;
-      // Les deux scénarios utilisent uniquement des unités de rayon 12.
-      if (distance < contactDistance) overlaps++;
+      if (distance < contact(a, b)) overlaps++;
       minimumDistance = Math.min(minimumDistance, distance);
     }
   }
   return { pairs, overlaps, rate: overlaps / pairs, minimumDistance };
 }
 
-export function settledArmy(Sim, { groupOrder = false } = {}) {
+export function settledArmy(Sim, { groupOrder = false, types = ['knight'] } = {}) {
   const state = battlefield(Sim);
   const ids = [];
   for (let index = 0; index < 40; index++) {
     const angle = index * 2 * Math.PI / 40;
     const x = rendezvous.x + Math.cos(angle) * 180;
     const y = rendezvous.y + Math.sin(angle) * 180;
-    const unit = spawn(Sim, state, 0, x, y);
+    const unit = spawn(Sim, state, 0, x, y, types[index % types.length]);
     ids.push(unit.id);
   }
   if (groupOrder) {

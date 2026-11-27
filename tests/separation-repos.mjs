@@ -6,20 +6,25 @@ function reportPairs(label, { overlaps, pairs, rate, minimumDistance }) {
   console.log(`${label} — ${(rate * 100).toFixed(2)} % (${overlaps}/${pairs}), distance min. ${minimumDistance.toFixed(2)} px monde`);
 }
 
-for (const groupOrder of [false, true]) {
-  const { units } = settledArmy(Sim, { groupOrder });
+const restingRadii = { commis: 12, knight: 16, mage: 17, archer: 18, hero: 21 };
+assert.deepEqual(Sim.RESTING_RADII, restingRadii);
+
+for (const [label, options] of [
+  ['destination identique', {}],
+  ['ordre groupé', { groupOrder: true }],
+  ['destination identique, unités mixtes', { types: ['commis', 'knight', 'archer', 'mage'] }],
+]) {
+  const { units } = settledArmy(Sim, options);
   assert.equal(units.length, 40);
   assert(units.every((unit) => !unit.path.length), 'Les 40 unités sont à l’arrêt');
-  const metrics = measurePairs(units);
-  assert(metrics.minimumDistance >= 0.9 * 24, 'Distance minimale à 5 s ≥ 90 % des rayons');
-  assert.equal(metrics.overlaps, 0, 'Aucune paire ne se chevauche après stabilisation');
+  const metrics = measurePairs(units, (a, b) => 0.95 * (restingRadii[a.type] + restingRadii[b.type]));
+  assert.equal(metrics.overlaps, 0, 'Chaque paire atteint 95 % de la somme des rayons de repos');
   const xs = units.map((unit) => unit.x);
   const ys = units.map((unit) => unit.y);
   const width = Math.max(...xs) - Math.min(...xs);
   const height = Math.max(...ys) - Math.min(...ys);
   assert(Math.min(width, height) / Math.max(width, height) >= 0.8, 'La formation reste arrondie');
-  const orders = groupOrder ? 'ordre groupé' : 'destination identique';
-  reportPairs(`Repos (${orders})`, metrics);
+  reportPairs(`Repos (${label})`, metrics);
 }
 
 // Mesures du même scénario sur main (44415dc), avant #296.
