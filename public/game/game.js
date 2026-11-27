@@ -2806,6 +2806,8 @@ function panelCommand(command) {
   else if (net) sendCommand(command);
   else if (command.kind === 'upgradeMain') trackResourceSpend(state, player, () => Sim.upgradeMain(state, player));
   else if (command.kind === 'setRally') Sim.setRally(state, player, command);
+  else if (command.kind === 'setScavenge')
+    Sim.setScavenge(state, player, command.ids, command.enabled);
   else if (command.kind === 'construct')
     trackResourceSpend(state, player, () => Sim.construct(state, player, command.type, command.baseId, command.slotId));
   else if (command.kind === 'build') trackResourceSpend(state, player, () => Sim.build(state, player, command.index));
@@ -2864,6 +2866,11 @@ function renderContextPanel() {
     Sim.cookDishBlockReason(state, player, dish, { at: dishLocation }));
   const kingSelected = player === 1 && model.mode === 'units' && state.units.some((unit) =>
     unit.team === player && unit.type === 'hero' && unit.hp > 0 && selected.has(unit.id));
+  const selectedRats = player === 1 && model.mode === 'units'
+    ? state.units.filter((unit) => unit.team === player && unit.type !== 'commis' && unit.hp > 0 && selected.has(unit.id))
+    : [];
+  const enabledRats = selectedRats.filter((unit) => !unit.scavengeDisabled).length;
+  const scavengePressed = enabledRats === selectedRats.length ? 'true' : enabledRats ? 'mixed' : 'false';
   const feastReason = kingSelected
     ? net && Object.hasOwn(state, 'kingFeastReason')
       ? state.kingFeastReason
@@ -2872,7 +2879,7 @@ function renderContextPanel() {
   const feastRemaining = kingSelected
     ? Math.max(0, Math.ceil((state.kingFeastReadyAt ?? 0) - state.time - 1e-9))
     : 0;
-  const signature = JSON.stringify([model, paused, patrolArmed, rallyArmed, queueArmed, kingSelected, feastReason, feastRemaining, chefSelected, dishLocation, dishReasons], (key, value) =>
+  const signature = JSON.stringify([model, paused, patrolArmed, rallyArmed, queueArmed, selectedRats.length, scavengePressed, kingSelected, feastReason, feastRemaining, chefSelected, dishLocation, dishReasons], (key, value) =>
     ['remaining', 'hp', 'status'].includes(key) ? undefined : value,
   );
   if (signature === panelSignature) return;
@@ -3136,7 +3143,21 @@ function renderContextPanel() {
       queueArmed = !queueArmed;
       updateUI();
     };
-    actions.append($('#hold'), patrol, queue, ability, $('#retreat'));
+    if (selectedRats.length) {
+      const scavenge = document.createElement('button');
+      scavenge.id = 'scavengeAction';
+      scavenge.textContent = 'Charognard';
+      scavenge.setAttribute('aria-pressed', scavengePressed);
+      scavenge.disabled = paused;
+      scavenge.onclick = () => panelCommand({
+        kind: 'setScavenge',
+        ids: [...selected],
+        enabled: scavengePressed !== 'true',
+      });
+      actions.append($('#hold'), patrol, ability, queue, scavenge, $('#retreat'));
+    } else {
+      actions.append($('#hold'), patrol, queue, ability, $('#retreat'));
+    }
   } else {
     const opened = openedRallyBuilding();
     if (opened?.id === 'main_' + player || model.mode === 'fieldKitchen') {

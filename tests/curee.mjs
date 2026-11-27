@@ -61,6 +61,7 @@ function checkMeals({ state, king, firstRat, secondRat, near, left, right, far }
   assert.equal(Sim.kingFeastBlockReason(state, 1), null);
   assert.deepEqual(Sim.kingFeast(state, 1), { ok: true });
   checkMeals(setup);
+  Sim.setScavenge(state, 1, state.units.map((unit) => unit.id), false);
   advanceTo(state, 10);
   state.corpses.push(corpse(1004, 2000));
   const reason = 'Curée prête dans 20 s.';
