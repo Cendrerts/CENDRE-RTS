@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { CendreSim } from '../public/game/sim.js';
-import { hedgeOffset, terrainZone } from '../public/game/terrain.js';
+import { groundRotation, hedgeOffset, obstacleVariant, terrainZone } from '../public/game/terrain.js';
 
 const { W, H, COLS, ROWS } = CendreSim;
 const zoneAt = (x, y) => terrainZone(x, y, W, H);
@@ -39,3 +39,32 @@ for (let row = 0; row < ROWS; row += 3) {
   }
 }
 assert.notDeepEqual(hedgeOffset(17, 23), hedgeOffset(17, 24), 'Variation entre deux cases voisines');
+
+// Use both odd and even grids. The map raster can have a central row of tiles.
+for (const [rows, columns] of [[13, 22], [12, 21]]) {
+  const rotations = new Set();
+  for (let row = 0; row < rows; row++) {
+    for (let column = 0; column < columns; column++) {
+      const oppositeRow = rows - 1 - row;
+      const oppositeColumn = columns - 1 - column;
+      const rotation = groundRotation(row, column, rows, columns);
+      assert.equal(rotation, groundRotation(row, column, rows, columns), 'Orientation déterministe');
+      assert.equal(groundRotation(oppositeRow, oppositeColumn, rows, columns), (rotation + 2) % 4);
+      rotations.add(rotation);
+    }
+  }
+  assert.deepEqual(rotations, new Set([0, 1, 2, 3]));
+}
+
+for (const count of [2, 3]) {
+  const variants = new Set();
+  for (let row = 0; row < ROWS; row++) {
+    for (let column = 0; column < COLS; column++) {
+      const variant = obstacleVariant(row, column, ROWS, COLS, count);
+      assert.equal(variant, obstacleVariant(row, column, ROWS, COLS, count), 'Variante déterministe');
+      assert.equal(variant, obstacleVariant(ROWS - 1 - row, COLS - 1 - column, ROWS, COLS, count));
+      variants.add(variant);
+    }
+  }
+  assert.deepEqual(variants, new Set(Array.from({ length: count }, (_, index) => index)));
+}
