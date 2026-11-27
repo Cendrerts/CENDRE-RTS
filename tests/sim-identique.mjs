@@ -34,11 +34,12 @@ try {
   const referenceHasCaches = Array.isArray(probe.caches);
   const referenceHasGuardedVein = probe.camps.some((camp) => camp.name === 'camp-veine');
   const referenceHasScavenge = typeof Reference.setScavenge === 'function';
+  const referenceHasRestingSpacing = typeof Reference.RESTING_RADII === 'object';
   // Les héros, les garde-manger et la cuisine de campagne modifient l’état initial.
   // Les camps des neutres et le mode Charognard modifient le déroulement du duel.
   const loadedReferenceSim = referenceHasSimpleHeroes && referenceHasRaidPlacement &&
     referenceHasFieldKitchens && referenceHasRoadCamps && referenceHasLizardCamps &&
-    referenceHasGuardedVein && referenceHasScavenge
+    referenceHasGuardedVein && referenceHasScavenge && referenceHasRestingSpacing
     ? Reference : Sim;
   // Les rangs sont débloqués pour comparer le scénario chargé avec une référence antérieure à D67.
   const unlockAllRanks = (state) => {
@@ -97,7 +98,8 @@ try {
   const referenceHasD70 = Number.isFinite(slot.batiment.hp);
   const referenceHasD68 = typeof probe.ingredients[0]?.viande === 'number';
   // Les caches peuvent changer les gains après 180 s.
-  const sameRules = referenceHasD70 && referenceHasD68 && referenceHasCaches && loadedReferenceSim === Reference;
+  const sameRules = referenceHasD70 && referenceHasD68 && referenceHasCaches &&
+    referenceHasRestingSpacing && loadedReferenceSim === Reference;
   const secondSim = sameRules ? Reference : Sim;
   const secondAI = sameRules
     ? (await import(pathToFileURL(join(directory, 'ai.js')))).createAI
