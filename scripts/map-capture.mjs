@@ -4,6 +4,8 @@ import { createServer } from 'node:http';
 import { readFile, mkdir } from 'node:fs/promises';
 import { resolve, extname } from 'node:path';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const outputDirectory = process.env.MAP_CAPTURE_OUTPUT || 'docs/issue-115';
+const stageUnits = process.argv.includes('--terrain-art');
 const server = createServer(async (request, response) => {
   try {
     const path = resolve('public' + new URL(request.url, 'http://local').pathname.replace(/\/$/, '/index.html'));
@@ -19,6 +21,12 @@ window.mapProbe = () => ({
 window.mapStart = (team) => {
   player = team;
   state = Sim.create();
+  if (${stageUnits}) {
+    const base = state.bases[player];
+    Sim.spawn(state, 'knight', player, { x: base.x - 85, y: base.y + 30 });
+    Sim.spawn(state, 'archer', player, { x: base.x + 25, y: base.y + 65 });
+    Sim.visibility(state);
+  }
   selected.clear();
   cameraX = state.bases[player].x;
   cameraY = state.bases[player].y;
@@ -58,14 +66,14 @@ try {
   await page.goto(`http://127.0.0.1:${server.address().port}/game/`);
   await page.waitForFunction(() => window.mapProbe?.().terrainReady);
   await page.locator('#start').click();
-  await mkdir('docs/issue-115', { recursive: true });
+  await mkdir(outputDirectory, { recursive: true });
   for (const team of [0, 1]) {
     await page.evaluate((team) => window.mapStart(team), team);
     await page.waitForTimeout(100);
     const probe = await page.evaluate(() => window.mapProbe());
     assert.deepEqual(probe.camera, probe.base, 'Vue initiale centrée sur la base');
     assert(probe.scale > 1, 'Échelle tactile conservée');
-    await page.screenshot({ path: `docs/issue-115/depart-${team}-844x390.png` });
+    await page.screenshot({ path: `${outputDirectory}/depart-${team}-844x390.png` });
   }
   const mini = await page.locator('#minimap').boundingBox();
   assert(mini.width >= 44 && mini.height >= 44);
@@ -90,7 +98,7 @@ try {
   await page.addStyleTag({ content: 'body > :not(#field) { visibility: hidden !important; }' });
   await page.evaluate(() => window.mapOverview());
   await page.waitForTimeout(100);
-  await page.screenshot({ path: 'docs/issue-115/carte-entiere.png' });
+  await page.screenshot({ path: `${outputDirectory}/carte-entiere.png` });
   assert.deepEqual(errors, []);
   console.log('PASS: départs 844×390, caméra, mini-carte glissable souris/tactile et vue entière 4000×2200.');
 } finally {
