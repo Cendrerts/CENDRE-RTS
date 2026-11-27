@@ -29,7 +29,7 @@ import { ratSVG, ratSprites } from './rats.js';
 import { cookSVG, cookSprites } from './cooks.js';
 import { drawMinimap, exploredCamps } from './minimap.js';
 import { mettreAJourCachesConnues } from './caches-connues.js';
-import { createSkirmishTerrain } from './terrain.js';
+import { loadSkirmishTerrain } from './terrain.js';
 import { TEAM_COLORS, HEALTH_BAR_TOP_OFFSET, drawHealthBar, selectionRing, unitFeet, drawCargoRuby, drawMine } from './unit-overlays.js';
 import { createRenderCache, prepareDrawList } from './render-cache.js';
 import { CendreSim as Sim } from './sim.js';
@@ -54,15 +54,8 @@ if (debugDisplay) {
 let duelFrameMaxMs = 0;
 let preparedUnits = [];
 const terrain = new Image();
-const terrainAtlas = new Image();
-terrainAtlas.onload = () => {
-  createSkirmishTerrain(terrainAtlas, Sim).toBlob((blob) => {
-    const url = URL.createObjectURL(blob);
-    terrain.onload = () => URL.revokeObjectURL(url);
-    terrain.src = url;
-  });
-};
-terrainAtlas.src = 'assets/terres-brulees.png';
+const terrainReady = loadSkirmishTerrain(Sim, terrain);
+terrainReady.catch((error) => console.error('Chargement du terrain peint', error));
 const fog = document.createElement('canvas');
 fog.width = COLS;
 fog.height = ROWS;

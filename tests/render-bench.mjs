@@ -5,6 +5,7 @@ import { createRenderCache, prepareDrawList } from '../public/game/render-cache.
 import { combatScenario, loadedScenario } from '../scripts/render-scenario.mjs';
 
 let draws = 0;
+let imageDraws = 0;
 const context = {
   fillRect() {
     draws++;
@@ -16,6 +17,7 @@ const context = {
   scale() {},
   drawImage() {
     draws++;
+    imageDraws++;
   },
 };
 const cache = createRenderCache(() => ({ getContext: () => context }));
@@ -104,6 +106,15 @@ const beforeLoad = draws;
 image.naturalWidth = 200;
 cache.terrain(image, 845, 390, 1, 0, 2, Sim.W, Sim.H);
 assert(draws > beforeLoad);
+const decoding = { src: 'painted-terrain', naturalWidth: Sim.W, complete: false };
+const beforeDecode = imageDraws;
+cache.terrain(decoding, 845, 390, 1, 0, 2, Sim.W, Sim.H);
+assert.equal(imageDraws, beforeDecode);
+decoding.complete = true;
+cache.terrain(decoding, 845, 390, 1, 0, 2, Sim.W, Sim.H);
+assert.equal(imageDraws, beforeDecode + 1, 'Decoded terrain replaces the fallback without camera movement');
+cache.terrain(decoding, 845, 390, 1, 0, 2, Sim.W, Sim.H);
+assert.equal(imageDraws, beforeDecode + 1, 'Decoded terrain stays cached');
 
 // The allocation-free target search keeps stable ties and explicit orders.
 {

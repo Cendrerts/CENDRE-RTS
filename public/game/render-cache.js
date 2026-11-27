@@ -7,7 +7,8 @@ export function createRenderCache(createCanvas) {
   let fogPixels = null;
   return {
     terrain(image, width, height, ox, oy, scale, worldWidth, worldHeight) {
-      const key = [width, height, ox, oy, scale, image.src, image.naturalWidth].join(':');
+      const readyWidth = image.complete ? image.naturalWidth : 0;
+      const key = [width, height, ox, oy, scale, image.src, readyWidth].join(':');
       if (key !== terrainKey) {
         terrain.width = width;
         terrain.height = height;
@@ -16,7 +17,7 @@ export function createRenderCache(createCanvas) {
         context.fillRect(0, 0, width, height);
         context.translate(ox, oy);
         context.scale(scale, scale);
-        if (image.complete && image.naturalWidth) {
+        if (readyWidth) {
           context.drawImage(image, 0, 0, worldWidth, worldHeight);
         } else {
           context.fillStyle = '#514535';

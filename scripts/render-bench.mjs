@@ -43,6 +43,12 @@ try {
   // Freeze only simulation time for matching screenshots; production code stays intact.
   const baseline = process.argv.includes('--baseline');
   const baselineRef = process.env.BASELINE_REF || 'HEAD';
+  if (baseline) {
+    await page.route('**/game/terrain.js', async (route) => {
+      const body = execFileSync('git', ['show', `${baselineRef}:public/game/terrain.js`], { encoding: 'utf8' });
+      await route.fulfill({ contentType: 'text/javascript', body });
+    });
+  }
   await page.route('**/game/game.js', async (route) => {
     const source = baseline
       ? execFileSync('git', ['show', `${baselineRef}:public/game/game.js`], { encoding: 'utf8' })
@@ -51,7 +57,9 @@ try {
       .replace('Math.min((t - last) / 1000, 0.05)', '0')
       .replaceAll('requestAnimationFrame(frame);', "if (!location.search.includes('render-bench')) requestAnimationFrame(frame);") + `
 window.loadedRenderBench = {
-  setup(scenario) {
+  terrainReady: () => terrain.complete && terrain.naturalWidth === W,
+  async setup(scenario) {
+    await terrainReady;
     state = scenario;
     running = false;
     cameraX = Sim.W / 2;
@@ -70,6 +78,7 @@ window.loadedRenderBench = {
   });
   await page.goto(origin + '/public/game/');
   await page.locator('#start').click();
+  await page.waitForFunction(() => window.loadedRenderBench.terrainReady());
   await page.evaluate(async () => {
     await document.fonts.ready;
     await Promise.all([...document.images].map((image) => image.decode().catch(() => {})));
@@ -105,7 +114,7 @@ window.loadedRenderBench = {
         const state = scenarios[scenarioName === 'hordeFullDraw' ? 'hordeScenario' : scenarioName](sim);
         const startingUnits = state.units.length;
         const fullDraw = scenarioName === 'loadedScenario' || scenarioName === 'hordeFullDraw';
-        if (fullDraw) window.loadedRenderBench.setup(state);
+        if (fullDraw) await window.loadedRenderBench.setup(state);
         const cache = createRenderCache(() => document.createElement('canvas'));
         const fog = document.createElement('canvas');
         fog.width = sim.COLS;
@@ -115,14 +124,8 @@ window.loadedRenderBench = {
         const { ratSprites } = await import('/public/game/rats.js');
         await Promise.all([...Object.values(cookSprites), ...Object.values(ratSprites)].map((image) => image.decode()));
         const terrain = new Image();
-        const atlas = new Image();
-        atlas.src = '/public/game/assets/terres-brulees.png';
-        await atlas.decode();
-        const { createSkirmishTerrain } = await import('/public/game/terrain.js');
-        const blob = await new Promise((resolve) => createSkirmishTerrain(atlas, sim).toBlob(resolve));
-        terrain.src = URL.createObjectURL(blob);
-        await terrain.decode();
-        URL.revokeObjectURL(terrain.src);
+        const { loadSkirmishTerrain } = await import('/public/game/terrain.js');
+        await loadSkirmishTerrain(sim, terrain);
         const startingHealth = state.units.reduce((sum, unit) => sum + unit.hp, 0);
         const samples = [];
         const drawSamples = [];
