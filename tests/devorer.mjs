@@ -17,6 +17,7 @@ function fixture(type = 'knight') {
   const state = S.create();
   state.monsters = [];
   const rat = unit(state);
+  S.setScavenge(state, 1, [rat.id], false);
   rat.hp = rat.max / 2;
   const victim = unit(state, 0, type, rat.x + 10, rat.y);
   victim.hp = 1;
@@ -88,10 +89,10 @@ for (const interruption of ['move', 'hold', 'steer', 'retreat', 'patrol', 'queue
   const { state, rat, corpse } = fixture();
   const second = unit(state, 1, 'archer', rat.x - 10, rat.y);
   eat(state, rat, corpse);
-  eat(state, second, corpse);
+  assert.equal(S.devour(state, 1, [second.id], corpse.id), false);
+  assert(!second.devour, 'Une réservation manuelle empêche un deuxième repas');
   advance(state, 4.1);
   assert.equal(state.ingredients[1].viande, 6);
-  assert.equal(second.devour, null);
   assert.equal(second.path.length, 0);
   const cook = unit(state, 0);
   state.corpses.push({ ...corpse, expiresAt: state.time + 30 });
@@ -171,3 +172,90 @@ for (const interruption of ['move', 'hold', 'steer', 'retreat', 'patrol', 'queue
   assert(state.corpses.some((corpse) => corpse.id === rat.id && corpse.team === 1), 'Les Rats laissent aussi un cadavre');
 }
 console.log('OK dévorer : cadavres, gains, interruptions, concurrence, commandes réseau et tactile');
+
+function scavengerFixture(distance = 150) {
+  const state = S.create();
+  state.monsters = [];
+  const rat = unit(state);
+  rat.hold = false;
+  const corpse = { id: 1000, x: rat.x + distance, y: rat.y, team: 0, type: 'knight', expiresAt: 30 };
+  state.corpses.push(corpse);
+  return { state, rat, corpse };
+}
+{
+  const { state, rat, corpse } = scavengerFixture();
+  state.corpses.unshift({ ...corpse, id: 1001, y: corpse.y + 80 });
+  const second = unit(state, 1, 'archer', rat.x - 10, rat.y);
+  second.hold = false;
+  S.tick(state, 0.05);
+  assert.equal(rat.devour?.corpseId, corpse.id, 'Le rat choisit le cadavre le plus proche');
+  assert.equal(second.devour?.corpseId, 1001, 'Le second rat prend le cadavre libre');
+  advance(state, 10);
+  assert.equal(state.ingredients[1].viande, 12);
+  assert.equal(state.corpses.length, 0);
+}
+for (const blocker of ['distance', 'enemy', 'hold', 'disabled', 'queue', 'worker']) {
+  const { state, rat } = scavengerFixture(blocker === 'distance' ? 200 : 150);
+  if (blocker === 'enemy') unit(state, 0, 'knight', rat.x, rat.y + 200);
+  if (blocker === 'hold') command(state, 1, { kind: 'hold', ids: [rat.id] });
+  if (blocker === 'disabled') {
+    command(state, 0, { kind: 'setScavenge', ids: [rat.id], enabled: false });
+    assert.equal(rat.scavengeDisabled, undefined, 'Un adversaire ne peut pas couper la bascule');
+    command(state, 1, { kind: 'setScavenge', ids: [rat.id], enabled: false });
+    const restored = unpack(pack(state));
+    assert.equal(view(restored, 1).units.find((candidate) => candidate.id === rat.id).scavengeDisabled, true);
+  }
+  if (blocker === 'queue') {
+    command(state, 1, { kind: 'move', ids: [rat.id], x: rat.x, y: rat.y + 100, queue: true });
+  }
+  const testedUnit = blocker === 'worker' ? unit(state, 1, 'commis', rat.x, rat.y) : rat;
+  if (blocker === 'worker') {
+    testedUnit.hold = false;
+    command(state, 1, { kind: 'setScavenge', ids: [testedUnit.id], enabled: false });
+    assert.equal(testedUnit.scavengeDisabled, undefined);
+  }
+  const { x, y } = testedUnit;
+  advance(state, 0.25);
+  assert(!testedUnit.devour, blocker);
+  if (blocker !== 'queue' && blocker !== 'worker') assert.deepEqual([testedUnit.x, testedUnit.y], [x, y], blocker);
+}
+for (const interruption of ['move', 'enemy', 'disabled', 'manual']) {
+  const { state, rat, corpse } = scavengerFixture();
+  advance(state, 3);
+  assert(rat.devour?.startedAt != null, 'Le rat commence le repas automatique');
+  if (interruption === 'move') {
+    command(state, 1, { kind: 'move', ids: [rat.id], x: rat.x - 100, y: rat.y });
+    assert(rat.path.length > 0);
+  } else if (interruption === 'enemy') {
+    unit(state, 0, 'knight', rat.x, rat.y + 200);
+    S.tick(state, 0.05);
+  } else if (interruption === 'disabled') {
+    command(state, 1, { kind: 'setScavenge', ids: [rat.id], enabled: false });
+    assert.equal(rat.devour, null);
+    command(state, 1, { kind: 'setScavenge', ids: [rat.id], enabled: true });
+    S.tick(state, 0.05);
+    assert(rat.devour?.automatic);
+    continue;
+  } else {
+    const second = unit(state, 1, 'knight', rat.x + 20, rat.y);
+    command(state, 1, { kind: 'devour', ids: [second.id], corpseId: corpse.id });
+    assert.equal(second.devour?.corpseId, corpse.id);
+    assert(!second.devour.automatic);
+  }
+  assert.equal(rat.devour, null, interruption);
+  assert.equal(state.ingredients[1].viande, 0);
+}
+{
+  const { state, rat } = scavengerFixture();
+  const enemy = unit(state, 0, 'knight', rat.x, rat.y + 10);
+  rat.hold = true;
+  S.tick(state, 0.05);
+  assert(rat.hp < rat.max, 'Le rat a pris un coup');
+  state.units = state.units.filter((candidate) => candidate !== enemy);
+  rat.hold = false;
+  advance(state, 2.95);
+  assert(!rat.devour, 'Le rat attend trois secondes après le dernier coup');
+  S.tick(state, 0.05);
+  assert(rat.devour?.automatic);
+}
+console.log('OK charognard : portée, priorité des ordres, danger, dégâts, réservation et bascule');

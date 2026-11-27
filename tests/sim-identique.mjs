@@ -33,10 +33,12 @@ try {
   const referenceHasLizardCamps = probe.camps.some((camp) => camp.espece === 'lezard');
   const referenceHasCaches = Array.isArray(probe.caches);
   const referenceHasGuardedVein = probe.camps.some((camp) => camp.name === 'camp-veine');
+  const referenceHasScavenge = typeof Reference.setScavenge === 'function';
   // Les héros, les garde-manger et la cuisine de campagne modifient l’état initial.
-  // Les camps des neutres modifient aussi le déroulement du duel.
+  // Les camps des neutres et le mode Charognard modifient le déroulement du duel.
   const loadedReferenceSim = referenceHasSimpleHeroes && referenceHasRaidPlacement &&
-    referenceHasFieldKitchens && referenceHasRoadCamps && referenceHasLizardCamps && referenceHasGuardedVein
+    referenceHasFieldKitchens && referenceHasRoadCamps && referenceHasLizardCamps &&
+    referenceHasGuardedVein && referenceHasScavenge
     ? Reference : Sim;
   // Les rangs sont débloqués pour comparer le scénario chargé avec une référence antérieure à D67.
   const unlockAllRanks = (state) => {

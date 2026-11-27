@@ -697,7 +697,10 @@ function applyDamage(s, target, damage, attacker = null) {
     attacker.hp = Math.min(attacker.max, attacker.hp + stolenHp);
   }
   target.hp -= damage;
-  if (damage > 0 && target.devour?.startedAt != null) cancelDevour(target);
+  if (damage > 0) {
+    if (isMilitaryRat(target)) target.lastDamageAt = s.time;
+    if (target.devour?.automatic || target.devour?.startedAt != null) cancelDevour(target);
+  }
   if (wasAlive && target.hp <= 0 && !target.base && !target.structure && target.type !== 'commis' && target.type !== 'lezard') {
     s.corpses.push({ id: target.id, x: target.x, y: target.y, type: target.type, team: target.team, expiresAt: s.time + 30 });
   }
@@ -1449,6 +1452,48 @@ function cancelDevour(unit) {
   unit.retreat = false;
   unit.stuck = null;
 }
+const SCAVENGE_RADIUS = 180;
+const SCAVENGE_DANGER_RADIUS = 220;
+const SCAVENGE_DAMAGE_DELAY = 3;
+
+function isMilitaryRat(unit) {
+  return unit.team === 1 && !unit.base && !unit.structure && targetPriority(unit) === 1;
+}
+function setScavenge(s, team, ids, enabled) {
+  if (team !== 1 || s.winner !== null || typeof enabled !== 'boolean') return;
+  const selectedIds = new Set(ids);
+  for (const unit of s.units) {
+    if (!isMilitaryRat(unit) || unit.hp <= 0 || !selectedIds.has(unit.id)) continue;
+    if (enabled) delete unit.scavengeDisabled;
+    else {
+      unit.scavengeDisabled = true;
+      if (unit.devour?.automatic) cancelDevour(unit);
+    }
+  }
+}
+function scavengeThreat(s, rat) {
+  return s.units.some((enemy) => enemy.team !== rat.team && enemy.hp > 0 &&
+    targetPriority(enemy) === 1 && distanceSquared(rat, enemy) < SCAVENGE_DANGER_RADIUS ** 2);
+}
+function scavenge(s, rat) {
+  if (rat.scavengeDisabled || rat.devour || rat.hold || rat.path.length || rat.target ||
+      rat.orderQueue?.length || rat.queueActive || rat.patrol || rat.followId || rat.manual ||
+      rat.harvest || (rat.chasing && rat.attackDestination) ||
+      s.time - (rat.lastDamageAt ?? -Infinity) + 1e-9 < SCAVENGE_DAMAGE_DELAY) return;
+  const corpses = s.corpses.filter((corpse) =>
+    distanceSquared(rat, corpse) < SCAVENGE_RADIUS ** 2 &&
+    !s.units.some((unit) => unit.hp > 0 && unit.devour?.corpseId === corpse.id));
+  if (!corpses.length || scavengeThreat(s, rat)) return;
+  corpses.sort(nearestTo(rat));
+  for (const corpse of corpses) {
+    const path = route(rat.x, rat.y, corpse.x, corpse.y);
+    if (!path.length && distanceSquared(rat, corpse) > 24 ** 2) continue;
+    resetUnitOrder(rat, null, true, null);
+    rat.devour = { corpseId: corpse.id, startedAt: null, automatic: true };
+    rat.path = path;
+    return;
+  }
+}
 function hold(s, team, ids) {
   const selectedIds = new Set(ids);
   for (const unit of s.units) {
@@ -1471,11 +1516,14 @@ function devour(s, team, ids, corpseId) {
   const units = s.units.filter((unit) => ids.includes(unit.id) && unit.team === team && unit.hp > 0);
   if (!corpse || !visibleAt(s, team, corpse.x, corpse.y)) return false;
   order(s, units.map((unit) => unit.id), corpse.x, corpse.y);
+  const reservedBy = s.units.find((unit) => unit.hp > 0 && unit.devour?.corpseId === corpseId);
+  if (reservedBy && !reservedBy.devour.automatic) return false;
   const eater = units.filter((unit) => unit.team === 1 && unit.type !== 'commis')
     .sort((a, b) => Math.hypot(a.x - corpse.x, a.y - corpse.y) - Math.hypot(b.x - corpse.x, b.y - corpse.y) || a.id - b.id)[0];
   if (!eater) return false;
   const companions = units.filter((unit) => unit !== eater).map((unit) => unit.id);
   order(s, companions, corpse.x + 48, corpse.y);
+  if (reservedBy) cancelDevour(reservedBy);
   startDevour(eater, corpse);
   return true;
 }
@@ -1757,6 +1805,8 @@ function tick(s, dt) {
       applyDamage(s, u, RULES.forestDamage * dt);
     }
     if (u.hp <= 0) continue;
+    if (u.devour?.automatic && scavengeThreat(s, u)) cancelDevour(u);
+    if (s.corpses.length && isMilitaryRat(u)) scavenge(s, u);
     if (u.devour) {
       devourTick(s, u, dt);
       if (u.devour?.startedAt != null) fighting.add(u.id);
@@ -2373,6 +2423,7 @@ export const CendreSim = {
   targetReference,
   resolveTarget,
   devour,
+  setScavenge,
   kingFeast,
   kingFeastBlockReason,
   cancelDevour,
