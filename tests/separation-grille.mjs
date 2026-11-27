@@ -4,10 +4,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-// Frozen quadratic reference from main 71f2756. Only the temporary module
-// exposes the private functions; the shipped simulation API stays unchanged.
+// Référence quadratique de la séparation, avec la marge au repos de #296.
+// Seul le module temporaire expose les fonctions privées.
 const reference = `function referenceSeparate(units, fighting, dt) {
   const radius = (u) => u.type === 'knight' ? 12 : u.type === 'mage' ? 11 : 9;
+  const atRest = (u) => !fighting.has(u.id) && !u.path.length && !u.target && !u.autoTargetId &&
+    !u.attackDestination && !u.orderQueue?.length && !u.patrol && !u.followId && !u.hold &&
+    !u.manual && !u.harvest && !u.devour;
   for (let i = 0; i < units.length; i++) {
     const a = units[i];
     if (a.hp <= 0) continue;
@@ -17,9 +20,7 @@ const reference = `function referenceSeparate(units, fighting, dt) {
       if (a.team === b.team && (a.harvest || b.harvest)) continue;
       let dx = b.x - a.x;
       let dy = b.y - a.y;
-      // No unit pair can overlap beyond the largest combined radius.
-      if (dx <= -24 || dx >= 24 || dy <= -24 || dy >= 24) continue;
-      const combinedRadius = radius(a) + radius(b);
+      const combinedRadius = radius(a) + radius(b) + (atRest(a) && atRest(b) ? 3 : 0);
       const distanceSquared = dx * dx + dy * dy;
       if (distanceSquared >= combinedRadius * combinedRadius) continue;
       const distance = Math.hypot(dx, dy);
@@ -55,7 +56,7 @@ try {
   const { CendreSim: Sim, separate, referenceSeparate } = await import(pathToFileURL(join(directory, 'sim.js')));
   Sim.create();
   for (const dt of [1 / 60, 0.1, 0.005, 0.5, 0]) {
-    const cellSize = 24 + 2 * 199 * 30 * dt;
+    const cellSize = 27 + 2 * 199 * (30 * dt);
     const units = Array.from({ length: 200 }, (_, index) => {
       // Interleave distant groups in array order; straddle grid boundaries.
       const group = index % 4;
