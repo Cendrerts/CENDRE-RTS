@@ -2031,10 +2031,30 @@ function moveSafely(u, dx, dy) {
     u.y = y;
   }
 }
+
+function isSettled(unit) {
+  return !unit.path.length && !unit.target && !unit.autoTargetId && !unit.attackDestination &&
+    !unit.orderQueue?.length && !unit.patrol && !unit.followId && !unit.hold &&
+    !unit.manual && !unit.harvest && !unit.devour;
+}
+
+// Resting radii are 35% of the sprite sizes in drawCook (game.js), rounded.
+const RESTING_RADII = Object.freeze({
+  commis: 12,
+  knight: 16,
+  mage: 17,
+  archer: 18,
+  hero: 21,
+});
+const maximumContact = 2 * Math.max(...Object.values(RESTING_RADII));
+
 function separate(units, fighting, dt) {
+  const maximumPush = 30 * dt;
+  // Idle pairs can clear the wider sprite spacing faster without pushing moving units harder.
+  const maximumRestingPush = 1.2 * maximumPush;
   // A unit moves at most once per pair. Allow both endpoints to move
   // throughout the pass, including pairs processed before this row.
-  const cellSize = 24 + 2 * Math.max(0, units.length - 1) * 30 * dt;
+  const cellSize = maximumContact + 2 * Math.max(0, units.length - 1) * maximumRestingPush;
   const columns = Math.ceil(W / cellSize) + 2;
   const rows = Math.ceil(H / cellSize) + 2;
   const cache = separate.cache || (separate.cache = {
@@ -2044,6 +2064,7 @@ function separate(units, fighting, dt) {
     cellY: [],
     radii: [],
     fighting: [],
+    restingRadii: [],
   });
   const buckets = cache.buckets;
   const candidates = cache.candidates;
@@ -2060,6 +2081,9 @@ function separate(units, fighting, dt) {
     cache.cellY[index] = y;
     cache.radii[index] = unit.type === 'knight' ? 12 : unit.type === 'mage' ? 11 : 9;
     cache.fighting[index] = fighting.has(unit.id);
+    cache.restingRadii[index] = !cache.fighting[index] && isSettled(unit)
+      ? RESTING_RADII[unit.type] ?? cache.radii[index]
+      : 0;
     if (unit.hp > 0) buckets[y * columns + x].push(index);
   }
   for (let i = 0; i < units.length; i++) {
@@ -2086,13 +2110,15 @@ function separate(units, fighting, dt) {
       if (a.team === b.team && (a.harvest || b.harvest)) continue;
       let dx = b.x - a.x;
       let dy = b.y - a.y;
-      // No unit pair can overlap beyond the largest combined radius.
-      if (dx <= -24 || dx >= 24 || dy <= -24 || dy >= 24) continue;
-      const combinedRadius = cache.radii[i] + cache.radii[j];
+      if (dx <= -maximumContact || dx >= maximumContact || dy <= -maximumContact || dy >= maximumContact) continue;
+      const bothSettled = cache.restingRadii[i] && cache.restingRadii[j];
+      const contact = bothSettled
+        ? cache.restingRadii[i] + cache.restingRadii[j]
+        : cache.radii[i] + cache.radii[j];
       const distanceSquared = dx * dx + dy * dy;
-      if (distanceSquared >= combinedRadius * combinedRadius) continue;
+      if (distanceSquared >= contact * contact) continue;
       const distance = Math.hypot(dx, dy);
-      const overlap = combinedRadius - distance;
+      const overlap = contact - distance;
       if (overlap <= 0) continue;
       if (distance === 0) {
         // Stable IDs break coincident positions without randomness.
@@ -2104,11 +2130,11 @@ function separate(units, fighting, dt) {
         dy /= distance;
       }
       // Incoming units yield to allies that have already settled in formation.
-      const movableA = !fighting.has(a.id) && (a.path.length > 0 || b.path.length === 0);
-      const movableB = !fighting.has(b.id) && (b.path.length > 0 || a.path.length === 0);
+      const movableA = !cache.fighting[i] && (a.path.length > 0 || b.path.length === 0);
+      const movableB = !cache.fighting[j] && (b.path.length > 0 || a.path.length === 0);
       const count = Number(movableA) + Number(movableB);
       if (!count) continue;
-      const push = Math.min(overlap / count, 30 * dt);
+      const push = Math.min(overlap / count, bothSettled ? maximumRestingPush : maximumPush);
       if (movableA) moveSafely(a, -dx * push, -dy * push);
       if (movableB) moveSafely(b, dx * push, dy * push);
     }
@@ -2416,6 +2442,7 @@ function restore(texte) {
 }
 
 export const CendreSim = {
+  RESTING_RADII,
   PANTRY_CAPACITY,
   FIELD_KITCHEN_COST,
   RAGOUT_RADIUS,

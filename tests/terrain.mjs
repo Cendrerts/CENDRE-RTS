@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { CendreSim } from '../public/game/sim.js';
 import { groundRotation, hedgeOffset, obstacleVariant, terrainZone } from '../public/game/terrain.js';
+
+const terrainSource = readFileSync(new URL('../public/game/terrain.js', import.meta.url), 'utf8');
+assert.match(terrainSource, /\bpatch\(\d+, \d+, \d+, \d+, 450, 1725,/, 'Tour principale des Cuistots');
+assert.match(terrainSource, /\bpatch\(\d+, \d+, \d+, \d+, 3550, 400,/, 'Tour principale des Rats');
 
 const { W, H, CELL, COLS, ROWS, walk } = CendreSim;
 const zoneAt = (x, y) => terrainZone(x, y, W, H);

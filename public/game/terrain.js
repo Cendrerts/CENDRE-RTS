@@ -317,7 +317,7 @@ function paintObstacles(context, earth, assets, sim) {
   }
 }
 
-function createSkirmishTerrain(assets, sim) {
+function createSkirmishTerrain(assets, atlas, sim) {
   const { W, H } = sim;
   const ground = raster(W, H);
   const earth = raster(W, H);
@@ -341,6 +341,17 @@ function createSkirmishTerrain(assets, sim) {
 
   // Apply all ground masks before restoring the neutral obstacle bed and drawing the sprites.
   paintObstacles(ground, earth.canvas, assets, sim);
+  function patch(sx, sy, sw, sh, x, y, width, height) {
+    ground.save();
+    ground.beginPath();
+    ground.ellipse(x, y, width / 2, height / 2, 0, 0, Math.PI * 2);
+    ground.clip();
+    ground.drawImage(atlas, sx, sy, sw, sh, x - width / 2, y - height / 2, width, height);
+    ground.restore();
+  }
+  patch(275, 555, 190, 180, 450, 1725, 190, 180);
+  patch(1135, 72, 250, 270, 3550, 400, 250, 270);
+  patch(466, 347, 100, 155, 1948, 941, 100, 155);
   for (const scratch of [earth, layer, pavingMask, ...zoneMasks]) {
     scratch.canvas.width = 0;
   }
@@ -349,13 +360,16 @@ function createSkirmishTerrain(assets, sim) {
 
 // The battlefield and minimap share one raster; collision comes from sim.js.
 export async function loadSkirmishTerrain(sim, terrain) {
-  const entries = await Promise.all([...GROUND, ...HEDGES, ...ROCKS, ...PONDS].map(async (name) => {
+  const atlas = new Image();
+  atlas.src = new URL('./assets/terres-brulees.png', import.meta.url).href;
+  const tiles = [...GROUND, ...HEDGES, ...ROCKS, ...PONDS].map(async (name) => {
     const image = new Image();
     image.src = new URL(`./assets/tuiles/${name}.png`, import.meta.url).href;
     await image.decode();
     return [name, image];
-  }));
-  const canvas = createSkirmishTerrain(Object.fromEntries(entries), sim);
+  });
+  const [entries] = await Promise.all([Promise.all(tiles), atlas.decode()]);
+  const canvas = createSkirmishTerrain(Object.fromEntries(entries), atlas, sim);
   const blob = await new Promise((resolve) => canvas.toBlob(resolve));
   canvas.width = 0;
   if (!blob) throw new Error('Impossible de générer la texture du terrain.');
