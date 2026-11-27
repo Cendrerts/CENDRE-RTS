@@ -1,8 +1,14 @@
-const ZONE_AXIS_X = 0.58;
-const ZONE_AXIS_Y = 0.42;
+// The noise can add at most 0.15 to the distance slope, so the fade spans over 450 px.
+const ZONE_FADE = 520;
+const ZONE_NOISE_SCALE = 760;
+const GROUND_ZONES = [
+  { texture: 'sol-cendres', offsetX: -1120, offsetY: -900, radius: 40, strength: 0.56 },
+  { texture: 'sol-braises', offsetX: 0, offsetY: 0, radius: 25, strength: 0.62 },
+  { texture: 'sol-mousse', offsetX: -1420, offsetY: 630, radius: 45, strength: 0.58 },
+];
 const TILE_SIZE = 256;
 const TILE_STEP = 200;
-const GROUND = ['sol-terre', 'sol-cendres', 'sol-braises', 'sol-mousse', 'sol-paves'];
+const GROUND = ['sol-terre', ...GROUND_ZONES.map(({ texture }) => texture), 'sol-paves'];
 const HEDGES = ['haie-1', 'haie-2', 'haie-3'];
 const ROCKS = ['rocher-1', 'rocher-2', 'rocher-3'];
 const PONDS = ['mare-1', 'mare-2'];
@@ -12,13 +18,29 @@ function smoothstep(start, end, value) {
   return position * position * (3 - 2 * position);
 }
 
+function zoneNoise(x, y) {
+  const column = Math.floor(x / ZONE_NOISE_SCALE);
+  const row = Math.floor(y / ZONE_NOISE_SCALE);
+  const across = smoothstep(0, 1, x / ZONE_NOISE_SCALE - column);
+  const down = smoothstep(0, 1, y / ZONE_NOISE_SCALE - row);
+  const top = cellHash(row, column) * (1 - across) + cellHash(row, column + 1) * across;
+  const bottom = cellHash(row + 1, column) * (1 - across) + cellHash(row + 1, column + 1) * across;
+  return (top * (1 - down) + bottom * down) / 0xffffffff;
+}
+
 export function terrainZone(x, y, width, height) {
-  // Fold the diagonal gradient at the center so every region has a rotated counterpart.
-  const projection = (x - width / 2) * (ZONE_AXIS_X / width) + (y - height / 2) * (ZONE_AXIS_Y / height);
-  const distance = Math.round(Math.abs(projection) * 1e9) / 1e9;
-  const braises = 1 - smoothstep(0.075, 0.145, distance);
-  const marecage = smoothstep(0.26, 0.34, distance);
-  return [1 - braises - marecage, braises, marecage];
+  const dx = x - width / 2;
+  const dy = y - height / 2;
+  // Average opposite points to keep the low-frequency distortion rotationally symmetric.
+  const distortion = 52 * (zoneNoise(dx, dy) + zoneNoise(-dx, -dy) - 1);
+  const accents = GROUND_ZONES.map(({ offsetX, offsetY, radius, strength }) => {
+    const distance = Math.min(
+      Math.hypot(dx - offsetX, dy - offsetY),
+      Math.hypot(dx + offsetX, dy + offsetY),
+    );
+    return strength * (1 - smoothstep(radius, radius + ZONE_FADE, distance + distortion));
+  });
+  return [1 - accents.reduce((sum, weight) => sum + weight, 0), ...accents];
 }
 
 function cellHash(row, column) {
@@ -55,26 +77,27 @@ export function hedgeOffset(row, column) {
   };
 }
 
-function zoneMask(context, width, height, zone) {
-  const axisX = ZONE_AXIS_X / width;
-  const axisY = ZONE_AXIS_Y / height;
-  const halfLength = 0.5 / (axisX * axisX + axisY * axisY);
-  const deltaX = axisX * halfLength;
-  const deltaY = axisY * halfLength;
-  const gradient = context.createLinearGradient(
-    width / 2 - deltaX, height / 2 - deltaY,
-    width / 2 + deltaX, height / 2 + deltaY,
-  );
+function createZoneMasks(sim) {
+  const { W, H, CELL, ROWS, COLS } = sim;
+  const masks = GROUND_ZONES.map(() => raster(COLS, ROWS));
+  const pixels = masks.map((mask) => mask.createImageData(COLS, ROWS));
 
-  for (let stop = 0; stop <= 100; stop++) {
-    const position = stop / 100;
-    const x = width / 2 + (2 * position - 1) * deltaX;
-    const y = height / 2 + (2 * position - 1) * deltaY;
-    const weights = terrainZone(x, y, width, height);
-    gradient.addColorStop(position, `rgba(0, 0, 0, ${weights[zone]})`);
+  for (let row = 0; row < ROWS; row++) {
+    for (let column = 0; column < COLS; column++) {
+      const weights = terrainZone((column + 0.5) * CELL, (row + 0.5) * CELL, W, H);
+      const alpha = (row * COLS + column) * 4 + 3;
+      let accumulated = weights[0];
+      for (let zone = 0; zone < pixels.length; zone++) {
+        const weight = weights[zone + 1];
+        accumulated += weight;
+        // Source-over attenuates the existing layers. Normalize against the layers drawn so far.
+        pixels[zone].data[alpha] = Math.round(255 * weight / accumulated);
+      }
+    }
   }
-  context.fillStyle = gradient;
-  context.fillRect(0, 0, width, height);
+
+  masks.forEach((mask, zone) => mask.putImageData(pixels[zone], 0, 0));
+  return masks;
 }
 
 function traceBlockedGround(context, sim, isWalkable) {
@@ -242,7 +265,7 @@ function paintObstacles(context, earth, assets, sim) {
   traceBlockedGround(context, sim, isWalkable);
   context.clip();
   context.drawImage(earth, 0, 0);
-  context.fillStyle = 'rgba(26, 20, 11, 0.36)';
+  context.fillStyle = 'rgba(0, 0, 0, 0.36)';
   context.fillRect(0, 0, sim.W, sim.H);
 
   const sides = [[-1, 0], [0, -1], [0, 1], [1, 0]];
@@ -304,25 +327,21 @@ function createSkirmishTerrain(assets, sim) {
   paintPavingMask(pavingMask, sim);
   paintTiles(earth, assets['sol-terre']);
   ground.drawImage(earth.canvas, 0, 0);
-  paintTiles(layer, assets['sol-cendres']);
-  ground.drawImage(layer.canvas, 0, 0);
-
-  const overlays = [['sol-braises', 1], ['sol-mousse', 2], ['sol-paves', null]];
-  for (const [texture, zone] of overlays) {
+  const zoneMasks = createZoneMasks(sim);
+  const overlays = GROUND_ZONES.map(({ texture }, zone) => [texture, zoneMasks[zone]]);
+  overlays.push(['sol-paves', pavingMask]);
+  for (const [texture, mask] of overlays) {
     layer.clearRect(0, 0, W, H);
     paintTiles(layer, assets[texture]);
     layer.globalCompositeOperation = 'destination-in';
-    if (zone === null) {
-      layer.drawImage(pavingMask.canvas, 0, 0, W, H);
-    } else {
-      zoneMask(layer, W, H, zone);
-    }
+    layer.drawImage(mask.canvas, 0, 0, W, H);
     layer.globalCompositeOperation = 'source-over';
     ground.drawImage(layer.canvas, 0, 0);
   }
 
+  // Apply all ground masks before restoring the neutral obstacle bed and drawing the sprites.
   paintObstacles(ground, earth.canvas, assets, sim);
-  for (const scratch of [earth, layer, pavingMask]) {
+  for (const scratch of [earth, layer, pavingMask, ...zoneMasks]) {
     scratch.canvas.width = 0;
   }
   return ground.canvas;
